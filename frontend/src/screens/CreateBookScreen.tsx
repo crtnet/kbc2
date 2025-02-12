@@ -11,6 +11,7 @@ interface BookData {
   mainCharacter: string;
   setting: string;
   tone: string;
+  ageRange: '1-2' | '3-4' | '5-6' | '7-8' | '9-10' | '11-12';
 }
 
 export default function CreateBookScreen({ navigation }) {
@@ -26,7 +27,8 @@ export default function CreateBookScreen({ navigation }) {
     theme: 'friendship',
     mainCharacter: '',
     setting: '',
-    tone: 'fun'
+    tone: 'fun',
+    ageRange: '5-6'
   });
 
   const handleNext = () => {
@@ -124,7 +126,7 @@ export default function CreateBookScreen({ navigation }) {
   );
   const renderStep3 = () => (
     <View>
-      <Text style={styles.stepTitle}>Tema e Tom da História</Text>
+      <Text style={styles.stepTitle}>Tema, Tom e Faixa Etária</Text>
 
       <Text style={styles.label}>Tema Principal</Text>
       <SegmentedButtons
@@ -146,6 +148,21 @@ export default function CreateBookScreen({ navigation }) {
           { value: 'fun', label: 'Divertido' },
           { value: 'adventurous', label: 'Aventureiro' },
           { value: 'calm', label: 'Calmo' }
+        ]}
+        style={styles.segmentedButton}
+      />
+
+      <Text style={styles.label}>Faixa Etária</Text>
+      <SegmentedButtons
+        value={bookData.ageRange}
+        onValueChange={(value) => setBookData({ ...bookData, ageRange: value })}
+        buttons={[
+          { value: '1-2', label: '1-2 anos' },
+          { value: '3-4', label: '3-4 anos' },
+          { value: '5-6', label: '5-6 anos' },
+          { value: '7-8', label: '7-8 anos' },
+          { value: '9-10', label: '9-10 anos' },
+          { value: '11-12', label: '11-12 anos' }
         ]}
         style={styles.segmentedButton}
       />

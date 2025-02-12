@@ -1,42 +1,40 @@
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
 import mongoose from 'mongoose';
-import dotenv from 'dotenv';
-import authRoutes from './routes/auth';
+import { config } from './config';
 import bookRoutes from './routes/bookRoutes';
+import authRoutes from './routes/authRoutes';
 
-// Carrega as variáveis de ambiente
-dotenv.config();
+class App {
+  public express: express.Application;
 
-const app = express();
+  constructor() {
+    this.express = express();
+    this.middlewares();
+    this.database();
+    this.routes();
+  }
 
-// Conectar ao MongoDB
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/kids-book-creator')
-  .then(() => console.log('Connected to MongoDB'))
-  .catch(err => console.error('MongoDB connection error:', err));
+  private middlewares(): void {
+    this.express.use(express.json());
+    this.express.use(cors());
+    
+    // Servir arquivos estáticos da pasta public
+    this.express.use('/pdfs', express.static(path.join(__dirname, '../public/pdfs')));
+  }
 
-// Middlewares
-app.use(cors({
-  origin: '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Accept']
-}));
-app.use(express.json());
+  private database(): void {
+    mongoose.connect(config.mongoUri, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+    } as mongoose.ConnectOptions);
+  }
 
-// Rotas
-app.use('/api/auth', authRoutes);
-app.use('/api/books', bookRoutes);
+  private routes(): void {
+    this.express.use('/api/books', bookRoutes);
+    this.express.use('/api/auth', authRoutes);
+  }
+}
 
-// Rota de teste
-app.get('/api/test', (req, res) => {
-  console.log('Test route hit');
-  res.json({ message: 'API is working' });
-});
-
-// Tratamento de erros
-app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error(err.stack);
-  res.status(500).json({ message: 'Internal Server Error' });
-});
-
-export default app;
+export default new App().express;

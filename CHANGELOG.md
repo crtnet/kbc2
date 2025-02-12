@@ -24,6 +24,26 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 ## [Não lançado]
 
 ### Adicionado
+- Implementação completa do controlador de livros
+  - Criação de livros com geração de história via OpenAI
+  - Geração de imagens para cada página
+  - Suporte a múltiplos idiomas
+  - Operações CRUD para livros
+- Modelo de livros com campos detalhados
+- Validações e tratamento de erros
+- Logs detalhados para todas as operações
+- Sistema completo de geração e visualização de PDF
+  - Geração e armazenamento permanente de PDFs
+  - Visualizador de PDF com efeito flip page
+  - Novo componente PDFViewer
+  - Nova tela ViewBookPDFScreen
+  - Integração com modelo de Book para armazenar URL do PDF
+  - Suporte a imagens e texto formatado no PDF
+- Implementação do sistema de geração de PDF
+  - Novo serviço PDFService para geração de PDFs
+  - Novo controlador PDFController
+  - Nova rota para geração de PDF de livros
+  - Suporte a imagens e texto formatado no PDF
 - Configuração inicial do projeto
 - Estrutura básica do backend
 - Estrutura básica do frontend

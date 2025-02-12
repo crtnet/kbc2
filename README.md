@@ -9,6 +9,7 @@ Uma plataforma para criar livros infantis personalizados usando inteligência ar
 - Geração de ilustrações para cada página
 - Sistema de autenticação de usuários
 - Gerenciamento de livros por usuário
+- Exportação de livros em PDF com ilustrações
 
 ## Tecnologias
 
@@ -19,46 +20,56 @@ Uma plataforma para criar livros infantis personalizados usando inteligência ar
 
 ## Configuração
 
-### Backend
+### Pré-requisitos
 
-1. Instale as dependências:
+- Node.js (versão 16 ou superior)
+- MongoDB
+- Conta OpenAI (para geração de histórias e imagens)
+
+### Passos de Instalação
+
+1. Clone o repositório
+```bash
+git clone https://github.com/seu-usuario/kids-book-creator.git
+cd kids-book-creator
+```
+
+2. Configurar Backend
 ```bash
 cd backend
-npm install
+cp .env.example .env
 ```
 
-2. Configure as variáveis de ambiente:
-Crie um arquivo `.env` com:
-```
-PORT=3000
-MONGODB_URI=mongodb://localhost:27017/kids-book-creator
-JWT_SECRET=your_jwt_secret_key
-OPENAI_API_KEY=your_openai_api_key
-```
+3. Edite o arquivo `.env` com suas configurações:
+   - Adicione sua chave da API OpenAI
+   - Configure a URI do MongoDB
+   - Defina uma chave secreta para JWT
 
-3. Inicie o servidor:
+4. Instalar dependências e iniciar o backend
 ```bash
+npm install
 npm run dev
 ```
 
-### Frontend
-
-1. Instale as dependências:
+5. Configurar Frontend
 ```bash
-cd frontend
+cd ../frontend
+cp .env.example .env
 npm install
-```
-
-2. Configure as variáveis de ambiente:
-Crie um arquivo `.env` com:
-```
-API_URL=http://localhost:3000
-```
-
-3. Inicie o app:
-```bash
 npm start
 ```
+
+### Configuração da API OpenAI
+
+1. Crie uma conta em [OpenAI Platform](https://platform.openai.com/)
+2. Gere uma nova chave de API
+3. Copie a chave para o campo `OPENAI_API_KEY` no `.env`
+
+### Solução de Problemas
+
+- Certifique-se de ter uma conexão estável com a internet
+- Verifique se todas as variáveis de ambiente estão configuradas corretamente
+- Consulte os logs do servidor para detalhes de erros
 
 ## API Endpoints
 
@@ -77,15 +88,42 @@ npm start
 - POST `/api/books`
   - Cria um novo livro
   - Requer autenticação
-  - Body: `{ title, genre, theme, mainCharacter, setting, tone }`
-
-- GET `/api/books/:id`
-  - Obtém um livro específico
-  - Requer autenticação
+  - Body: 
+    ```json
+    {
+      "title": "Aventura na Floresta",
+      "genre": "Aventura",
+      "theme": "Amizade",
+      "mainCharacter": "Maria",
+      "setting": "Floresta mágica",
+      "tone": "Divertido",
+      "language": "pt-BR"
+    }
+    ```
+  - Gera história e imagens automaticamente
+  - Retorna detalhes do livro criado
 
 - GET `/api/books`
   - Lista todos os livros do usuário
   - Requer autenticação
+  - Retorna lista resumida de livros
+
+- GET `/api/books/:id`
+  - Obtém detalhes de um livro específico
+  - Requer autenticação
+
+- PUT `/api/books/:id`
+  - Atualiza um livro existente
+  - Requer autenticação
+
+- DELETE `/api/books/:id`
+  - Exclui um livro
+  - Requer autenticação
+
+- GET `/api/books/:bookId/pdf`
+  - Gera e retorna um PDF do livro
+  - Requer autenticação
+  - Retorna: `{ message: string, pdfUrl: string }`
 
 ## Autenticação
 

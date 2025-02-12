@@ -1,55 +1,50 @@
-// src/middlewares/auth.ts
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { config } from '../config';
+import { logger } from '../utils/logger';
 
-interface TokenPayload {
-  id: string;
-  type: string;
-  iat: number;
-  exp: number;
+export interface AuthRequest extends Request {
+  user?: {
+    id: string;
+    email: string;
+    type: string;
+  };
 }
 
-declare global {
-  namespace Express {
-    interface Request {
-      user?: {
+export const authMiddleware = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<Response | void> => {
+  try {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader) {
+      return res.status(401).json({ error: 'Token não fornecido' });
+    }
+
+    const [, token] = authHeader.split(' ');
+
+    if (!token) {
+      return res.status(401).json({ error: 'Token mal formatado' });
+    }
+
+    try {
+      const decoded = jwt.verify(token, config.jwtSecret) as {
         id: string;
+        email: string;
         type: string;
       };
+
+      req.user = decoded;
+      
+      return next();
+    } catch (error) {
+      logger.error(`Erro na verificação do token: ${error.message}`);
+      return res.status(401).json({ error: 'Token inválido' });
     }
-  }
-}
-
-export const authMiddleware = (req: Request, res: Response, next: NextFunction) => {
-  const authHeader = req.headers.authorization;
-
-  if (!authHeader) {
-    return res.status(401).json({ message: 'Token não fornecido' });
-  }
-
-  const parts = authHeader.split(' ');
-
-  if (parts.length !== 2) {
-    return res.status(401).json({ message: 'Token mal formatado' });
-  }
-
-  const [scheme, token] = parts;
-
-  if (!/^Bearer$/i.test(scheme)) {
-    return res.status(401).json({ message: 'Token mal formatado' });
-  }
-
-  try {
-    const decoded = jwt.verify(token, config.jwt.secret) as TokenPayload;
-
-    req.user = {
-      id: decoded.id,
-      type: decoded.type
-    };
-
-    return next();
-  } catch (err) {
-    return res.status(401).json({ message: 'Token inválido' });
+  } catch (error) {
+    logger.error(`Erro no middleware de autenticação: ${error.message}`);
+    return res.status(500).json({ error: 'Erro interno do servidor' });
   }
 };

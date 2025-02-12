@@ -1,111 +1,163 @@
 import { Request, Response } from 'express';
-import User from '../models/User';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import User from '../models/User';
 import { config } from '../config';
+import { logger } from '../utils/logger';
 
-export const register = async (req: Request, res: Response) => {
-  try {
-    const { name, email, password, type } = req.body;
+export class AuthController {
+  public static async verifyToken(req: Request, res: Response): Promise<Response> {
+    try {
+      const token = req.headers.authorization?.split(' ')[1];
+      
+      if (!token) {
+        return res.status(401).json({ 
+          valid: false, 
+          error: 'Token não fornecido' 
+        });
+      }
 
-    console.log('Received registration request:', { name, email, type });
+      const decoded = jwt.verify(token, config.jwtSecret);
+      const user = await User.findById(decoded.id);
 
-    // Validação básica
-    if (!name || !email || !password || !type) {
-      console.log('Missing required fields');
-      return res.status(400).json({ message: 'Todos os campos são obrigatórios' });
+      if (!user) {
+        return res.status(401).json({ 
+          valid: false, 
+          error: 'Usuário não encontrado' 
+        });
+      }
+
+      // Renovar token se estiver próximo de expirar
+      const tokenExp = (decoded as any).exp * 1000;
+      const now = Date.now();
+      const sixHours = 6 * 60 * 60 * 1000;
+
+      if (tokenExp - now < sixHours) {
+        const newToken = jwt.sign(
+          { id: user._id },
+          config.jwtSecret,
+          { expiresIn: '24h' }
+        );
+
+        return res.status(200).json({ 
+          valid: true,
+          token: newToken,
+          user: {
+            id: user._id,
+            name: user.name,
+            email: user.email,
+            type: user.type
+          }
+        });
+      }
+
+      return res.status(200).json({ 
+        valid: true,
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          type: user.type
+        }
+      });
+    } catch (error) {
+      logger.error(`Erro na verificação do token: ${error.message}`);
+      return res.status(401).json({ 
+        valid: false, 
+        error: 'Token inválido' 
+      });
     }
-
-    // Validar tipo de usuário
-    const validTypes = ['parent', 'child'];
-    if (!validTypes.includes(type)) {
-      console.log('Invalid user type:', type);
-      return res.status(400).json({ message: 'Tipo de usuário inválido' });
-    }
-
-    // Verificar se o usuário já existe
-    const userExists = await User.findOne({ email });
-    if (userExists) {
-      console.log('User already exists:', email);
-      return res.status(400).json({ message: 'Email já cadastrado' });
-    }
-
-    // Criptografar a senha
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-    // Criar usuário
-    const user = new User({
-      name,
-      email,
-      password: hashedPassword,
-      type
-    });
-
-    await user.save();
-    console.log('User created successfully:', user._id);
-
-    // Gerar token
-    const token = jwt.sign(
-      { id: user._id, type: user.type },
-      config.jwt.secret,
-      { expiresIn: config.jwt.expiresIn }
-    );
-
-    res.status(201).json({
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        type: user.type
-      },
-      token
-    });
-  } catch (error) {
-    console.error('Error in register:', error);
-    res.status(500).json({ message: 'Erro ao criar conta' });
   }
-};
+  public static async register(req: Request, res: Response): Promise<Response> {
+    try {
+      const { name, email, password, type } = req.body;
 
-export const login = async (req: Request, res: Response) => {
-  try {
-    const { email, password } = req.body;
+      // Verificar se usuário já existe
+      const existingUser = await User.findOne({ email });
+      if (existingUser) {
+        return res.status(400).json({ error: 'Usuário já existe' });
+      }
 
-    // Validação básica
-    if (!email || !password) {
-      return res.status(400).json({ message: 'Email e senha são obrigatórios' });
+      // Criptografar senha
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(password, salt);
+
+      // Criar novo usuário
+      const user = new User({
+        name,
+        email,
+        password: hashedPassword,
+        type
+      });
+
+      await user.save();
+
+      logger.info(`Usuário registrado: ${email}`);
+
+      return res.status(201).json({ 
+        message: 'Usuário criado com sucesso',
+        userId: user._id 
+      });
+    } catch (error) {
+      logger.error(`Erro no registro: ${error.message}`);
+      return res.status(500).json({ error: 'Erro no servidor' });
     }
-
-    // Buscar usuário
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(400).json({ message: 'Email ou senha inválidos' });
-    }
-
-    // Verificar senha
-    const validPassword = await bcrypt.compare(password, user.password);
-    if (!validPassword) {
-      return res.status(400).json({ message: 'Email ou senha inválidos' });
-    }
-
-    // Gerar token
-    const token = jwt.sign(
-      { id: user._id, type: user.type },
-      config.jwt.secret,
-      { expiresIn: config.jwt.expiresIn }
-    );
-
-    res.json({
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        type: user.type
-      },
-      token
-    });
-  } catch (error) {
-    console.error('Error in login:', error);
-    res.status(500).json({ message: 'Erro ao fazer login' });
   }
-};
+
+  public static async login(req: Request, res: Response): Promise<Response> {
+    try {
+      const { email, password } = req.body;
+
+      // Validar formato do email
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return res.status(400).json({ error: 'Formato de email inválido' });
+      }
+
+      // Validar senha
+      if (!password || password.length < 6) {
+        return res.status(400).json({ error: 'Senha deve ter no mínimo 6 caracteres' });
+      }
+
+      // Verificar se usuário existe
+      const user = await User.findOne({ email });
+      if (!user) {
+        return res.status(400).json({ error: 'Credenciais inválidas' });
+      }
+
+      // Verificar senha
+      const isMatch = await bcrypt.compare(password, user.password);
+      if (!isMatch) {
+        return res.status(400).json({ error: 'Credenciais inválidas' });
+      }
+
+      // Gerar token JWT
+      const token = jwt.sign(
+        { 
+          id: user._id,
+          email: user.email,
+          type: user.type
+        }, 
+        config.jwtSecret, 
+        { expiresIn: '24h' }
+      );
+
+      logger.info(`Usuário logado: ${email}`);
+
+      return res.status(200).json({ 
+        token,
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          type: user.type
+        }
+      });
+    } catch (error) {
+      logger.error(`Erro no login: ${error.message}`);
+      return res.status(500).json({ error: 'Erro no servidor' });
+    }
+  }
+}
+
+export default AuthController;

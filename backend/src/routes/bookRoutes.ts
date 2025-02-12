@@ -1,16 +1,50 @@
-// backend/src/routes/bookRoutes.ts
-import express from 'express';
-import * as bookController from '../controllers/bookController';
-import { authMiddleware } from '../middlewares/auth';
+import { Router, Request, Response, NextFunction } from 'express';
+import jwt from 'jsonwebtoken';
+import { config } from '../config';
+import BookController from '../controllers/bookController';
+import PDFController from '../controllers/pdfController';
 
-const router = express.Router();
+export const auth = (req: Request, res: Response, next: NextFunction) => {
+  const authHeader = req.headers.authorization;
 
-// Aplicar middleware de autenticação em todas as rotas
-router.use(authMiddleware);
+  if (!authHeader) {
+    return res.status(401).json({ error: 'Token não fornecido' });
+  }
 
-// Definir as rotas
-router.post('/', bookController.createBook);
-router.get('/:id', bookController.getBook);
-router.get('/', bookController.getUserBooks);
+  const parts = authHeader.split(' ');
+
+  if (parts.length !== 2) {
+    return res.status(401).json({ error: 'Erro no token' });
+  }
+
+  const [scheme, token] = parts;
+
+  if (!/^Bearer$/i.test(scheme)) {
+    return res.status(401).json({ error: 'Token mal formatado' });
+  }
+
+  try {
+    const decoded = jwt.verify(token, config.jwtSecret);
+    
+    // Adiciona o usuário decodificado ao request
+    req.user = decoded as { id: string };
+    
+    return next();
+  } catch (err) {
+    return res.status(401).json({ error: 'Token inválido' });
+  }
+};
+
+const router = Router();
+
+// Rotas de livros
+router.post('/', auth, BookController.createBook);
+router.get('/', auth, BookController.getBooks);
+router.get('/:id', auth, BookController.getBook);
+router.put('/:id', auth, BookController.updateBook);
+router.delete('/:id', auth, BookController.deleteBook);
+
+// Rota para geração de PDF
+router.get('/:bookId/pdf', auth, PDFController.generatePDF);
 
 export default router;
