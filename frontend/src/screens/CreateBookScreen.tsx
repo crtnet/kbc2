@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
 import { TextInput, Button, Text, SegmentedButtons, Card, Snackbar } from 'react-native-paper';
 import { useAuth } from '../contexts/AuthContext';
-import api from '../services/api';
+import * as bookService from '../services/bookService';
 
 interface BookData {
   title: string;
@@ -63,10 +63,10 @@ export default function CreateBookScreen({ navigation }) {
       setLoading(true);
       console.log('Criando livro:', bookData);
       
-      const response = await api.post('/books', bookData);
-      console.log('Livro criado:', response.data);
+      const response = await bookService.createBook(bookData);
+      console.log('Livro criado:', response);
       
-      navigation.navigate('ViewBook', { bookId: response.data.bookId });
+      navigation.navigate('ViewBook', { bookId: response.book._id });
     } catch (error) {
       console.error('Erro ao criar livro:', error);
       setError(error.response?.data?.message || 'Erro ao criar livro');

@@ -17,12 +17,15 @@ export default function ViewBookScreen({ route, navigation }) {
     let interval;
     if (book?.status === 'generating') {
       interval = setInterval(loadBook, 5000);
+    } else if (book?.status === 'completed' || book?.status === 'failed') {
+      // Se o livro já estiver pronto ou falhou, não precisa mais atualizar
+      if (interval) clearInterval(interval);
     }
     
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [bookId, book?.status]);
+  }, [bookId]);
 
   const loadBook = async () => {
     try {
@@ -57,7 +60,9 @@ export default function ViewBookScreen({ route, navigation }) {
   }
 
   const renderStatus = () => {
-    switch (book?.status) {
+    if (!book) return null;
+
+    switch (book.status) {
       case 'generating':
         return (
           <Card style={styles.statusCard}>
@@ -70,10 +75,22 @@ export default function ViewBookScreen({ route, navigation }) {
           </Card>
         );
       case 'completed':
-        return book.content?.pages?.map((page, index) => (
+        if (!book.content?.pages?.length) {
+          return (
+            <Card style={styles.statusCard}>
+              <Card.Content>
+                <Text style={styles.statusText}>
+                  O livro foi gerado mas não possui páginas.
+                </Text>
+              </Card.Content>
+            </Card>
+          );
+        }
+        return book.content.pages.map((page, index) => (
           <Card key={index} style={styles.pageCard}>
-            <Card.Cover source={{ uri: page.imageUrl }} />
+            {page.imageUrl && <Card.Cover source={{ uri: page.imageUrl }} />}
             <Card.Content>
+              <Text style={styles.pageNumber}>Página {index + 1}</Text>
               <Text style={styles.pageText}>{page.text}</Text>
             </Card.Content>
           </Card>
@@ -96,7 +113,15 @@ export default function ViewBookScreen({ route, navigation }) {
           </Card>
         );
       default:
-        return null;
+        return (
+          <Card style={styles.statusCard}>
+            <Card.Content>
+              <Text style={styles.statusText}>
+                Status desconhecido: {book.status}
+              </Text>
+            </Card.Content>
+          </Card>
+        );
     }
   };
 
@@ -159,6 +184,12 @@ const styles = StyleSheet.create({
     marginTop: 10,
     fontSize: 16,
   },
+  progressText: {
+    textAlign: 'center',
+    marginTop: 5,
+    fontSize: 14,
+    color: '#666',
+  },
   errorText: {
     color: '#d32f2f',
     textAlign: 'center',
@@ -171,6 +202,16 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 24,
     marginVertical: 10,
+  },
+  pageNumber: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 5,
+    fontWeight: 'bold',
+  },
+  pageImage: {
+    height: 200,
+    resizeMode: 'cover',
   },
   retryButton: {
     marginTop: 10,
