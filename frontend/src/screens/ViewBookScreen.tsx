@@ -10,23 +10,6 @@ export default function ViewBookScreen({ route, navigation }) {
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    loadBook();
-    
-    // Se o livro estiver em geração, atualizar a cada 5 segundos
-    let interval;
-    if (book?.status === 'generating') {
-      interval = setInterval(loadBook, 5000);
-    } else if (book?.status === 'completed' || book?.status === 'failed') {
-      // Se o livro já estiver pronto ou falhou, não precisa mais atualizar
-      if (interval) clearInterval(interval);
-    }
-    
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [bookId]);
-
   const loadBook = async () => {
     try {
       setRefreshing(true);
@@ -41,6 +24,22 @@ export default function ViewBookScreen({ route, navigation }) {
       setRefreshing(false);
     }
   };
+
+  // Carrega o livro na montagem do componente
+  useEffect(() => {
+    loadBook();
+  }, [bookId]);
+
+  // Reconfigura um intervalo para atualizar o livro enquanto estiver gerando
+  useEffect(() => {
+    let interval;
+    if (book?.status === 'generating') {
+      interval = setInterval(loadBook, 5000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [book?.status]);
 
   if (loading) {
     return (
@@ -75,7 +74,7 @@ export default function ViewBookScreen({ route, navigation }) {
           </Card>
         );
       case 'completed':
-        if (!book.content?.pages?.length) {
+        if (!book.pages?.length) {
           return (
             <Card style={styles.statusCard}>
               <Card.Content>
@@ -86,7 +85,7 @@ export default function ViewBookScreen({ route, navigation }) {
             </Card>
           );
         }
-        return book.content.pages.map((page, index) => (
+        return book.pages.map((page, index) => (
           <Card key={index} style={styles.pageCard}>
             {page.imageUrl && <Card.Cover source={{ uri: page.imageUrl }} />}
             <Card.Content>
