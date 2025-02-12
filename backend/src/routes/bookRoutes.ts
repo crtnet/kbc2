@@ -44,7 +44,6 @@ router.get('/:id', auth, BookController.getBook);
 router.put('/:id', auth, BookController.updateBook);
 router.delete('/:id', auth, BookController.deleteBook);
 
-// Rota para geração de PDF
-router.get('/:bookId/pdf', auth, PDFController.generatePDF);
+router.get('/:id/status', auth, BookController.getBookStatus);
 
 export default router;

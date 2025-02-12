@@ -1,3 +1,33 @@
+  public static async deleteBook(req: Request, res: Response): Promise<Response> {
+    try {
+      const { id } = req.params;
+
+      const book = await Book.findOneAndDelete({ 
+        _id: id, 
+        userId: req.user?.id 
+      });
+
+      if (!book) {
+        return res.status(404).json({ error: 'Livro não encontrado' });
+      }
+
+      logger.info(`Livro deletado: ${book.title}`);
+
+      return res.status(200).json({ 
+        message: 'Livro deletado com sucesso',
+        book: {
+          id: book._id,
+          title: book.title
+        }
+      });
+    } catch (error) {
+      logger.error(`Erro ao deletar livro: ${error.message}`);
+      return res.status(500).json({ 
+        error: 'Erro ao deletar livro', 
+        details: error.message 
+      });
+    }
+  }
 import { Request, Response } from 'express';
 import Book, { IBook } from '../models/Book';
 import OpenAIService from '../services/openai';
@@ -208,11 +238,11 @@ export class BookController {
     }
   }
 
-  public static async deleteBook(req: Request, res: Response): Promise<Response> {
+  public static async getBookStatus(req: Request, res: Response): Promise<Response> {
     try {
       const { id } = req.params;
 
-      const book = await Book.findOneAndDelete({ 
+      const book = await Book.findOne({ 
         _id: id, 
         userId: req.user?.id 
       });
@@ -221,23 +251,32 @@ export class BookController {
         return res.status(404).json({ error: 'Livro não encontrado' });
       }
 
-      logger.info(`Livro deletado: ${book.title}`);
+      // Determinar o status e progresso
+      let status = 'generating';
+      let progress = 50; // Progresso padrão para geração em andamento
 
-      return res.status(200).json({ 
-        message: 'Livro deletado com sucesso',
+      if (book.pages && book.pages.length > 0) {
+        status = 'completed';
+        progress = 100;
+      }
+
+      return res.status(200).json({
+        status,
+        progress,
         book: {
-          id: book._id,
-          title: book.title
+          _id: book._id,
+          title: book.title,
+          pages: book.pages,
+          wordCount: book.pages.reduce((total, page) => total + page.text.split(/\s+/).length, 0)
         }
       });
     } catch (error) {
-      logger.error(`Erro ao deletar livro: ${error.message}`);
+      logger.error(`Erro ao buscar status do livro: ${error.message}`);
       return res.status(500).json({ 
-        error: 'Erro ao deletar livro', 
+        error: 'Erro ao buscar status do livro', 
         details: error.message 
       });
     }
-  }
 }
 
 export default BookController;

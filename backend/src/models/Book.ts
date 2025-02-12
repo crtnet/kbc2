@@ -17,6 +17,11 @@ export interface IBook extends Document {
   setting: string;
   tone: string;
   ageRange: AgeRange;
+  content: string;
+  wordCount: number;
+  status: 'generating' | 'completed' | 'error';
+  error?: string;
+  generationTime?: number;
   pages: IPage[];
   language: string;
   createdAt: Date;
@@ -71,17 +76,32 @@ const BookSchema = new Schema({
       message: props => `${props.value} não é uma faixa etária válida`
     }
   },
+  content: {
+    type: String,
+    required: false // Será preenchido após a geração
+  },
+  wordCount: {
+    type: Number,
+    required: false
+  },
+  status: {
+    type: String,
+    required: true,
+    enum: ['generating', 'completed', 'error'],
+    default: 'generating'
+  },
+  error: {
+    type: String,
+    required: false
+  },
+  generationTime: {
+    type: Number,
+    required: false
+  },
   pages: {
     type: [PageSchema],
-    required: true,
-    validate: [
-      {
-        validator: function(pages: IPage[]) {
-          return pages.length > 0;
-        },
-        message: 'O livro deve ter pelo menos uma página'
-      }
-    ]
+    required: false, // Será preenchido após a geração do conteúdo
+    default: []
   },
   language: { 
     type: String, 
