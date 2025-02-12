@@ -1,66 +1,119 @@
-# Kids Book Creator - Backend
+# Kids Book Creator
 
-## Descrição
-Backend para o aplicativo de criação de livros infantis, desenvolvido com Node.js, Express e TypeScript.
+## Sobre o Projeto
+Kids Book Creator é uma aplicação para criar livros infantis personalizados usando tecnologias modernas como geração de texto e imagens por IA.
 
-## Requisitos
-- Node.js (v14 ou superior)
+## Tecnologias Utilizadas
+- Frontend: React Native/Expo com TypeScript
+- Backend: Node.js com TypeScript
+- Banco de Dados: MongoDB
+- Geração de Imagens: DALL-E (OpenAI)
+- Geração de PDF: PDFKit
+
+## Funcionalidades
+- Geração de histórias personalizadas
+- Geração de imagens via DALL-E
+- Geração de PDF com layout profissional
+- Suporte a múltiplos idiomas
+- Sistema de compartilhamento de livros
+- Temas visuais personalizáveis
+- Avatar do personagem personalizado
+
+## Configuração do Ambiente
+
+### Pré-requisitos
+- Node.js 14+
 - MongoDB
+- Yarn ou NPM
+- Expo CLI (para o frontend)
 
-## Instalação
-1. Clone o repositório
-2. Instale as dependências:
-   ```
-   npm install
-   ```
+### Backend
+1. Instale as dependências:
+```bash
+cd backend
+npm install
+```
 
-## Configuração
-1. Copie `.env.example` para `.env`
-2. Configure as variáveis de ambiente
+2. Configure as variáveis de ambiente:
+```bash
+cp .env.example .env
+```
 
-## Scripts
-- `npm run dev`: Iniciar servidor de desenvolvimento
-- `npm run build`: Compilar TypeScript
-- `npm start`: Iniciar servidor de produção
-- `npm test`: Executar testes
-- `npm run lint`: Verificar código
+3. Inicie o servidor:
+```bash
+npm run dev
+```
+
+### Frontend
+1. Instale as dependências:
+```bash
+cd frontend
+npm install
+```
+
+2. Configure as variáveis de ambiente:
+```bash
+cp .env.example .env
+```
+
+3. Inicie o aplicativo:
+```bash
+npm start
+```
 
 ## Estrutura do Projeto
-- `src/`: Código-fonte
-  - `config/`: Configurações
-  - `controllers/`: Controladores
-  - `models/`: Modelos de dados
-  - `routes/`: Definição de rotas
-  - `middlewares/`: Middlewares
-  - `utils/`: Utilitários
-- `public/`: Arquivos públicos
-  - `uploads/`: Uploads de imagens
-  - `pdfs/`: PDFs gerados
-- `logs/`: Arquivos de log
 
-## Rotas
-- `POST /api/books`: Criar livro
-- `GET /api/books`: Listar livros
-- `GET /api/books/:id`: Detalhes do livro
-- `PUT /api/books/:id`: Atualizar livro
-- `DELETE /api/books/:id`: Deletar livro
-- `POST /api/books/:id/generate`: Gerar PDF do livro
+### Backend
+```
+backend/
+├── src/
+│   ├── controllers/    # Controladores da aplicação
+│   ├── models/         # Modelos do MongoDB
+│   ├── routes/         # Rotas da API
+│   ├── services/       # Serviços (PDF, OpenAI, etc)
+│   ├── utils/          # Utilitários
+│   └── config/         # Configurações
+├── assets/
+│   └── fonts/         # Fontes personalizadas
+├── public/
+│   └── pdfs/         # PDFs gerados
+└── temp/             # Arquivos temporários
+```
+
+### Frontend
+```
+frontend/
+├── src/
+│   ├── components/    # Componentes React
+│   ├── screens/       # Telas do aplicativo
+│   ├── services/      # Serviços e API
+│   ├── utils/         # Utilitários
+│   └── themes/        # Temas visuais
+```
 
 ## Geração de PDF
 O sistema de geração de PDF inclui:
-- Timeout de 5 minutos para evitar processos travados
-- Validação de URLs de imagem
-- Logs detalhados do progresso
-- Tratamento de erros robusto
-- Suporte a imagens e texto formatado
-- Armazenamento automático na pasta public/pdfs
+- Capa personalizada com informações do livro
+- Suporte a fontes personalizadas
+- Layout otimizado para texto e imagens
+- Metadados do PDF
+- Suporte a diferentes formatos de página
+- Sistema de cache de imagens
 
-## Contribuição
+## Próximos Passos
+1. ✅ Implementação da geração de PDF
+2. ⏳ Implementação da geração de imagens via DALL-E
+3. ⏳ Implementação do avatar do personagem
+4. ⏳ Suporte a diferentes temas visuais
+5. ⏳ Sistema de compartilhamento de livros
+6. ⏳ Suporte a múltiplos idiomas
+
+## Contribuindo
 1. Faça um fork do projeto
-2. Crie uma branch para sua feature
-3. Commit suas mudanças
-4. Faça um push para a branch
+2. Crie uma branch para sua feature (`git checkout -b feature/AmazingFeature`)
+3. Commit suas mudanças (`git commit -m 'Add some AmazingFeature'`)
+4. Push para a branch (`git push origin feature/AmazingFeature`)
 5. Abra um Pull Request
 
 ## Licença
-[Especificar licença]
+Este projeto está licenciado sob a licença MIT - veja o arquivo [LICENSE.md](LICENSE.md) para detalhes.

@@ -1,3 +1,4 @@
+// Books.ts
 import mongoose, { Document, Schema } from 'mongoose';
 
 export interface IPage {
@@ -26,6 +27,7 @@ export interface IBook extends Document {
   generationTime?: number;
   pages: IPage[];
   language: string;
+  pdfUrl?: string; // novo campo para armazenar o caminho do PDF
   createdAt: Date;
   updatedAt: Date;
 
@@ -40,36 +42,18 @@ const PageSchema = new Schema({
 });
 
 const BookSchema = new Schema({
-  title: { 
-    type: String, 
-    required: true 
-  },
+  title: { type: String, required: true },
   userId: { 
     type: Schema.Types.ObjectId, 
     ref: 'User',
     required: true,
     index: true
   },
-  genre: { 
-    type: String, 
-    required: true 
-  },
-  theme: { 
-    type: String, 
-    required: true 
-  },
-  mainCharacter: { 
-    type: String, 
-    required: true 
-  },
-  setting: { 
-    type: String, 
-    required: true 
-  },
-  tone: { 
-    type: String, 
-    required: true 
-  },
+  genre: { type: String, required: true },
+  theme: { type: String, required: true },
+  mainCharacter: { type: String, required: true },
+  setting: { type: String, required: true },
+  tone: { type: String, required: true },
   ageRange: {
     type: String,
     required: true,
@@ -81,38 +65,23 @@ const BookSchema = new Schema({
       message: props => `${props.value} não é uma faixa etária válida`
     }
   },
-  content: {
-    type: String,
-    required: false // Será preenchido após a geração
-  },
-  wordCount: {
-    type: Number,
-    required: false
-  },
+  content: { type: String, required: false },
+  wordCount: { type: Number, required: false },
   status: {
     type: String,
     required: true,
     enum: ['generating', 'completed', 'error'],
     default: 'generating'
   },
-  error: {
-    type: String,
-    required: false
-  },
-  generationTime: {
-    type: Number,
-    required: false
-  },
+  error: { type: String, required: false },
+  generationTime: { type: Number, required: false },
   pages: {
     type: [PageSchema],
-    required: false, // Será preenchido após a geração do conteúdo
+    required: false,
     default: []
   },
-  language: { 
-    type: String, 
-    required: true,
-    default: 'pt-BR'
-  }
+  language: { type: String, required: true, default: 'pt-BR' },
+  pdfUrl: { type: String, required: false } // novo campo
 }, {
   timestamps: true
 });
@@ -120,40 +89,27 @@ const BookSchema = new Schema({
 // Método para converter ObjectIds para strings
 BookSchema.methods.toPlainObject = function() {
   const obj = this.toObject();
-  
-  // Converter _id para string
   obj._id = obj._id.toString();
-  
-  // Converter userId para string
   obj.userId = obj.userId.toString();
-  
-  // Converter IDs das páginas para string
   if (obj.pages && Array.isArray(obj.pages)) {
     obj.pages = obj.pages.map(page => ({
       ...page,
       _id: page._id ? page._id.toString() : undefined
     }));
   }
-  
   return obj;
 };
 
-// Índices
 BookSchema.index({ userId: 1, createdAt: -1 });
 BookSchema.index({ title: 'text' });
 
-// Middleware pre-save para validação adicional
 BookSchema.pre('save', function(next) {
   if (!this.isModified('pages')) return next();
-
-  // Verificar se as páginas estão em ordem
   const pages = this.pages as IPage[];
   const isSequential = pages.every((page, index) => page.pageNumber === index + 1);
-  
   if (!isSequential) {
     next(new Error('Números das páginas devem ser sequenciais'));
   }
-
   next();
 });
 

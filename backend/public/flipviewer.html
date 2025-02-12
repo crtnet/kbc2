@@ -1,0 +1,38 @@
+<!-- public/flipviewer.html -->
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Flipbook Viewer</title>
+  <!-- Inclui jQuery e Turn.js -->
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/turn.js/4/turn.min.js"></script>
+  <style>
+    body { margin: 0; background: #ccc; }
+    #flipbook { width: 100%; height: 100vh; }
+    .page { background: white; }
+  </style>
+</head>
+<body>
+  <div id="flipbook"></div>
+  <script>
+    // Obtém o parâmetro 'pdf' da URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const pdfPath = urlParams.get('pdf'); // ex: "/pdfs/{bookId}.pdf"
+
+    // Aqui você pode integrar PDF.js para carregar e renderizar cada página do PDF.
+    // Para este exemplo, vamos criar páginas dummy para demonstrar o flip.
+    const totalPages = 4; // Você pode alterar conforme o número de páginas do PDF
+    const flipbook = $('#flipbook');
+    for (let i = 1; i <= totalPages; i++) {
+      flipbook.append(`<div class="page"><h2>Página ${i}</h2><p>Conteúdo da página ${i} do PDF.</p></div>`);
+    }
+    // Inicializa o Turn.js para efeito de flip
+    $("#flipbook").turn({
+      width: window.innerWidth,
+      height: window.innerHeight,
+      autoCenter: true
+    });
+  </script>
+</body>
+</html>

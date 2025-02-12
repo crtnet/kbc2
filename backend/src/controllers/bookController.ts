@@ -1,7 +1,9 @@
 import { Request, Response } from 'express';
-import Book, { IBook } from '../models/Book';
+import path from 'path';
+import Book, { IBook } from '../models/Book'; // Certifique-se de que o arquivo se chama "Books.ts" (com B maiúsculo) e está na pasta src/models
 import OpenAIService from '../services/openai';
 import StoryGeneratorService from '../services/storyGenerator';
+import { generateBookPDF } from '../services/pdfGenerator';
 import { logger } from '../utils/logger';
 
 export class BookController {
@@ -47,6 +49,7 @@ export class BookController {
 
       console.log('Dados recebidos para criação do livro:', req.body);
 
+      // Validação dos dados de entrada
       const validationErrors: string[] = [];
       if (!title) validationErrors.push('Título é obrigatório');
       if (!genre) validationErrors.push('Gênero é obrigatório');
@@ -64,6 +67,7 @@ export class BookController {
         return res.status(400).json({ error: 'Dados inválidos', details: validationErrors });
       }
 
+      // Geração da história
       const storyPrompt = `Crie uma história infantil com os seguintes elementos:
         - Título: ${title}
         - Gênero: ${genre}
@@ -73,12 +77,12 @@ export class BookController {
         - Tom: ${tone}
         - Idioma: ${language}
       `;
-
       let { story: storyText, wordCount } = await StoryGeneratorService.generateStory(
         storyPrompt, 
         ageRange
       );
 
+      // Criação do objeto livro
       const book = new Book({
         title,
         userId: req.user?.id,
@@ -97,7 +101,7 @@ export class BookController {
       const pagesCount = Math.max(Math.ceil(paragraphs.length / 2), 3); // Mínimo 3 páginas
       logger.info(`Total de páginas a serem geradas: ${pagesCount}`);
 
-      // Gerar páginas com texto
+      // Fase 1: Gerar páginas com texto
       logger.info('Fase 1: Gerando páginas com texto');
       for (let i = 0; i < pagesCount; i++) {
         const startIndex = i * 2;
@@ -106,21 +110,21 @@ export class BookController {
         book.pages.push({
           text: pageText,
           pageNumber: i + 1,
-          imageUrl: '/default-book-image.png' // Imagem temporária
+          imageUrl: '/default-book-image.png' // imagem temporária
         });
       }
 
-      // Gerar imagens em paralelo
+      // Fase 2: Gerar imagens para cada página (em paralelo)
       logger.info('Fase 2: Iniciando geração de imagens');
       const imagePromises = book.pages.map(async (page, index) => {
         try {
           logger.info(`Preparando geração de imagem para página ${index + 1}`);
           const imagePrompt = `Ilustração para uma história infantil para ${ageRange} anos: ${page.text}`;
           const imageUrl = await OpenAIService.generateImage(imagePrompt);
-          // Atualizar a URL da imagem na página
+          // Atualiza a URL da imagem da página
           book.pages[index].imageUrl = imageUrl;
           logger.info(`Imagem gerada com sucesso para página ${index + 1}`);
-          // Salvar o livro após cada imagem gerada
+          // Salva o livro para atualizar a página gerada
           await book.save();
           logger.info(`Página ${index + 1} salva com nova imagem`);
         } catch (imageError) {
@@ -133,21 +137,22 @@ export class BookController {
       await Promise.all(imagePromises);
       logger.info('Todas as imagens foram geradas');
 
-      // Atualizar status para 'completed' antes de salvar o livro final
+      // Atualiza o status para "completed" e salva o livro final
       book.status = 'completed';
       const savedBook = await book.save();
       logger.info(`Livro salvo com ID: ${savedBook._id}`);
 
-      if (!savedBook._id) {
-        throw new Error('Erro ao salvar livro: ID não gerado');
-      }
+      // Gera o PDF do livro e atualiza o campo pdfUrl
+      const pdfUrl = await generateBookPDF(savedBook);
+      savedBook.pdfUrl = pdfUrl;
+      await savedBook.save();
+      logger.info(`PDF gerado com URL: ${pdfUrl}`);
 
-      // Buscar o livro recém-criado para garantir que todos os dados estão corretos
+      // Recupera o livro criado para retorno
       const createdBook = await Book.findById(savedBook._id);
       if (!createdBook) {
         throw new Error('Erro ao recuperar livro após criação');
       }
-
       logger.info('Processo de criação do livro concluído com sucesso');
       const responseBook = createdBook.toPlainObject();
       logger.info(`Retornando livro com ID: ${responseBook._id}`);
@@ -161,7 +166,10 @@ export class BookController {
       });
     } catch (error) {
       logger.error(`Erro ao criar livro: ${error.message}`);
-      return res.status(500).json({ error: 'Erro ao criar livro', details: error.message });
+      return res.status(500).json({ 
+        error: 'Erro ao criar livro', 
+        details: error.message 
+      });
     }
   }
 
@@ -172,7 +180,10 @@ export class BookController {
       return res.status(200).json(books);
     } catch (error) {
       logger.error(`Erro ao buscar livros: ${error.message}`);
-      return res.status(500).json({ error: 'Erro ao buscar livros', details: error.message });
+      return res.status(500).json({ 
+        error: 'Erro ao buscar livros', 
+        details: error.message 
+      });
     }
   }
 
@@ -193,7 +204,10 @@ export class BookController {
       return res.status(200).json(bookData);
     } catch (error) {
       logger.error(`Erro ao buscar livro: ${error.message}`);
-      return res.status(500).json({ error: 'Erro ao buscar livro', details: error.message });
+      return res.status(500).json({ 
+        error: 'Erro ao buscar livro', 
+        details: error.message 
+      });
     }
   }
 
@@ -213,7 +227,10 @@ export class BookController {
       return res.status(200).json(book);
     } catch (error) {
       logger.error(`Erro ao atualizar livro: ${error.message}`);
-      return res.status(500).json({ error: 'Erro ao atualizar livro', details: error.message });
+      return res.status(500).json({ 
+        error: 'Erro ao atualizar livro', 
+        details: error.message 
+      });
     }
   }
 
@@ -242,7 +259,30 @@ export class BookController {
       });
     } catch (error) {
       logger.error(`Erro ao buscar status do livro: ${error.message}`);
-      return res.status(500).json({ error: 'Erro ao buscar status do livro', details: error.message });
+      return res.status(500).json({ 
+        error: 'Erro ao buscar status do livro', 
+        details: error.message 
+      });
+    }
+  }
+
+  // Novo endpoint: retorna a URL para visualizar o PDF com efeito flip
+  public static async getBookPDFViewer(req: Request, res: Response): Promise<Response> {
+    try {
+      const { id } = req.params;
+      const book = await Book.findOne({ _id: id, userId: req.user?.id });
+      if (!book || !book.pdfUrl) {
+        return res.status(404).json({ error: 'PDF não encontrado' });
+      }
+      // Considerando que process.env.BASE_URL seja a URL base do seu servidor (ex: https://seu-servidor.com)
+      const viewerUrl = `${process.env.BASE_URL}/flipviewer.html?pdf=${encodeURIComponent(book.pdfUrl)}`;
+      return res.status(200).json({ viewerUrl });
+    } catch (error) {
+      logger.error(`Erro ao buscar visualizador de PDF: ${error.message}`);
+      return res.status(500).json({ 
+        error: 'Erro ao buscar visualizador de PDF', 
+        details: error.message 
+      });
     }
   }
 }
