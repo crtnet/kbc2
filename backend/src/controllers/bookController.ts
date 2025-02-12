@@ -206,16 +206,29 @@ export class BookController {
 
   public static async getBook(req: Request, res: Response): Promise<Response> {
     try {
+      logger.info(`Buscando livro com ID: ${req.params.id}`);
+      
+      // Verificar se o ID é válido
+      if (!req.params.id || req.params.id === 'undefined') {
+        logger.error('ID do livro inválido');
+        return res.status(400).json({ error: 'ID do livro inválido' });
+      }
+
       const book = await Book.findOne({ 
         _id: req.params.id, 
         userId: req.user?.id 
       });
 
       if (!book) {
+        logger.error(`Livro não encontrado: ${req.params.id}`);
         return res.status(404).json({ error: 'Livro não encontrado' });
       }
 
-      return res.status(200).json(book);
+      // Usar o método toPlainObject para garantir conversão de IDs
+      const bookData = book.toPlainObject();
+
+      logger.info(`Livro encontrado: ${bookData.title}`);
+      return res.status(200).json(bookData);
     } catch (error) {
       logger.error(`Erro ao buscar livro: ${error.message}`);
       return res.status(500).json({ 

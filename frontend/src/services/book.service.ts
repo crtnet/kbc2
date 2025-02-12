@@ -50,7 +50,10 @@ class BookService {
       
       const response = await axios.post(`${API_URL}/api/books`, bookData);
       
-      if (!response.data.book._id) {
+      console.log('Resposta da criação do livro:', response.data);
+      
+      if (!response.data.book || !response.data.book._id) {
+        console.error('Resposta inválida da API:', response.data);
         throw new Error('ID do livro não retornado pela API');
       }
 
@@ -63,14 +66,19 @@ class BookService {
 
   async getBook(bookId: string): Promise<Book> {
     try {
-      if (!bookId) {
-        throw new Error('ID do livro não fornecido');
+      console.log('Buscando livro com ID:', bookId);
+
+      if (!bookId || bookId === 'undefined') {
+        console.error('ID do livro inválido');
+        throw new Error('ID do livro não fornecido ou inválido');
       }
 
       const response = await axios.get(`${API_URL}/api/books/${bookId}`);
+      
+      console.log('Livro encontrado:', response.data);
       return response.data;
     } catch (error) {
-      console.error('Erro ao buscar livro:', error);
+      console.error('Erro ao buscar livro:', error.response?.data || error.message);
       throw error;
     }
   }

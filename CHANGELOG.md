@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.3] - 2025-02-12
+
+### Fixed
+- Melhorada validação de ID de livro no frontend e backend
+- Adicionados logs detalhados para diagnóstico de problemas
+- Corrigido tratamento de erros na busca de livro
+- Adicionada validação de ID inválido ou undefined
+
 ## [0.3.2] - 2025-02-12
 
 ### Fixed
