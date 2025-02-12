@@ -6,7 +6,7 @@ const messages = {
     'app.title': 'Kids Book Creator',
     'app.loading': 'Carregando...',
     'app.error': 'Ocorreu um erro',
-    
+
     // Login e Autenticação
     'login.title': 'Entrar',
     'login.email': 'Email',
@@ -14,14 +14,14 @@ const messages = {
     'login.submit': 'Entrar',
     'login.error': 'Erro ao fazer login',
     'login.success': 'Login realizado com sucesso',
-    
+
     // Registro
     'register.title': 'Criar Conta',
     'register.name': 'Nome',
     'register.email': 'Email',
     'register.password': 'Senha',
     'register.submit': 'Cadastrar',
-    
+
     // Livros
     'books.title': 'Meus Livros',
     'books.create': 'Criar Novo Livro',
@@ -31,12 +31,12 @@ const messages = {
     'books.empty': 'Nenhum livro encontrado',
     'books.loading': 'Carregando livros...',
     'books.error': 'Erro ao carregar livros',
-    
+
     // Mensagens de erro
     'error.unauthorized': 'Sessão expirada. Por favor, faça login novamente.',
     'error.connection': 'Erro de conexão com o servidor',
     'error.unknown': 'Ocorreu um erro inesperado',
-    
+
     // Mensagens específicas
     'I86Kj3': 'HEIC para JPG',
     'y+7ihJ': 'Qualidade',
@@ -44,7 +44,7 @@ const messages = {
     'qZGdi+': 'Arquivos HEIC são permitidos',
     'W4cWeE': 'número ilimitado de arquivos',
     'phdZCb': 'Suas fotos não são enviadas para nenhum servidor.',
-    
+
     // Validações
     'validation.required': 'Campo obrigatório',
     'validation.email': 'Email inválido',
@@ -53,13 +53,19 @@ const messages = {
 };
 
 export const getMessages = (locale: string) => {
+  // Se o locale for 'pt', retorna as mensagens de 'pt-BR'
+  if (locale === 'pt') {
+    return messages['pt-BR'];
+  }
   return messages[locale] || messages['pt-BR'];
 };
 
 export const setupIntl = (locale: string = 'pt-BR') => {
+  // Garante que o locale usado seja 'pt-BR' caso o usuário passe 'pt'
+  const normalizedLocale = locale === 'pt' ? 'pt-BR' : locale;
   return {
-    locale,
-    messages: getMessages(locale)
+    locale: normalizedLocale,
+    messages: getMessages(normalizedLocale)
   };
 };
 
