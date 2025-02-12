@@ -1,3 +1,10 @@
+import { Request, Response } from 'express';
+import Book, { IBook } from '../models/Book';
+import OpenAIService from '../services/openai';
+import StoryGeneratorService from '../services/storyGenerator';
+import { logger } from '../utils/logger';
+
+export class BookController {
   public static async deleteBook(req: Request, res: Response): Promise<Response> {
     try {
       const { id } = req.params;
@@ -28,13 +35,7 @@
       });
     }
   }
-import { Request, Response } from 'express';
-import Book, { IBook } from '../models/Book';
-import OpenAIService from '../services/openai';
-import StoryGeneratorService from '../services/storyGenerator';
-import { logger } from '../utils/logger';
 
-export class BookController {
   public static async createBook(req: Request, res: Response): Promise<Response> {
     try {
       const { 
@@ -105,41 +106,58 @@ export class BookController {
       });
 
       // Dividir história em páginas
+      logger.info('Iniciando processamento das páginas do livro');
       const paragraphs = storyText.split('\n\n').filter(p => p.trim() !== '');
       const pagesCount = Math.max(Math.ceil(paragraphs.length / 2), 3); // Mínimo 3 páginas
+      logger.info(`Total de páginas a serem geradas: ${pagesCount}`);
 
+      // Primeiro, vamos gerar todas as páginas com texto
+      logger.info('Fase 1: Gerando páginas com texto');
       for (let i = 0; i < pagesCount; i++) {
         const startIndex = i * 2;
         const endIndex = startIndex + 2;
         const pageText = paragraphs.slice(startIndex, endIndex).join('\n\n');
 
-        try {
-          const imagePrompt = `Ilustração para uma história infantil para ${ageRange} anos: ${pageText}`;
-          const imageUrl = await OpenAIService.generateImage(imagePrompt);
-          
-          book.pages.push({
-            text: pageText,
-            pageNumber: i + 1,
-            imageUrl
-          });
-        } catch (imageError) {
-          logger.error(`Erro ao gerar imagem para página ${i + 1}: ${imageError.message}`);
-          book.pages.push({
-            text: pageText,
-            pageNumber: i + 1,
-            imageUrl: '/default-book-image.png'
-          });
-        }
+        book.pages.push({
+          text: pageText,
+          pageNumber: i + 1,
+          imageUrl: '/default-book-image.png' // Imagem temporária
+        });
       }
 
-      // Salvar livro
+      // Agora, vamos gerar as imagens em paralelo
+      logger.info('Fase 2: Iniciando geração de imagens');
+      const imagePromises = book.pages.map(async (page, index) => {
+        try {
+          logger.info(`Preparando geração de imagem para página ${index + 1}`);
+          const imagePrompt = `Ilustração para uma história infantil para ${ageRange} anos: ${page.text}`;
+          const imageUrl = await OpenAIService.generateImage(imagePrompt);
+          
+          // Atualizar a URL da imagem na página
+          book.pages[index].imageUrl = imageUrl;
+          logger.info(`Imagem gerada com sucesso para página ${index + 1}`);
+          
+          // Salvar o livro após cada imagem gerada
+          await book.save();
+          logger.info(`Página ${index + 1} salva com nova imagem`);
+        } catch (imageError) {
+          logger.error(`Erro ao gerar imagem para página ${index + 1}: ${imageError.message}`);
+          // Mantém a imagem padrão em caso de erro
+        }
+      });
+
+      // Aguardar geração de todas as imagens
+      logger.info('Aguardando conclusão da geração de todas as imagens');
+      await Promise.all(imagePromises);
+      logger.info('Todas as imagens foram geradas');
+
+      // Salvar livro final
       const savedBook = await book.save();
+      logger.info(`Livro salvo com ID: ${savedBook._id}`);
 
       if (!savedBook._id) {
         throw new Error('Erro ao salvar livro: ID não gerado');
       }
-
-      logger.info(`Livro criado: ${savedBook.title} por usuário ${req.user?.id}`);
 
       // Buscar o livro recém-criado para garantir que todos os dados estão corretos
       const createdBook = await Book.findById(savedBook._id);
@@ -148,22 +166,18 @@ export class BookController {
         throw new Error('Erro ao recuperar livro após criação');
       }
 
+      logger.info('Processo de criação do livro concluído com sucesso');
+
+      // Garantir que todos os campos necessários estão presentes
+      const responseBook = createdBook.toPlainObject();
+
+      logger.info(`Retornando livro com ID: ${responseBook._id}`);
+
       return res.status(201).json({
         message: 'Livro criado com sucesso',
         book: {
-          _id: createdBook._id,
-          title: createdBook.title,
-          pages: createdBook.pages,
-          userId: createdBook.userId,
-          genre: createdBook.genre,
-          theme: createdBook.theme,
-          mainCharacter: createdBook.mainCharacter,
-          setting: createdBook.setting,
-          tone: createdBook.tone,
-          ageRange: createdBook.ageRange,
-          language: createdBook.language,
-          wordCount,
-          createdAt: createdBook.createdAt
+          ...responseBook,
+          wordCount
         }
       });
     } catch (error) {
@@ -277,6 +291,7 @@ export class BookController {
         details: error.message 
       });
     }
+  }
 }
 
 export default BookController;

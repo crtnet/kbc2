@@ -1,10 +1,15 @@
 import OpenAI from 'openai';
 import { logger } from '../utils/logger';
 import { config } from '../config';
+import { performance } from 'perf_hooks';
 
 class OpenAIService {
   private openai: OpenAI;
-  private imageQueue: Array<() => Promise<string>> = [];
+  private imageQueue: Array<{
+    prompt: string;
+    resolve: (value: string) => void;
+    reject: (reason: any) => void;
+  }> = [];
   private isProcessingQueue = false;
   private lastImageGenerationTime = 0;
   private static readonly RATE_LIMIT_DELAY = 12000; // 12 segundos entre imagens
@@ -19,6 +24,7 @@ class OpenAIService {
   async generateStory(prompt: string): Promise<string> {
     try {
       logger.info('Gerando história com OpenAI');
+      const startTime = performance.now();
       
       const completion = await this.openai.chat.completions.create({
         model: "gpt-3.5-turbo",
@@ -36,6 +42,9 @@ class OpenAIService {
         max_tokens: 1000
       });
 
+      const endTime = performance.now();
+      logger.info(`História gerada em ${((endTime - startTime) / 1000).toFixed(2)} segundos`);
+
       return completion.choices[0].message.content || '';
     } catch (error) {
       logger.error(`Erro ao gerar história: ${error.message}`);
@@ -44,52 +53,11 @@ class OpenAIService {
   }
 
   async generateImage(prompt: string): Promise<string> {
+    logger.info(`Adicionando requisição de imagem à fila: "${prompt.substring(0, 50)}..."`);
+    
     return new Promise((resolve, reject) => {
-      this.imageQueue.push(async () => {
-        let retries = 0;
-        while (retries < OpenAIService.MAX_RETRIES) {
-          try {
-            const now = Date.now();
-            const timeSinceLastGeneration = now - this.lastImageGenerationTime;
-            
-            if (timeSinceLastGeneration < OpenAIService.RATE_LIMIT_DELAY) {
-              const waitTime = OpenAIService.RATE_LIMIT_DELAY - timeSinceLastGeneration;
-              await new Promise(resolve => setTimeout(resolve, waitTime));
-            }
-
-            logger.info('Gerando imagem com DALL-E');
-            
-            const response = await this.openai.images.generate({
-              model: "dall-e-3",
-              prompt: `${prompt}. Estilo: ilustração infantil, cores vibrantes, seguro para crianças.`,
-              n: 1,
-              size: "1024x1024",
-              quality: "standard",
-              style: "vivid"
-            });
-
-            this.lastImageGenerationTime = Date.now();
-            return response.data[0].url || '';
-          } catch (error: any) {
-            if (error.status === 429 && retries < OpenAIService.MAX_RETRIES - 1) {
-              logger.warn(`Rate limit atingido, tentativa ${retries + 1} de ${OpenAIService.MAX_RETRIES}`);
-              retries++;
-              await new Promise(resolve => setTimeout(resolve, OpenAIService.RATE_LIMIT_DELAY));
-              continue;
-            }
-            logger.error(`Erro ao gerar imagem: ${error.message}`);
-            throw error;
-          }
-        }
-        throw new Error('Número máximo de tentativas excedido');
-      });
-
-      this.processQueue().then(() => {
-        const task = this.imageQueue[0];
-        task().then(resolve).catch(reject).finally(() => {
-          this.imageQueue.shift();
-        });
-      });
+      this.imageQueue.push({ prompt, resolve, reject });
+      this.processQueue();
     });
   }
 
@@ -97,11 +65,62 @@ class OpenAIService {
     if (this.isProcessingQueue || this.imageQueue.length === 0) return;
     
     this.isProcessingQueue = true;
-    
+    logger.info(`Iniciando processamento da fila de imagens. Total na fila: ${this.imageQueue.length}`);
+
     while (this.imageQueue.length > 0) {
-      await new Promise(resolve => setTimeout(resolve, OpenAIService.RATE_LIMIT_DELAY));
-      this.isProcessingQueue = false;
+      const { prompt, resolve, reject } = this.imageQueue[0];
+      let retries = 0;
+
+      while (retries < OpenAIService.MAX_RETRIES) {
+        try {
+          const now = Date.now();
+          const timeSinceLastGeneration = now - this.lastImageGenerationTime;
+          
+          if (timeSinceLastGeneration < OpenAIService.RATE_LIMIT_DELAY) {
+            const waitTime = OpenAIService.RATE_LIMIT_DELAY - timeSinceLastGeneration;
+            logger.info(`Aguardando ${waitTime}ms antes da próxima geração de imagem`);
+            await new Promise(r => setTimeout(r, waitTime));
+          }
+
+          const startTime = performance.now();
+          logger.info(`Gerando imagem ${this.imageQueue.length} de ${this.imageQueue.length}: "${prompt.substring(0, 50)}..."`);
+          
+          const response = await this.openai.images.generate({
+            model: "dall-e-3",
+            prompt: `${prompt}. Estilo: ilustração infantil, cores vibrantes, seguro para crianças.`,
+            n: 1,
+            size: "1024x1024",
+            quality: "standard",
+            style: "vivid"
+          });
+
+          const endTime = performance.now();
+          this.lastImageGenerationTime = Date.now();
+          
+          const imageUrl = response.data[0].url || '';
+          logger.info(`Imagem gerada com sucesso em ${((endTime - startTime) / 1000).toFixed(2)} segundos`);
+          
+          resolve(imageUrl);
+          this.imageQueue.shift();
+          break;
+        } catch (error: any) {
+          if (error.status === 429 && retries < OpenAIService.MAX_RETRIES - 1) {
+            retries++;
+            logger.warn(`Rate limit atingido, tentativa ${retries} de ${OpenAIService.MAX_RETRIES}`);
+            await new Promise(r => setTimeout(r, OpenAIService.RATE_LIMIT_DELAY));
+            continue;
+          }
+          
+          logger.error(`Erro ao gerar imagem após ${retries + 1} tentativas: ${error.message}`);
+          reject(error);
+          this.imageQueue.shift();
+          break;
+        }
+      }
     }
+
+    logger.info('Fila de imagens processada completamente');
+    this.isProcessingQueue = false;
   }
 }
 

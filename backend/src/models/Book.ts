@@ -1,6 +1,7 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
 export interface IPage {
+  _id?: string | mongoose.Types.ObjectId;
   text: string;
   pageNumber: number;
   imageUrl: string;
@@ -9,8 +10,9 @@ export interface IPage {
 export type AgeRange = '1-2' | '3-4' | '5-6' | '7-8' | '9-10' | '11-12';
 
 export interface IBook extends Document {
+  _id: string | mongoose.Types.ObjectId;
   title: string;
-  userId: string;
+  userId: string | mongoose.Types.ObjectId;
   genre: string;
   theme: string;
   mainCharacter: string;
@@ -26,6 +28,9 @@ export interface IBook extends Document {
   language: string;
   createdAt: Date;
   updatedAt: Date;
+
+  // Método para converter para objeto plano com IDs como strings
+  toPlainObject(): any;
 }
 
 const PageSchema = new Schema({
@@ -111,6 +116,27 @@ const BookSchema = new Schema({
 }, {
   timestamps: true
 });
+
+// Método para converter ObjectIds para strings
+BookSchema.methods.toPlainObject = function() {
+  const obj = this.toObject();
+  
+  // Converter _id para string
+  obj._id = obj._id.toString();
+  
+  // Converter userId para string
+  obj.userId = obj.userId.toString();
+  
+  // Converter IDs das páginas para string
+  if (obj.pages && Array.isArray(obj.pages)) {
+    obj.pages = obj.pages.map(page => ({
+      ...page,
+      _id: page._id ? page._id.toString() : undefined
+    }));
+  }
+  
+  return obj;
+};
 
 // Índices
 BookSchema.index({ userId: 1, createdAt: -1 });

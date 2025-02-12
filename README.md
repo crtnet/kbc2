@@ -46,6 +46,15 @@ Backend para o aplicativo de criação de livros infantis, desenvolvido com Node
 - `DELETE /api/books/:id`: Deletar livro
 - `POST /api/books/:id/generate`: Gerar PDF do livro
 
+## Geração de PDF
+O sistema de geração de PDF inclui:
+- Timeout de 5 minutos para evitar processos travados
+- Validação de URLs de imagem
+- Logs detalhados do progresso
+- Tratamento de erros robusto
+- Suporte a imagens e texto formatado
+- Armazenamento automático na pasta public/pdfs
+
 ## Contribuição
 1. Faça um fork do projeto
 2. Crie uma branch para sua feature
