@@ -1,52 +1,43 @@
-import api from './api';
+// frontend/src/services/bookService.js
+import axios from 'axios';
 
-export interface BookData {
-  title: string;
-  genre: string;
-  theme: string;
-  mainCharacter: string;
-  setting: string;
-  tone: string;
-  ageRange: string;
+// Configure a instância do Axios com a URL base do seu backend.
+// Em ambiente de desenvolvimento, por exemplo, use "http://localhost:3000/api"
+const API_BASE_URL = 'http://localhost:3000/api';
+
+// Cria uma instância do Axios
+const api = axios.create({
+  baseURL: API_BASE_URL,
+});
+
+// Interceptor para adicionar o header de autorização a cada requisição
+api.interceptors.request.use((config) => {
+  // Supondo que o token esteja armazenado no localStorage com a chave 'token'
+  const token = localStorage.getItem('token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+}, (error) => {
+  return Promise.reject(error);
+});
+
+export async function getBooks() {
+  try {
+    const response = await api.get('/books');
+    return response.data;
+  } catch (error) {
+    console.error('Erro ao obter livros:', error);
+    throw error;
+  }
 }
 
-export interface Page {
-  text: string;
-  imageUrl: string;
+export async function getBookPDFViewer(bookId) {
+  try {
+    const response = await api.get(`/books/${bookId}/pdf-viewer`);
+    return response.data;
+  } catch (error) {
+    console.error('Erro ao obter visualizador de PDF:', error);
+    throw error;
+  }
 }
-
-export interface BookContent {
-  story: string;
-  pages: Page[];
-}
-
-export interface Book {
-  _id: string;
-  title: string;
-  genre: string;
-  theme: string;
-  mainCharacter: string;
-  setting: string;
-  tone: string;
-  ageRange: string;
-  author: string;
-  status: 'draft' | 'generating' | 'completed' | 'failed';
-  content?: BookContent;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export const createBook = async (bookData: BookData) => {
-  const response = await api.post<{ message: string; book: Book }>('/books', bookData);
-  return response.data;
-};
-
-export const getBook = async (bookId: string) => {
-  const response = await api.get<Book>(`/books/${bookId}`);
-  return response.data;
-};
-
-export const getUserBooks = async () => {
-  const response = await api.get<Book[]>('/books');
-  return response.data;
-};

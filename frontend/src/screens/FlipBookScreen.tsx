@@ -1,11 +1,10 @@
-// FlipBookScreen.tsx
+// frontend/src/screens/FlipBookScreen.tsx
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { ActivityIndicator } from 'react-native-paper';
 import { WebView } from 'react-native-webview';
 
-export default function FlipBookScreen({ route, navigation }) {
-  // Recebe a URL do visualizador de flipbook via parâmetros
+export default function FlipBookScreen({ route }) {
   const { viewerUrl } = route.params;
 
   return (
@@ -21,11 +20,11 @@ export default function FlipBookScreen({ route, navigation }) {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1
+    flex: 1,
   },
   loader: {
     flex: 1,
     justifyContent: 'center',
-    alignItems: 'center'
-  }
+    alignItems: 'center',
+  },
 });

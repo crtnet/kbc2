@@ -1,46 +1,64 @@
 // frontend/src/screens/HomeScreen.tsx
-import React from 'react';
-import { View, StyleSheet, ScrollView } from 'react-native';
-import { Text, Button, FAB } from 'react-native-paper';
-import { useAuth } from '../contexts/AuthContext';
+import React, { useEffect, useState } from 'react';
+import { View, FlatList, TouchableOpacity, StyleSheet } from 'react-native';
+import { Text, ActivityIndicator, Card } from 'react-native-paper';
+import * as bookService from '../services/bookService';
+import { useNavigation } from '@react-navigation/native';
 
-export default function HomeScreen({ navigation }) {
-  const { user, signOut } = useAuth();
+export default function HomeScreen() {
+  const [books, setBooks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const navigation = useNavigation();
 
-  const handleLogout = async () => {
+  const loadBooks = async () => {
     try {
-      await signOut();
+      const data = await bookService.getBooks();
+      setBooks(data);
     } catch (error) {
-      console.error('Erro ao fazer logout:', error);
+      console.error('Erro ao carregar livros:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
+  useEffect(() => {
+    loadBooks();
+  }, []);
+
+  if (loading) {
+    return (
+      <View style={styles.centerContainer}>
+        <ActivityIndicator size="large" />
+      </View>
+    );
+  }
+
+  const renderItem = ({ item }) => (
+    <TouchableOpacity
+      onPress={async () => {
+        try {
+          const viewerData = await bookService.getBookPDFViewer(item._id);
+          navigation.navigate('FlipBookScreen', { viewerUrl: viewerData.viewerUrl });
+        } catch (error) {
+          console.error('Erro ao carregar visualizador:', error);
+        }
+      }}
+    >
+      <Card style={styles.card}>
+        <Card.Content>
+          <Text style={styles.title}>{item.title}</Text>
+          <Text>{item.genre}</Text>
+        </Card.Content>
+      </Card>
+    </TouchableOpacity>
+  );
+
   return (
     <View style={styles.container}>
-      <ScrollView style={styles.scrollView}>
-        <View style={styles.header}>
-          <Text style={styles.welcomeText}>Bem-vindo(a), {user?.name}!</Text>
-          <Text style={styles.subtitle}>
-            {user?.type === 'child' 
-              ? 'Crie suas próprias histórias!'
-              : 'Acompanhe as histórias criadas'}
-          </Text>
-        </View>
-
-        <Button 
-          mode="outlined" 
-          onPress={handleLogout}
-          style={styles.logoutButton}
-        >
-          Sair
-        </Button>
-      </ScrollView>
-
-      <FAB
-        icon="plus"
-        style={styles.fab}
-        onPress={() => navigation.navigate('CreateBook')}
-        label="Criar Livro"
+      <FlatList
+        data={books}
+        keyExtractor={(item) => item._id.toString()}
+        renderItem={renderItem}
       />
     </View>
   );
@@ -49,34 +67,18 @@ export default function HomeScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    padding: 10,
   },
-  scrollView: {
+  centerContainer: {
     flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  header: {
-    padding: 20,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+  card: {
+    marginBottom: 10,
   },
-  welcomeText: {
-    fontSize: 24,
+  title: {
+    fontSize: 18,
     fontWeight: 'bold',
-    marginBottom: 5,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#666',
-  },
-  logoutButton: {
-    margin: 10,
-  },
-  fab: {
-    position: 'absolute',
-    margin: 16,
-    right: 0,
-    bottom: 0,
-    backgroundColor: '#1976d2',
   },
 });

@@ -28,7 +28,20 @@ export default function LoginScreen() {
       console.log('Login realizado com sucesso');
     } catch (error: any) {
       console.error('Erro no login:', error);
-      setError(error.response?.data?.message || 'Erro ao fazer login');
+      let errorMessage = 'Erro ao fazer login';
+      
+      if (error.response) {
+        // Erro da API
+        errorMessage = error.response.data?.message || 'Erro no servidor';
+      } else if (error.request) {
+        // Erro de conexão
+        errorMessage = 'Erro de conexão com o servidor';
+      } else {
+        // Outros erros
+        errorMessage = error.message || 'Erro desconhecido';
+      }
+      
+      setError(errorMessage);
       setVisible(true);
     } finally {
       setLoading(false);

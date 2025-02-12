@@ -47,19 +47,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (storedUser && storedToken) {
           console.log('Dados encontrados no storage');
-          const isTokenValid = await checkToken();
           
-          if (isTokenValid) {
-            setUser(JSON.parse(storedUser));
-            api.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`;
-            console.log('Token válido, usuário restaurado');
-          } else {
-            console.log('Token inválido, fazendo logout');
+          // Configura o token antes de verificar
+          api.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`;
+          
+          try {
+            const isTokenValid = await checkToken();
+            if (isTokenValid) {
+              setUser(JSON.parse(storedUser));
+              console.log('Token válido, usuário restaurado');
+            } else {
+              console.log('Token inválido, fazendo logout');
+              await signOut();
+            }
+          } catch (error) {
+            console.error('Erro ao verificar token:', error);
             await signOut();
           }
+        } else {
+          setLoading(false);
         }
       } catch (error) {
         console.error('Erro ao carregar dados:', error);
+        await signOut();
       } finally {
         setLoading(false);
       }
