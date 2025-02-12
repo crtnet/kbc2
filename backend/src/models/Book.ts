@@ -1,4 +1,4 @@
-// Books.ts
+// Book.ts
 import mongoose, { Document, Schema } from 'mongoose';
 
 export interface IPage {

@@ -2,7 +2,7 @@ import PDFDocument from 'pdfkit';
 import fs from 'fs-extra';
 import path from 'path';
 import { logger } from '../utils/logger';
-import { Book } from '../models/Book';
+import Book from '../models/Book';
 import { performance } from 'perf_hooks';
 
 interface TimingMetrics {

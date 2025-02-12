@@ -1,9 +1,9 @@
 import { Request, Response } from 'express';
 import path from 'path';
-import Book, { IBook } from '../models/Book'; // Certifique-se de que o arquivo se chama "Books.ts" (com B maiúsculo) e está na pasta src/models
+import Book, { IBook } from '../models/Book'; // Certifique-se de que o arquivo se chama "Book.ts"
 import OpenAIService from '../services/openai';
 import StoryGeneratorService from '../services/storyGenerator';
-import { generateBookPDF } from '../services/pdfGenerator';
+import { generateBookPDF, defaultOptions } from '../services/pdfGenerator';
 import { logger } from '../utils/logger';
 
 export class BookController {
@@ -114,19 +114,29 @@ export class BookController {
         });
       }
 
-      // Fase 2: Gerar imagens para cada página (em paralelo)
+      // Fase 2: Gerar imagens em paralelo para cada página
+      // Utiliza um cache para garantir consistência nos prompts repetidos
       logger.info('Fase 2: Iniciando geração de imagens');
+      const imageCache = new Map<string, string>();
       const imagePromises = book.pages.map(async (page, index) => {
         try {
           logger.info(`Preparando geração de imagem para página ${index + 1}`);
-          const imagePrompt = `Ilustração para uma história infantil para ${ageRange} anos: ${page.text}`;
-          const imageUrl = await OpenAIService.generateImage(imagePrompt);
-          // Atualiza a URL da imagem da página
-          book.pages[index].imageUrl = imageUrl;
-          logger.info(`Imagem gerada com sucesso para página ${index + 1}`);
-          // Salva o livro para atualizar a página gerada
-          await book.save();
-          logger.info(`Página ${index + 1} salva com nova imagem`);
+          // Cria uma chave de prompt combinando o personagem principal e um trecho do texto da página
+          const promptKey = `Personagem: ${mainCharacter} | Trecho: ${page.text.substring(0, 100)}`;
+          const imagePrompt = `Crie uma ilustração de fundo para um livro infantil em formato A3, sem incluir texto. A imagem deve ter um visual suave, com cores pastel e design minimalista, adequada para servir como fundo para uma página de história. Ela deve refletir o seguinte conteúdo e apresentar consistentemente o personagem principal "${mainCharacter}": "${promptKey}".`;
+          
+          if (imageCache.has(imagePrompt)) {
+            const cachedImageUrl = imageCache.get(imagePrompt);
+            book.pages[index].imageUrl = cachedImageUrl;
+            logger.info(`Imagem reutilizada para página ${index + 1}`);
+          } else {
+            const imageUrl = await OpenAIService.generateImage(imagePrompt);
+            imageCache.set(imagePrompt, imageUrl);
+            book.pages[index].imageUrl = imageUrl;
+            logger.info(`Imagem gerada com sucesso para página ${index + 1}`);
+            await book.save();
+            logger.info(`Página ${index + 1} salva com nova imagem`);
+          }
         } catch (imageError) {
           logger.error(`Erro ao gerar imagem para página ${index + 1}: ${imageError.message}`);
           // Mantém a imagem padrão em caso de erro
@@ -142,13 +152,13 @@ export class BookController {
       const savedBook = await book.save();
       logger.info(`Livro salvo com ID: ${savedBook._id}`);
 
-      // Gera o PDF do livro e atualiza o campo pdfUrl
-      const pdfUrl = await generateBookPDF(savedBook);
+      // Geração do PDF do livro com formatação de livro infantil (formato A3)
+      const pdfUrl = await generateBookPDF(savedBook, { ...defaultOptions, format: 'A3' });
       savedBook.pdfUrl = pdfUrl;
       await savedBook.save();
       logger.info(`PDF gerado com URL: ${pdfUrl}`);
 
-      // Recupera o livro criado para retorno
+      // Recupera o livro completo para retorno
       const createdBook = await Book.findById(savedBook._id);
       if (!createdBook) {
         throw new Error('Erro ao recuperar livro após criação');
