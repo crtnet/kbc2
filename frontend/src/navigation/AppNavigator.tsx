@@ -1,88 +1,97 @@
-// frontend/src/navigation/AppNavigator.tsx
 import React from 'react';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { NavigationContainer } from '@react-navigation/native';
+import { createStackNavigator } from '@react-navigation/stack';
 import { useAuth } from '../contexts/AuthContext';
-import { ActivityIndicator, View } from 'react-native';
 import LoginScreen from '../screens/LoginScreen';
-import RegisterScreen from '../screens/RegisterScreen';
 import HomeScreen from '../screens/HomeScreen';
+import RegisterScreen from '../screens/RegisterScreen';
 import CreateBookScreen from '../screens/CreateBookScreen';
 import ViewBookScreen from '../screens/ViewBookScreen';
+import ViewBookPDFScreen from '../screens/ViewBookPDFScreen';
 
-const Stack = createNativeStackNavigator();
+export type RootStackParamList = {
+  Login: undefined;
+  Register: undefined;
+  Home: undefined;
+  CreateBook: undefined;
+  ViewBook: { bookId: string };
+  ViewBookPDF: { bookId: string };
+};
 
-export function AppNavigator() {
+const Stack = createStackNavigator<RootStackParamList>();
+
+const AppNavigator = () => {
   const { signed, loading } = useAuth();
 
   if (loading) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color="#1976d2" />
-      </View>
-    );
+    return null; // ou um componente de loading
   }
 
   return (
-    <Stack.Navigator screenOptions={{ headerShown: true }}>
-      {signed ? (
-        // Rotas autenticadas
-        <>
-          <Stack.Screen
-            name="Home"
-            component={HomeScreen}
-            options={{
-              title: 'Kids Book Creator',
-              headerStyle: {
-                backgroundColor: '#1976d2',
-              },
-              headerTintColor: '#fff',
-              headerLeft: null,
-            }}
-          />
-          <Stack.Screen
-            name="CreateBook"
-            component={CreateBookScreen}
-            options={{
-              title: 'Criar Novo Livro',
-              headerStyle: {
-                backgroundColor: '#1976d2',
-              },
-              headerTintColor: '#fff',
-            }}
-          />
-          <Stack.Screen
-            name="ViewBook"
-            component={ViewBookScreen}
-            options={{
-              title: 'Visualizar Livro',
-              headerStyle: {
-                backgroundColor: '#1976d2',
-              },
-              headerTintColor: '#fff',
-            }}
-          />
-        </>
-      ) : (
-        // Rotas públicas
-        <>
-          <Stack.Screen
-            name="Login"
-            component={LoginScreen}
-            options={{ headerShown: false }}
-          />
-          <Stack.Screen
-            name="Register"
-            component={RegisterScreen}
-            options={{
-              title: 'Criar Conta',
-              headerStyle: {
-                backgroundColor: '#fff',
-              },
-              headerTintColor: '#000',
-            }}
-          />
-        </>
-      )}
-    </Stack.Navigator>
+    <NavigationContainer>
+      <Stack.Navigator
+        screenOptions={{
+          headerShown: false,
+          cardStyle: { backgroundColor: '#fff' },
+          gestureEnabled: true,
+          gestureDirection: 'horizontal',
+        }}
+      >
+        {!signed ? (
+          <>
+            <Stack.Screen 
+              name="Login" 
+              component={LoginScreen}
+              options={{
+                animationTypeForReplace: signed ? 'push' : 'pop',
+              }}
+            />
+            <Stack.Screen 
+              name="Register" 
+              component={RegisterScreen}
+            />
+          </>
+        ) : (
+          <>
+            <Stack.Screen 
+              name="Home" 
+              component={HomeScreen}
+              options={{
+                animationEnabled: true,
+              }}
+            />
+            <Stack.Screen 
+              name="CreateBook" 
+              component={CreateBookScreen}
+              options={{
+                headerShown: true,
+                headerTitle: 'Criar Novo Livro',
+                headerBackTitleVisible: false,
+              }}
+            />
+            <Stack.Screen 
+              name="ViewBook" 
+              component={ViewBookScreen}
+              options={{
+                headerShown: true,
+                headerTitle: 'Visualizar Livro',
+                headerBackTitleVisible: false,
+              }}
+            />
+            <Stack.Screen 
+              name="ViewBookPDF" 
+              component={ViewBookPDFScreen}
+              options={{
+                headerShown: true,
+                headerTitle: 'PDF do Livro',
+                headerBackTitleVisible: false,
+              }}
+            />
+          </>
+        )}
+      </Stack.Navigator>
+    </NavigationContainer>
   );
-}
+};
+
+export default AppNavigator;

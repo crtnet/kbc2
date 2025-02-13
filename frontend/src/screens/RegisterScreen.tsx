@@ -1,146 +1,187 @@
-// frontend/src/screens/RegisterScreen.tsx
 import React, { useState } from 'react';
-import { View, StyleSheet } from 'react-native';
-import { TextInput, Button, Text, SegmentedButtons, Snackbar } from 'react-native-paper';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView
+} from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import api from '../services/api';
 
-export default function RegisterScreen({ navigation }) {
+export default function RegisterScreen() {
+  const navigation = useNavigation();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [type, setType] = useState('parent');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [visible, setVisible] = useState(false);
 
   const handleRegister = async () => {
+    if (!name || !email || !password || !confirmPassword) {
+      Alert.alert('Erro', 'Por favor, preencha todos os campos');
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      Alert.alert('Erro', 'As senhas não coincidem');
+      return;
+    }
+
     try {
       setLoading(true);
-      setError('');
-
-      if (!name.trim() || !email.trim() || !password.trim()) {
-        setError('Por favor, preencha todos os campos');
-        setVisible(true);
-        return;
-      }
-
-      console.log('Enviando dados de registro:', { name, email, type });
-      
       await api.post('/auth/register', {
-        name: name.trim(),
-        email: email.trim(),
-        password: password.trim(),
-        type,
+        name,
+        email,
+        password
       });
 
-      console.log('Registro realizado com sucesso');
-      navigation.navigate('Login');
-    } catch (error: any) {
-      console.error('Erro no registro:', error);
-      setError(error.response?.data?.message || 'Erro ao criar conta');
-      setVisible(true);
+      Alert.alert(
+        'Sucesso',
+        'Cadastro realizado com sucesso!',
+        [
+          {
+            text: 'OK',
+            onPress: () => navigation.navigate('Login')
+          }
+        ]
+      );
+    } catch (error) {
+      Alert.alert(
+        'Erro',
+        error.response?.data?.message || 'Ocorreu um erro ao realizar o cadastro'
+      );
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Criar Conta</Text>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={styles.container}
+    >
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        <View style={styles.content}>
+          <Text style={styles.title}>Criar Conta</Text>
+          
+          <TextInput
+            style={styles.input}
+            placeholder="Nome completo"
+            value={name}
+            onChangeText={setName}
+            autoCapitalize="words"
+            editable={!loading}
+          />
 
-      <SegmentedButtons
-        value={type}
-        onValueChange={setType}
-        buttons={[
-          { value: 'parent', label: 'Responsável' },
-          { value: 'child', label: 'Criança' },
-        ]}
-        style={styles.segmentedButton}
-      />
-      
-      <TextInput
-        label="Nome"
-        value={name}
-        onChangeText={setName}
-        mode="outlined"
-        style={styles.input}
-        disabled={loading}
-      />
-      
-      <TextInput
-        label="Email"
-        value={email}
-        onChangeText={setEmail}
-        mode="outlined"
-        style={styles.input}
-        keyboardType="email-address"
-        autoCapitalize="none"
-        disabled={loading}
-      />
-      
-      <TextInput
-        label="Senha"
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry
-        mode="outlined"
-        style={styles.input}
-        disabled={loading}
-      />
-      
-      <Button 
-        mode="contained" 
-        onPress={handleRegister} 
-        style={styles.button}
-        loading={loading}
-        disabled={loading}
-      >
-        Criar Conta
-      </Button>
-      
-      <Button
-        mode="text"
-        onPress={() => navigation.goBack()}
-        style={styles.button}
-        disabled={loading}
-      >
-        Voltar para Login
-      </Button>
+          <TextInput
+            style={styles.input}
+            placeholder="E-mail"
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            editable={!loading}
+          />
 
-      <Snackbar
-        visible={visible}
-        onDismiss={() => setVisible(false)}
-        duration={3000}
-        action={{
-          label: 'OK',
-          onPress: () => setVisible(false),
-        }}
-      >
-        {error}
-      </Snackbar>
-    </View>
+          <TextInput
+            style={styles.input}
+            placeholder="Senha"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            editable={!loading}
+          />
+
+          <TextInput
+            style={styles.input}
+            placeholder="Confirmar senha"
+            value={confirmPassword}
+            onChangeText={setConfirmPassword}
+            secureTextEntry
+            editable={!loading}
+          />
+
+          <TouchableOpacity
+            style={[styles.button, loading && styles.buttonDisabled]}
+            onPress={handleRegister}
+            disabled={loading}
+          >
+            <Text style={styles.buttonText}>
+              {loading ? 'Cadastrando...' : 'Cadastrar'}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.loginButton}
+            onPress={() => navigation.navigate('Login')}
+            disabled={loading}
+          >
+            <Text style={styles.loginText}>
+              Já tem uma conta? Faça login
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 20,
-    backgroundColor: '#fff',
+    backgroundColor: '#f5f5f5'
+  },
+  scrollContent: {
+    flexGrow: 1
+  },
+  content: {
+    flex: 1,
+    padding: 24,
+    justifyContent: 'center'
   },
   title: {
-    fontSize: 24,
+    fontSize: 32,
     fontWeight: 'bold',
+    marginBottom: 32,
     textAlign: 'center',
-    marginBottom: 30,
+    color: '#007bff'
   },
   input: {
-    marginBottom: 10,
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: 16,
+    fontSize: 16
   },
   button: {
-    marginTop: 10,
+    backgroundColor: '#007bff',
+    padding: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 16
   },
-  segmentedButton: {
-    marginBottom: 20,
+  buttonDisabled: {
+    backgroundColor: '#ccc'
   },
+  buttonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold'
+  },
+  loginButton: {
+    marginTop: 16,
+    padding: 8
+  },
+  loginText: {
+    color: '#007bff',
+    fontSize: 14,
+    textAlign: 'center'
+  }
 });

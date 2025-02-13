@@ -1,19 +1,26 @@
-// frontend/webpack.config.js
 const createExpoWebpackConfigAsync = require('@expo/webpack-config');
+const path = require('path');
 
 module.exports = async function (env, argv) {
-  const config = await createExpoWebpackConfigAsync(env, argv);
+  const config = await createExpoWebpackConfigAsync(
+    {
+      ...env,
+      babel: {
+        dangerouslyAddModulePathsToTranspile: [
+          '@react-navigation',
+          'react-native-webview',
+        ],
+      },
+    },
+    argv
+  );
 
-  // Modifica a regra do babel-loader para que não exclua react-native-svg,
-  // ou seja, force sua transpilação mesmo estando em node_modules.
-  config.module.rules = config.module.rules.map(rule => {
-    if (rule.test && rule.test.toString().includes('js')) {
-      // Altere a propriedade "exclude" para excluir todos os módulos de node_modules,
-      // exceto react-native-svg.
-      rule.exclude = /node_modules\/(?!react-native-svg)/;
-    }
-    return rule;
-  });
+  config.resolve.alias = {
+    ...config.resolve.alias,
+    'react-native$': 'react-native-web',
+  };
+
+  config.resolve.extensions.push('.web.js');
 
   return config;
 };

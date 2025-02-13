@@ -1,103 +1,128 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Alert } from 'react-native';
 import api from '../services/api';
-
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  type: string;
-}
 
 interface AuthContextData {
   signed: boolean;
   user: User | null;
   loading: boolean;
   signIn(email: string, password: string): Promise<void>;
-  signOut(): Promise<void>;
+  signOut(): void;
+}
+
+interface User {
+  id: string;
+  name: string;
+  email: string;
 }
 
 const AuthContext = createContext<AuthContextData>({} as AuthContextData);
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const AuthProvider: React.FC = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
-  const checkToken = async () => {
+  const signIn = useCallback(async (email: string, password: string) => {
     try {
-      const token = await AsyncStorage.getItem('@KidsBook:token');
-      if (!token) return false;
+      setLoading(true);
+      
+      const response = await api.post('/api/auth/login', {
+        email,
+        password,
+      });
 
-      const response = await api.get('/auth/verify');
-      return response.status === 200;
-    } catch (error) {
-      console.error('Erro ao verificar token:', error);
-      return false;
-    }
-  };
+      const { token, user: userData } = response.data;
 
-  useEffect(() => {
-    async function loadStorageData() {
-      try {
-        const storedUser = await AsyncStorage.getItem('@KidsBook:user');
-        const storedToken = await AsyncStorage.getItem('@KidsBook:token');
-
-        if (storedUser && storedToken) {
-          const parsedUser = JSON.parse(storedUser);
-          const isTokenValid = await checkToken();
-          
-          if (isTokenValid) {
-            setUser(parsedUser);
-            api.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`;
-          } else {
-            await signOut();
-          }
-        }
-      } catch (error) {
-        console.error('Erro ao carregar dados:', error);
-        await signOut();
-      } finally {
-        setLoading(false);
+      if (!token || !userData) {
+        throw new Error('Dados de autenticação inválidos');
       }
-    }
 
-    loadStorageData();
-  }, []);
-
-  const signIn = async (email: string, password: string) => {
-    try {
-      const response = await api.post('/auth/login', { email, password });
-      const { user: userData, token } = response.data;
-
-      await AsyncStorage.setItem('@KidsBook:user', JSON.stringify(userData));
-      await AsyncStorage.setItem('@KidsBook:token', token);
-
+      // Configurar token nos headers padrão primeiro
       api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+
+      // Salvar dados localmente
+      await Promise.all([
+        AsyncStorage.setItem('@KidsBookCreator:token', token),
+        AsyncStorage.setItem('@KidsBookCreator:user', JSON.stringify(userData))
+      ]);
+      
+      // Atualizar o estado do usuário por último
       setUser(userData);
     } catch (error) {
-      console.error('Erro no login:', error);
+      console.error('🔒 Login Error:', error);
+      
+      if (error.response) {
+        // O servidor respondeu com um status de erro
+        const errorMessage = error.response.data.message || 'Erro ao fazer login';
+        Alert.alert('Erro de Autenticação', errorMessage);
+      } else if (error.request) {
+        // A requisição foi feita, mas não houve resposta
+        Alert.alert(
+          'Erro de Conexão', 
+          'Não foi possível conectar ao servidor. Verifique sua conexão de internet.'
+        );
+      } else {
+        // Algo aconteceu ao configurar a requisição
+        Alert.alert(
+          'Erro Inesperado', 
+          'Ocorreu um erro ao processar o login. Tente novamente.'
+        );
+      }
+      
       throw error;
+    } finally {
+      setLoading(false);
     }
-  };
+  }, []);
 
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     try {
-      await AsyncStorage.multiRemove(['@KidsBook:user', '@KidsBook:token']);
+      // Remover token e usuário do AsyncStorage
+      await AsyncStorage.removeItem('@KidsBookCreator:token');
+      await AsyncStorage.removeItem('@KidsBookCreator:user');
+
+      // Limpar headers de autorização
       delete api.defaults.headers.common['Authorization'];
+      
       setUser(null);
     } catch (error) {
-      console.error('Erro no logout:', error);
+      console.error('Erro ao fazer logout:', error);
+      Alert.alert('Erro', 'Não foi possível fazer logout');
     }
-  };
+  }, []);
+
+  // Carregar usuário salvo ao iniciar o app
+  React.useEffect(() => {
+    const loadStoredUser = async () => {
+      try {
+        const storedToken = await AsyncStorage.getItem('@KidsBookCreator:token');
+        const storedUserJson = await AsyncStorage.getItem('@KidsBookCreator:user');
+
+        if (storedToken && storedUserJson) {
+          const storedUser = JSON.parse(storedUserJson);
+          
+          // Configurar token nos headers
+          api.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`;
+          
+          setUser(storedUser);
+        }
+      } catch (error) {
+        console.error('Erro ao carregar usuário salvo:', error);
+      }
+    };
+
+    loadStoredUser();
+  }, []);
 
   return (
-    <AuthContext.Provider 
-      value={{ 
-        signed: !!user, 
-        user, 
-        loading, 
-        signIn, 
-        signOut 
+    <AuthContext.Provider
+      value={{
+        signed: !!user,
+        user,
+        loading,
+        signIn,
+        signOut,
       }}
     >
       {children}
@@ -105,10 +130,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   );
 };
 
-export function useAuth() {
+export function useAuth(): AuthContextData {
   const context = useContext(AuthContext);
+
   if (!context) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
+
   return context;
 }

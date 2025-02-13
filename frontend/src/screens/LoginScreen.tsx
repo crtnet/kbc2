@@ -1,120 +1,206 @@
-// frontend/src/screens/LoginScreen.tsx
 import React, { useState } from 'react';
-import { View, StyleSheet } from 'react-native';
-import { TextInput, Button, Text, Snackbar } from 'react-native-paper';
+import { 
+  View, 
+  Text, 
+  TextInput, 
+  TouchableOpacity, 
+  StyleSheet, 
+  KeyboardAvoidingView, 
+  Platform,
+  ActivityIndicator,
+  Alert 
+} from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
 
-export default function LoginScreen() {
-  const { signIn } = useAuth();
+const LoginScreen = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [visible, setVisible] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [emailError, setEmailError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  
+  const navigation = useNavigation();
+  const { signIn } = useAuth();
 
-  const handleLogin = async () => {
-    if (!email.trim() || !password.trim()) {
-      setError('Por favor, preencha todos os campos');
-      setVisible(true);
-      return;
+  const validateForm = () => {
+    let isValid = true;
+    
+    // Validação do email
+    if (!email) {
+      setEmailError('O e-mail é obrigatório');
+      isValid = false;
+    } else if (!/\S+@\S+\.\S+/.test(email)) {
+      setEmailError('E-mail inválido');
+      isValid = false;
+    } else {
+      setEmailError('');
     }
 
+    // Validação da senha
+    if (!password) {
+      setPasswordError('A senha é obrigatória');
+      isValid = false;
+    } else if (password.length < 6) {
+      setPasswordError('A senha deve ter pelo menos 6 caracteres');
+      isValid = false;
+    } else {
+      setPasswordError('');
+    }
+
+    return isValid;
+  };
+
+  const handleLogin = async () => {
+    if (!validateForm()) return;
+
     try {
-      console.log('Iniciando login...');
-      setLoading(true);
-      setError('');
-      
-      await signIn(email.trim(), password.trim());
-      console.log('Login realizado com sucesso');
-    } catch (error: any) {
-      console.error('Erro no login:', error);
-      let errorMessage = 'Erro ao fazer login';
-      
-      if (error.response) {
-        // Erro da API
-        errorMessage = error.response.data?.message || 'Erro no servidor';
-      } else if (error.request) {
-        // Erro de conexão
-        errorMessage = 'Erro de conexão com o servidor';
-      } else {
-        // Outros erros
-        errorMessage = error.message || 'Erro desconhecido';
-      }
-      
-      setError(errorMessage);
-      setVisible(true);
+      setIsLoading(true);
+      await signIn(email, password);
+      // A navegação será controlada automaticamente pelo AppNavigator
+      // que redirecionará para a HomeScreen quando signed = true
+    } catch (error) {
+      Alert.alert(
+        'Erro no login',
+        error instanceof Error ? error.message : 'Ocorreu um erro ao fazer login'
+      );
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Kids Book Creator</Text>
-      
-      <TextInput
-        label="Email"
-        value={email}
-        onChangeText={setEmail}
-        mode="outlined"
-        style={styles.input}
-        keyboardType="email-address"
-        autoCapitalize="none"
-        disabled={loading}
-      />
-      
-      <TextInput
-        label="Senha"
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry
-        mode="outlined"
-        style={styles.input}
-        disabled={loading}
-      />
-      
-      <Button 
-        mode="contained" 
-        onPress={handleLogin} 
-        style={styles.button}
-        loading={loading}
-        disabled={loading}
-      >
-        Entrar
-      </Button>
+    <KeyboardAvoidingView 
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
+      <View style={styles.inner}>
+        <Text style={styles.title}>Kids Book Creator</Text>
+        <Text style={styles.subtitle}>Faça login para continuar</Text>
+        
+        <View style={styles.inputContainer}>
+          <TextInput
+            style={[styles.input, emailError ? styles.inputError : null]}
+            placeholder="E-mail"
+            value={email}
+            onChangeText={(text) => {
+              setEmail(text);
+              setEmailError('');
+            }}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            editable={!isLoading}
+          />
+          {emailError ? <Text style={styles.errorText}>{emailError}</Text> : null}
+        </View>
+        
+        <View style={styles.inputContainer}>
+          <TextInput
+            style={[styles.input, passwordError ? styles.inputError : null]}
+            placeholder="Senha"
+            value={password}
+            onChangeText={(text) => {
+              setPassword(text);
+              setPasswordError('');
+            }}
+            secureTextEntry
+            editable={!isLoading}
+          />
+          {passwordError ? <Text style={styles.errorText}>{passwordError}</Text> : null}
+        </View>
+        
+        <TouchableOpacity 
+          style={[styles.button, isLoading ? styles.buttonDisabled : null]}
+          onPress={handleLogin}
+          disabled={isLoading}
+        >
+          {isLoading ? (
+            <ActivityIndicator color="white" />
+          ) : (
+            <Text style={styles.buttonText}>Entrar</Text>
+          )}
+        </TouchableOpacity>
 
-      <Snackbar
-        visible={visible}
-        onDismiss={() => setVisible(false)}
-        duration={3000}
-        action={{
-          label: 'OK',
-          onPress: () => setVisible(false),
-        }}
-      >
-        {error}
-      </Snackbar>
-    </View>
+        <TouchableOpacity 
+          style={styles.registerButton}
+          onPress={() => navigation.navigate('Register')}
+          disabled={isLoading}
+        >
+          <Text style={styles.registerText}>Não tem uma conta? Cadastre-se</Text>
+        </TouchableOpacity>
+      </View>
+    </KeyboardAvoidingView>
   );
-}
+};
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 20,
+    backgroundColor: '#f5f5f5',
+  },
+  inner: {
+    padding: 24,
+    flex: 1,
     justifyContent: 'center',
-    backgroundColor: '#fff',
   },
   title: {
-    fontSize: 24,
+    fontSize: 32,
     fontWeight: 'bold',
+    marginBottom: 8,
     textAlign: 'center',
-    marginBottom: 30,
+    color: '#007bff',
+  },
+  subtitle: {
+    fontSize: 16,
+    color: '#666',
+    marginBottom: 32,
+    textAlign: 'center',
+  },
+  inputContainer: {
+    marginBottom: 16,
   },
   input: {
-    marginBottom: 10,
+    height: 50,
+    borderColor: '#ccc',
+    borderWidth: 1,
+    paddingHorizontal: 15,
+    borderRadius: 8,
+    backgroundColor: 'white',
+    fontSize: 16,
+  },
+  inputError: {
+    borderColor: '#ff3b30',
+  },
+  errorText: {
+    color: '#ff3b30',
+    fontSize: 12,
+    marginTop: 4,
+    marginLeft: 4,
   },
   button: {
-    marginTop: 10,
+    backgroundColor: '#007bff',
+    padding: 15,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  buttonDisabled: {
+    backgroundColor: '#ccc',
+  },
+  buttonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  registerButton: {
+    marginTop: 16,
+    padding: 8,
+  },
+  registerText: {
+    color: '#007bff',
+    fontSize: 14,
+    textAlign: 'center',
   },
 });
+
+export default LoginScreen;

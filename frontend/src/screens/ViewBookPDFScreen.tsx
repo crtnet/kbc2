@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ActivityIndicator } from 'react-native';
 import { useRoute, RouteProp } from '@react-navigation/native';
 import PDFViewer from '../components/PDFViewer';
-import { getBook } from '../services/api';
+import { getBook } from '../services/bookService';
 import { Book } from '../types';
 
 type RouteParams = {
