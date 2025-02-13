@@ -17,17 +17,34 @@
     "platforms": ["ios", "android", "web"],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.kidsbookcreator.app"
+      "infoPlist": {
+        "NSCameraUsageDescription": "Permitir acesso à câmera para criar avatares e imagens de livros",
+        "NSPhotoLibraryUsageDescription": "Permitir acesso à biblioteca de fotos para selecionar imagens"
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.kidsbookcreator.app"
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ]
     },
     "web": {
-      "favicon": "./assets/favicon.png"
-    }
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photoCameraPermission": "Permitir acesso à câmera para criar avatares e imagens de livros",
+          "imagePickerPermission": "Permitir acesso à biblioteca de fotos para selecionar imagens"
+        }
+      ]
+    ]
   }
 }

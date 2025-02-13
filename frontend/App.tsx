@@ -1,26 +1,26 @@
 import React from 'react';
-import { IntlProvider } from 'react-intl';
+import { I18nextProvider } from 'react-i18next';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import ptMessages from './src/i18n/pt.json';
-import AppNavigator from './src/navigation/AppNavigator';
+import { ThemeProvider } from './src/contexts/ThemeContext';
 import { AuthProvider } from './src/contexts/AuthContext';
+import AppNavigator from './src/navigation/AppNavigator';
+import i18n from './src/i18n';
+import { StatusBar } from 'expo-status-bar';
+import { Provider as PaperProvider } from 'react-native-paper';
 
-const messages = {
-  pt: ptMessages
-};
-
-const App = () => {
-  const locale = 'pt';
-
+export default function App() {
   return (
-    <SafeAreaProvider>
-      <IntlProvider messages={messages[locale]} locale={locale} defaultLocale="en">
-        <AuthProvider>
-          <AppNavigator />
-        </AuthProvider>
-      </IntlProvider>
-    </SafeAreaProvider>
+    <I18nextProvider i18n={i18n}>
+      <SafeAreaProvider>
+        <ThemeProvider>
+          <PaperProvider>
+            <AuthProvider>
+              <AppNavigator />
+              <StatusBar style="auto" />
+            </AuthProvider>
+          </PaperProvider>
+        </ThemeProvider>
+      </SafeAreaProvider>
+    </I18nextProvider>
   );
-};
-
-export default App;
+}

@@ -1,73 +1,74 @@
-import axios from 'axios';
-import Constants from 'expo-constants';
-import { Platform } from 'react-native';
+import axios, { AxiosInstance } from 'axios';
 
-const getBaseUrl = () => {
-  // Para desenvolvimento local
-  if (__DEV__) {
-    // Para iOS
-    if (Platform.OS === 'ios') {
-      // Use o IP da sua máquina na rede local
-      return 'http://192.168.1.5:3000';  // Substitua pelo seu IP local
+const createAPI = (): AxiosInstance => {
+  const api = axios.create({
+    baseURL: process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000',
+    timeout: 10000,
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+
+  api.interceptors.request.use(
+    (config) => {
+      const token = localStorage.getItem('@KidsBookCreator:token');
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+      return config;
+    },
+    (error) => {
+      console.error('API Request Error:', error);
+      return Promise.reject(error);
     }
-    
-    // Para Android
-    if (Platform.OS === 'android') {
-      return 'http://10.0.2.2:3000';
+  );
+
+  api.interceptors.response.use(
+    (response) => response,
+    (error) => {
+      console.error('API Response Error:', error);
+      return Promise.reject(error);
     }
-    
-    // Para web
-    return 'http://localhost:3000';
-  }
-  
-  // URL de produção (substitua quando tiver)
-  return 'https://api.kidsbookcreator.com';
+  );
+
+  return api;
 };
+import { logger } from '../utils/logger';
 
 const api = axios.create({
-  baseURL: getBaseUrl(),
-  timeout: 10000, // 10 segundos de timeout
-  headers: {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json'
-  }
+  baseURL: process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000',
 });
 
-// Interceptador para log de requisições (útil para debug)
 api.interceptors.request.use(
   (config) => {
-    console.log('🚀 API Request:', {
-      url: config.url,
+    logger.info('API Request', {
       method: config.method,
-      baseURL: config.baseURL,
-      data: config.data
+      url: config.url,
     });
     return config;
   },
   (error) => {
-    console.error('❌ API Request Error:', error);
+    logger.error('API Request Error', error);
     return Promise.reject(error);
   }
 );
 
-// Interceptador para log de respostas
 api.interceptors.response.use(
   (response) => {
-    console.log('✅ API Response:', {
-      url: response.config.url,
+    logger.info('API Response', {
       status: response.status,
-      data: response.data
+      url: response.config.url,
     });
     return response;
   },
   (error) => {
-    console.error('❌ API Response Error:', {
+    logger.error('API Response Error', {
+      status: error.response?.status,
       message: error.message,
-      code: error.code,
-      response: error.response?.data
+      url: error.config?.url,
     });
     return Promise.reject(error);
   }
 );
 
-export default api;
+export { api };

@@ -1,0 +1,21 @@
+{
+  "book": {
+    "viewPDF": "Ver PDF",
+    "createNew": "Criar Novo Livro",
+    "loading": "Carregando livros...",
+    "error": "Erro ao carregar livros",
+    "retry": "Tentar Novamente",
+    "empty": "Você ainda não tem livros criados"
+  },
+  "common": {
+    "error": "Ocorreu um erro",
+    "loading": "Carregando...",
+    "cancel": "Cancelar"
+  },
+  "image": {
+    "selectImage": "Selecionar Imagem",
+    "chooseSource": "Escolha a fonte da imagem",
+    "gallery": "Galeria",
+    "camera": "Câmera"
+  }
+}

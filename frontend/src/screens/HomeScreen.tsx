@@ -1,82 +1,71 @@
-// frontend/src/screens/HomeScreen.tsx
-import React from 'react';
-import { View, StyleSheet, ScrollView } from 'react-native';
-import { Text, Button, FAB } from 'react-native-paper';
-import { useAuth } from '../contexts/AuthContext';
+import React, { useEffect, useState } from 'react';
+import { View, StyleSheet } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { BookList } from '../components/BookList';
+import { FAB } from '../components/FAB';
+import { useBooks } from '../hooks/useBooks';
+import { useTheme } from '../hooks/useTheme';
+import { useTranslation } from 'react-i18next';
+import { logger } from '../utils/logger';
+import { LoadingSpinner } from '../components/LoadingSpinner';
+import { ErrorMessage } from '../components/ErrorMessage';
 
-export default function HomeScreen({ navigation }) {
-  const { user, signOut } = useAuth();
+export const HomeScreen: React.FC = () => {
+  const navigation = useNavigation();
+  const { theme } = useTheme();
+  const { t } = useTranslation();
+  const { books, loading, error, fetchBooks } = useBooks();
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const handleLogout = async () => {
-    try {
-      await signOut();
-    } catch (error) {
-      console.error('Erro ao fazer logout:', error);
-    }
+  useEffect(() => {
+    logger.info('Loading user books');
+    fetchBooks();
+  }, []);
+
+  const handleRefresh = async () => {
+    logger.info('Refreshing books list');
+    setIsRefreshing(true);
+    await fetchBooks();
+    setIsRefreshing(false);
   };
 
+  const handleCreateBook = () => {
+    logger.info('Navigating to create book screen');
+    navigation.navigate('CreateBook');
+  };
+
+  if (loading && !isRefreshing) {
+    return <LoadingSpinner />;
+  }
+
+  if (error) {
+    return <ErrorMessage message={error} onRetry={fetchBooks} />;
+  }
+
   return (
-    <View style={styles.container}>
-      <ScrollView style={styles.scrollView}>
-        <View style={styles.header}>
-          <Text style={styles.welcomeText}>Bem-vindo(a), {user?.name}!</Text>
-          <Text style={styles.subtitle}>
-            {user?.type === 'child' 
-              ? 'Crie suas próprias histórias!'
-              : 'Acompanhe as histórias criadas'}
-          </Text>
-        </View>
-
-        <Button 
-          mode="outlined" 
-          onPress={handleLogout}
-          style={styles.logoutButton}
-        >
-          Sair
-        </Button>
-      </ScrollView>
-
+    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <BookList
+        books={books}
+        onRefresh={handleRefresh}
+        isRefreshing={isRefreshing}
+      />
       <FAB
         icon="plus"
+        onPress={handleCreateBook}
         style={styles.fab}
-        onPress={() => navigation.navigate('CreateBook')}
-        label="Criar Livro"
+        color={theme.colors.primary}
       />
     </View>
   );
-}
+};
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  header: {
-    padding: 20,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-  },
-  welcomeText: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 5,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#666',
-  },
-  logoutButton: {
-    margin: 10,
   },
   fab: {
     position: 'absolute',
-    margin: 16,
-    right: 0,
-    bottom: 0,
-    backgroundColor: '#1976d2',
+    right: 16,
+    bottom: 16,
   },
 });

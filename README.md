@@ -102,11 +102,12 @@ O sistema de geração de PDF inclui:
 
 ## Próximos Passos
 1. ✅ Implementação da geração de PDF
-2. ⏳ Implementação da geração de imagens via DALL-E
-3. ⏳ Implementação do avatar do personagem
-4. ⏳ Suporte a diferentes temas visuais
-5. ⏳ Sistema de compartilhamento de livros
-6. ⏳ Suporte a múltiplos idiomas
+2. ✅ Visualização de livros na HomeScreen
+3. ✅ Suporte a diferentes temas visuais
+4. ⏳ Implementação da geração de imagens via DALL-E
+5. ⏳ Implementação do avatar do personagem
+6. ⏳ Sistema de compartilhamento de livros
+7. ⏳ Suporte a múltiplos idiomas
 
 ## Contribuindo
 1. Faça um fork do projeto

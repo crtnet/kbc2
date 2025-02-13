@@ -1,15 +1,8 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { Alert } from 'react-native';
-import api from '../services/api';
-
-interface AuthContextData {
-  signed: boolean;
-  user: User | null;
-  loading: boolean;
-  signIn(email: string, password: string): Promise<void>;
-  signOut(): void;
-}
+import { api } from '../services/api';
+import { useAsyncStorage } from '../hooks/useAsyncStorage';
+import { logger } from '../utils/logger';
 
 interface User {
   id: string;
@@ -17,125 +10,118 @@ interface User {
   email: string;
 }
 
+interface AuthContextData {
+  user: User | null;
+  token: string | null;
+  isLoading: boolean;
+  signIn: (email: string, password: string) => Promise<void>;
+  signOut: () => Promise<void>;
+  signUp: (name: string, email: string, password: string) => Promise<void>;
+}
+
 const AuthContext = createContext<AuthContextData>({} as AuthContextData);
 
-export const AuthProvider: React.FC = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(false);
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { storedValue: token, setValue: setToken, removeValue: removeToken } = useAsyncStorage<string>('token');
+  const { storedValue: userData, setValue: setUserData, removeValue: removeUserData } = useAsyncStorage<User>('user');
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    // Verificar se o token é válido ao iniciar o app
+    const validateToken = async () => {
+      if (token) {
+        try {
+          const response = await api.get('/auth/validate', {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          
+          if (response.data.valid) {
+            logger.info('Token validated successfully');
+          } else {
+            logger.warn('Token is invalid');
+            await signOut();
+          }
+        } catch (error) {
+          logger.error('Token validation failed', error);
+          await signOut();
+        }
+      }
+      setIsLoading(false);
+    };
+
+    validateToken();
+  }, [token]);
 
   const signIn = useCallback(async (email: string, password: string) => {
     try {
-      setLoading(true);
+      setIsLoading(true);
+      const response = await api.post('/auth/login', { email, password });
       
-      const response = await api.post('/api/auth/login', {
-        email,
-        password,
-      });
-
-      const { token, user: userData } = response.data;
-
-      if (!token || !userData) {
-        throw new Error('Dados de autenticação inválidos');
-      }
-
-      // Configurar token nos headers padrão primeiro
-      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-
-      // Salvar dados localmente
-      await Promise.all([
-        AsyncStorage.setItem('@KidsBookCreator:token', token),
-        AsyncStorage.setItem('@KidsBookCreator:user', JSON.stringify(userData))
-      ]);
+      const { token, user } = response.data;
       
-      // Atualizar o estado do usuário por último
-      setUser(userData);
+      await setToken(token);
+      await setUserData(user);
+      
+      logger.info('User signed in successfully', { userId: user.id });
     } catch (error) {
-      console.error('🔒 Login Error:', error);
-      
-      if (error.response) {
-        // O servidor respondeu com um status de erro
-        const errorMessage = error.response.data.message || 'Erro ao fazer login';
-        Alert.alert('Erro de Autenticação', errorMessage);
-      } else if (error.request) {
-        // A requisição foi feita, mas não houve resposta
-        Alert.alert(
-          'Erro de Conexão', 
-          'Não foi possível conectar ao servidor. Verifique sua conexão de internet.'
-        );
-      } else {
-        // Algo aconteceu ao configurar a requisição
-        Alert.alert(
-          'Erro Inesperado', 
-          'Ocorreu um erro ao processar o login. Tente novamente.'
-        );
-      }
-      
+      logger.error('Sign in failed', error);
+      Alert.alert('Erro', 'Não foi possível fazer login');
       throw error;
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   }, []);
 
   const signOut = useCallback(async () => {
     try {
-      // Remover token e usuário do AsyncStorage
-      await AsyncStorage.removeItem('@KidsBookCreator:token');
-      await AsyncStorage.removeItem('@KidsBookCreator:user');
-
-      // Limpar headers de autorização
-      delete api.defaults.headers.common['Authorization'];
-      
-      setUser(null);
+      await removeToken();
+      await removeUserData();
+      logger.info('User signed out');
     } catch (error) {
-      console.error('Erro ao fazer logout:', error);
-      Alert.alert('Erro', 'Não foi possível fazer logout');
+      logger.error('Sign out failed', error);
     }
   }, []);
 
-  // Carregar usuário salvo ao iniciar o app
-  React.useEffect(() => {
-    const loadStoredUser = async () => {
-      try {
-        const storedToken = await AsyncStorage.getItem('@KidsBookCreator:token');
-        const storedUserJson = await AsyncStorage.getItem('@KidsBookCreator:user');
-
-        if (storedToken && storedUserJson) {
-          const storedUser = JSON.parse(storedUserJson);
-          
-          // Configurar token nos headers
-          api.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`;
-          
-          setUser(storedUser);
-        }
-      } catch (error) {
-        console.error('Erro ao carregar usuário salvo:', error);
-      }
-    };
-
-    loadStoredUser();
+  const signUp = useCallback(async (name: string, email: string, password: string) => {
+    try {
+      setIsLoading(true);
+      const response = await api.post('/auth/register', { name, email, password });
+      
+      const { token, user } = response.data;
+      
+      await setToken(token);
+      await setUserData(user);
+      
+      logger.info('User registered successfully', { userId: user.id });
+    } catch (error) {
+      logger.error('Sign up failed', error);
+      Alert.alert('Erro', 'Não foi possível criar a conta');
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
   return (
-    <AuthContext.Provider
-      value={{
-        signed: !!user,
-        user,
-        loading,
-        signIn,
-        signOut,
-      }}
-    >
+    <AuthContext.Provider value={{
+      user: userData,
+      token,
+      isLoading,
+      signIn,
+      signOut,
+      signUp
+    }}>
       {children}
     </AuthContext.Provider>
   );
 };
 
-export function useAuth(): AuthContextData {
+export const useAuth = () => {
   const context = useContext(AuthContext);
-
+  
   if (!context) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
-
+  
   return context;
-}
+};

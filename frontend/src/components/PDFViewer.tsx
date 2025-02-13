@@ -1,28 +1,60 @@
 import React, { useEffect, useRef } from 'react';
-import { View, StyleSheet, Dimensions } from 'react-native';
+import { View, StyleSheet, Dimensions, Platform } from 'react-native';
 import { WebView } from 'react-native-webview';
 import Constants from 'expo-constants';
+import { logger } from '../utils/logger';
 
 const API_URL = Constants.manifest?.extra?.apiUrl || 'http://localhost:3000';
 
 interface PDFViewerProps {
   pdfUrl: string;
+  onLoadEnd?: () => void;
+  onError?: (error: any) => void;
 }
 
-const PDFViewer: React.FC<PDFViewerProps> = ({ pdfUrl }) => {
-  const webViewRef = useRef(null);
-  const windowHeight = Dimensions.get('window').height;
+export const PDFViewer: React.FC<PDFViewerProps> = ({ 
+  pdfUrl, 
+  onLoadEnd, 
+  onError 
+}) => {
+  const webViewRef = useRef<WebView>(null);
+
+  useEffect(() => {
+    logger.info('PDFViewer initialized', { pdfUrl });
+  }, [pdfUrl]);
+
+  const handleLoadEnd = () => {
+    logger.info('PDF loaded successfully');
+    onLoadEnd?.();
+  };
+
+  const handleError = (syntheticEvent: any) => {
+    const { nativeEvent } = syntheticEvent;
+    logger.error('PDF loading error', { 
+      error: nativeEvent.description,
+      url: pdfUrl 
+    });
+    onError?.(nativeEvent);
+  };
+
+  // URL para renderizar PDF no navegador
+  const pdfViewerUrl = Platform.select({
+    web: pdfUrl,
+    default: `https://docs.google.com/viewer?url=${encodeURIComponent(pdfUrl)}&embedded=true`
+  });
 
   return (
-    <View style={[styles.container, { height: windowHeight * 0.8 }]}>
+    <View style={styles.container}>
       <WebView
         ref={webViewRef}
-        source={{ uri: `${API_URL}${pdfUrl}` }}
+        source={{ uri: pdfViewerUrl }}
         style={styles.webview}
-        javaScriptEnabled={true}
-        domStorageEnabled={true}
-        startInLoadingState={true}
-        scalesPageToFit={true}
+        originWhitelist={['*']}
+        allowsInlineMediaPlayback
+        mediaPlaybackRequiresUserAction={false}
+        startInLoadingState
+        onLoadEnd={handleLoadEnd}
+        onError={handleError}
       />
     </View>
   );
@@ -31,12 +63,10 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ pdfUrl }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    width: '100%',
-    backgroundColor: '#f5f5f5',
+    width: Dimensions.get('window').width,
+    height: Dimensions.get('window').height,
   },
   webview: {
     flex: 1,
   },
 });
-
-export default PDFViewer;
