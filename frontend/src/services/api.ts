@@ -3,65 +3,62 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const api = axios.create({
   baseURL: 'http://localhost:3000/api',
-  timeout: 10000, // 10 segundos de timeout
+  timeout: 10000,
+  headers: {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+  }
 });
+
+// Função para limpar dados de autenticação
+const clearAuthData = async () => {
+  try {
+    await AsyncStorage.multiRemove(['@KidsBook:token', '@KidsBook:user']);
+    delete api.defaults.headers.common['Authorization'];
+  } catch (error) {
+    console.error('Erro ao limpar dados de autenticação:', error);
+  }
+};
 
 // Interceptor para adicionar o token em todas as requisições
 api.interceptors.request.use(async (config) => {
   try {
     const token = await AsyncStorage.getItem('@KidsBook:token');
-    console.log('Token recuperado:', token ? 'Token presente' : 'Sem token');
     
     if (token) {
-      // Adiciona o token no header de autorização
-      config.headers = {
-        ...config.headers,
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      };
-    } else {
-      // Se não houver token e a rota não for de autenticação, redireciona para login
-      const isAuthRoute = config.url?.includes('/auth/');
-      if (!isAuthRoute) {
-        // Redirecionar para a tela de login
-        window.location.href = '/login';
-        return Promise.reject(new Error('Não autorizado'));
-      }
+      config.headers.Authorization = `Bearer ${token}`;
     }
     
     return config;
   } catch (error) {
     console.error('Erro ao recuperar token:', error);
-    return Promise.reject(error);
+    return config;
   }
-}, (error) => {
-  console.error('Erro no interceptor de requisição:', error);
-  return Promise.reject(error);
 });
 
 // Interceptor para tratar erros de autenticação
 api.interceptors.response.use(
-  (response) => {
-    // Log de sucesso da requisição
-    console.log('Resposta da API:', response.config.url, response.status);
-    return response;
-  },
+  (response) => response,
   async (error) => {
-    console.error('Erro na resposta da API:', {
-      url: error.config?.url,
-      status: error.response?.status,
-      data: error.response?.data,
-      headers: error.config?.headers
-    });
-    
-    if (error.response?.status === 401) {
-      console.log('Token inválido ou expirado');
-      // Limpar o token e redirecionar para login
-      await AsyncStorage.removeItem('@KidsBook:token');
-      window.location.href = '/login';
+    const originalRequest = error.config;
+
+    // Se for um erro de autenticação (401) e não for uma tentativa de refresh
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+
+      try {
+        // Limpa os dados de autenticação
+        await clearAuthData();
+
+        // Redireciona para a tela de login
+        if (typeof window !== 'undefined') {
+          window.location.href = '/login';
+        }
+      } catch (clearError) {
+        console.error('Erro ao tratar token inválido:', clearError);
+      }
     }
-    
+
     return Promise.reject(error);
   }
 );

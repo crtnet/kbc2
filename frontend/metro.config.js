@@ -1,17 +1,20 @@
-const { getDefaultConfig } = require('@expo/metro-config');
+const { getDefaultConfig } = require('expo/metro-config');
 
-const defaultConfig = getDefaultConfig(__dirname);
+module.exports = (() => {
+  const config = getDefaultConfig(__dirname);
 
-module.exports = {
-  ...defaultConfig,
-  server: {
-    port: 8081,
-    enhanceMiddleware: (middleware) => {
-      return (req, res, next) => {
-        // Add CORS headers
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        return middleware(req, res, next);
-      };
+  return {
+    ...config,
+    server: {
+      port: 8081,
+      enhanceMiddleware: (middleware) => {
+        return (req, res, next) => {
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+          res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+          return middleware(req, res, next);
+        };
+      },
     },
-  },
-};
+  };
+})();

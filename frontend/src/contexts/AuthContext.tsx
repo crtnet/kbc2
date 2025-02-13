@@ -26,12 +26,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const checkToken = async () => {
     try {
       const token = await AsyncStorage.getItem('@KidsBook:token');
-      if (!token) {
-        return false;
-      }
+      if (!token) return false;
 
-      await api.get('/auth/verify');
-      return true;
+      const response = await api.get('/auth/verify');
+      return response.status === 200;
     } catch (error) {
       console.error('Erro ao verificar token:', error);
       return false;
@@ -41,31 +39,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     async function loadStorageData() {
       try {
-        console.log('Carregando dados do storage...');
         const storedUser = await AsyncStorage.getItem('@KidsBook:user');
         const storedToken = await AsyncStorage.getItem('@KidsBook:token');
 
         if (storedUser && storedToken) {
-          console.log('Dados encontrados no storage');
+          const parsedUser = JSON.parse(storedUser);
+          const isTokenValid = await checkToken();
           
-          // Configura o token antes de verificar
-          api.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`;
-          
-          try {
-            const isTokenValid = await checkToken();
-            if (isTokenValid) {
-              setUser(JSON.parse(storedUser));
-              console.log('Token válido, usuário restaurado');
-            } else {
-              console.log('Token inválido, fazendo logout');
-              await signOut();
-            }
-          } catch (error) {
-            console.error('Erro ao verificar token:', error);
+          if (isTokenValid) {
+            setUser(parsedUser);
+            api.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`;
+          } else {
             await signOut();
           }
-        } else {
-          setLoading(false);
         }
       } catch (error) {
         console.error('Erro ao carregar dados:', error);
@@ -80,10 +66,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signIn = async (email: string, password: string) => {
     try {
-      console.log('Iniciando login...');
       const response = await api.post('/auth/login', { email, password });
-      console.log('Resposta do login:', response.data);
-
       const { user: userData, token } = response.data;
 
       await AsyncStorage.setItem('@KidsBook:user', JSON.stringify(userData));
@@ -91,8 +74,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       setUser(userData);
-
-      console.log('Login concluído com sucesso!');
     } catch (error) {
       console.error('Erro no login:', error);
       throw error;
@@ -101,8 +82,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signOut = async () => {
     try {
-      await AsyncStorage.removeItem('@KidsBook:user');
-      await AsyncStorage.removeItem('@KidsBook:token');
+      await AsyncStorage.multiRemove(['@KidsBook:user', '@KidsBook:token']);
       delete api.defaults.headers.common['Authorization'];
       setUser(null);
     } catch (error) {

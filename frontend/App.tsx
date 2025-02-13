@@ -1,18 +1,17 @@
-// frontend/App.tsx
 import React from 'react';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import { Provider as PaperProvider } from 'react-native-paper';
 import { IntlProvider } from 'react-intl';
 import { AuthProvider } from './src/contexts/AuthContext';
 import { AppNavigator } from './src/navigation/AppNavigator';
 import { setupIntl } from './src/config/i18n';
-import { View } from 'react-native';
 
 export default function App() {
   const intlConfig = setupIntl();
 
   return (
-    <View style={{ flex: 1 }}>
+    <SafeAreaProvider>
       <IntlProvider {...intlConfig}>
         <AuthProvider>
           <PaperProvider>
@@ -22,6 +21,6 @@ export default function App() {
           </PaperProvider>
         </AuthProvider>
       </IntlProvider>
-    </View>
+    </SafeAreaProvider>
   );
 }
