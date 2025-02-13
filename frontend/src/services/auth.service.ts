@@ -27,7 +27,7 @@ class AuthService {
 
   async login(email: string, password: string): Promise<{ user: User; token: string }> {
     try {
-      const response = await axios.post(`${API_URL}/api/auth/login`, {
+      const response = await axios.post(`${API_URL}/auth/login`, {
         email,
         password,
       });
@@ -67,7 +67,7 @@ class AuthService {
         return false;
       }
 
-      const response = await axios.get(`${API_URL}/api/auth/verify`);
+      const response = await axios.get(`${API_URL}/auth/verify`);
       
       if (response.data.token) {
         // Se recebemos um novo token, atualizamos

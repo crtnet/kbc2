@@ -16,8 +16,26 @@ export const useBooks = () => {
       logger.info('Fetching user books');
       const response = await api.get('/books');
       
-      setBooks(response.data);
-      logger.info('Books fetched successfully', { count: response.data.length });
+      // Mapeia os livros para o formato esperado no frontend
+      const mappedBooks: Book[] = response.data.map((book: any) => ({
+        id: book._id,
+        title: book.title,
+        coverImage: book.pages?.[0]?.imageUrl || '/default-book-image.png',
+        createdAt: book.createdAt,
+        updatedAt: book.updatedAt,
+        userId: book.userId,
+        pdfUrl: book.pdfUrl,
+        language: book.language,
+        theme: book.theme,
+        status: book.status === 'completed' ? 'published' : 'draft',
+        pages: book.pages?.map((page: any) => ({
+          text: page.text,
+          image: page.imageUrl
+        })) || []
+      }));
+      
+      setBooks(mappedBooks);
+      logger.info('Books fetched successfully', { count: mappedBooks.length });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to fetch books';
       logger.error('Error fetching books', { error: message });

@@ -14,6 +14,7 @@ interface AuthContextData {
   user: User | null;
   token: string | null;
   isLoading: boolean;
+  signed: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   signUp: (name: string, email: string, password: string) => Promise<void>;
@@ -27,16 +28,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    console.log('AuthContext - userData:', userData);
+    console.log('AuthContext - token:', token);
+    console.log('AuthContext - isLoading:', isLoading);
+
     // Verificar se o token é válido ao iniciar o app
     const validateToken = async () => {
       if (token) {
         try {
-          const response = await api.get('/auth/validate', {
+          console.log('Validating token:', token);
+          const response = await api.get('/auth/verify', {
             headers: { Authorization: `Bearer ${token}` }
           });
           
+          console.log('Token validation response:', response.data);
+          
           if (response.data.valid) {
             logger.info('Token validated successfully');
+            
+            // Se recebeu um novo token, atualiza
+            if (response.data.token) {
+              await setToken(response.data.token);
+            }
+            
+            // Atualiza os dados do usuário
+            if (response.data.user) {
+              await setUserData(response.data.user);
+            }
           } else {
             logger.warn('Token is invalid');
             await signOut();
@@ -58,6 +76,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const response = await api.post('/auth/login', { email, password });
       
       const { token, user } = response.data;
+      
+      console.log('SignIn - token:', token);
+      console.log('SignIn - user:', user);
       
       await setToken(token);
       await setUserData(user);
@@ -107,6 +128,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       user: userData,
       token,
       isLoading,
+      signed: !!userData && !!token,
       signIn,
       signOut,
       signUp

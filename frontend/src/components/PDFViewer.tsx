@@ -1,10 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { View, StyleSheet, Dimensions, Platform } from 'react-native';
 import { WebView } from 'react-native-webview';
-import Constants from 'expo-constants';
 import { logger } from '../utils/logger';
-
-const API_URL = Constants.manifest?.extra?.apiUrl || 'http://localhost:3000';
 
 interface PDFViewerProps {
   pdfUrl: string;
@@ -37,17 +34,41 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
     onError?.(nativeEvent);
   };
 
-  // URL para renderizar PDF no navegador
-  const pdfViewerUrl = Platform.select({
-    web: pdfUrl,
-    default: `https://docs.google.com/viewer?url=${encodeURIComponent(pdfUrl)}&embedded=true`
-  });
+  // HTML personalizado para visualização do PDF
+  const pdfHTML = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no" />
+        <style>
+          body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+          }
+          iframe, embed {
+            width: 100%;
+            height: 100%;
+            border: none;
+          }
+        </style>
+      </head>
+      <body>
+        ${Platform.OS === 'web' 
+          ? `<embed src="${pdfUrl}" type="application/pdf" />`
+          : `<iframe src="${pdfUrl}" type="application/pdf"></iframe>`
+        }
+      </body>
+    </html>
+  `;
 
   return (
     <View style={styles.container}>
       <WebView
         ref={webViewRef}
-        source={{ uri: pdfViewerUrl }}
+        source={{ html: pdfHTML }}
         style={styles.webview}
         originWhitelist={['*']}
         allowsInlineMediaPlayback
@@ -55,6 +76,11 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
         startInLoadingState
         onLoadEnd={handleLoadEnd}
         onError={handleError}
+        scalesPageToFit={true}
+        bounces={false}
+        scrollEnabled={true}
+        javaScriptEnabled={true}
+        domStorageEnabled={true}
       />
     </View>
   );

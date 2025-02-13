@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
 import { Text, Card, ActivityIndicator, Button } from 'react-native-paper';
-import * as bookService from '../services/bookService';
+import { getBookById } from '../services/bookService';
 
 export default function ViewBookScreen({ route, navigation }) {
   const { bookId } = route.params;
@@ -13,7 +13,7 @@ export default function ViewBookScreen({ route, navigation }) {
   const loadBook = async () => {
     try {
       setRefreshing(true);
-      const bookData = await bookService.getBook(bookId);
+      const bookData = await getBookById(bookId);
       setBook(bookData);
       setError('');
     } catch (error) {

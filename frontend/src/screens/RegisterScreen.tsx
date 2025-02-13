@@ -11,7 +11,7 @@ import {
   ScrollView
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import api from '../services/api';
+import { api } from '../services/api';
 
 export default function RegisterScreen() {
   const navigation = useNavigation();

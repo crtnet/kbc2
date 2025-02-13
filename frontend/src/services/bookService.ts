@@ -55,3 +55,40 @@ export const deleteBook = async (bookId: string) => {
     throw error;
   }
 };
+
+export const getBookPdfUrl = async (bookId: string): Promise<string> => {
+  try {
+    logger.info('Iniciando download do PDF', { bookId });
+    
+    const response = await api.get(`/books/${bookId}/pdf`, {
+      responseType: 'blob',
+      headers: {
+        Accept: 'application/pdf',
+      },
+    });
+    
+    if (!response.data) {
+      throw new Error('Resposta vazia do servidor');
+    }
+
+    logger.info('PDF baixado com sucesso', { 
+      bookId,
+      contentType: response.headers['content-type'],
+      size: response.data.size 
+    });
+    
+    const blob = new Blob([response.data], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    
+    logger.info('URL do PDF criada', { bookId, url });
+    return url;
+  } catch (error) {
+    logger.error('Erro ao obter PDF', { 
+      bookId, 
+      error: error.message,
+      status: error.response?.status,
+      statusText: error.response?.statusText 
+    });
+    throw error;
+  }
+};

@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, ActivityIndicator, Text } from 'react-native';
 import { useRoute, RouteProp } from '@react-navigation/native';
-import PDFViewer from '../components/PDFViewer';
-import { getBook } from '../services/bookService';
+import { PDFViewer } from '../components/PDFViewer';
+import { getBookById, getBookPdfUrl } from '../services/bookService';
 import { Book } from '../types';
+import { logger } from '../utils/logger';
 
 type RouteParams = {
   ViewBookPDF: {
@@ -14,22 +15,29 @@ type RouteParams = {
 export const ViewBookPDFScreen: React.FC = () => {
   const route = useRoute<RouteProp<RouteParams, 'ViewBookPDF'>>();
   const [book, setBook] = useState<Book | null>(null);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const loadBook = async () => {
+    const loadBookAndPdf = async () => {
       try {
-        const bookData = await getBook(route.params.bookId);
+        logger.info('Opening book PDF', { bookId: route.params.bookId });
+        const bookData = await getBookById(route.params.bookId);
         setBook(bookData);
+
+        logger.info('Fetching PDF URL', { bookId: route.params.bookId });
+        const url = await getBookPdfUrl(route.params.bookId);
+        setPdfUrl(url);
       } catch (err) {
+        logger.error('Error loading book PDF', { error: err.message });
         setError(err.message);
       } finally {
         setLoading(false);
       }
     };
 
-    loadBook();
+    loadBookAndPdf();
   }, [route.params.bookId]);
 
   if (loading) {
@@ -50,7 +58,7 @@ export const ViewBookPDFScreen: React.FC = () => {
     );
   }
 
-  if (!book.pdfUrl) {
+  if (!pdfUrl) {
     return (
       <View style={styles.centered}>
         <Text style={styles.error}>
@@ -62,7 +70,13 @@ export const ViewBookPDFScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <PDFViewer pdfUrl={book.pdfUrl} />
+      <PDFViewer 
+        pdfUrl={pdfUrl}
+        onError={(error) => {
+          logger.error('Error displaying PDF', { error });
+          setError('Erro ao exibir o PDF');
+        }}
+      />
     </View>
   );
 };

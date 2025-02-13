@@ -26,6 +26,10 @@ export const BookList: React.FC<BookListProps> = ({
   };
 
   const handleViewPDF = (book: Book) => {
+    if (!book?.id) {
+      logger.error('Attempted to open PDF without book ID');
+      return;
+    }
     logger.info('Opening book PDF', { bookId: book.id });
     navigation.navigate('FlipBook', { bookId: book.id });
   };

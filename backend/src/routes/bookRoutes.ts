@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { config } from '../config';
-import BookController from '../controllers/bookController';
+import BookController from '../controllers/BookController';
 import PDFController from '../controllers/pdfController';
 
 export const auth = (req: Request, res: Response, next: NextFunction) => {
@@ -44,6 +44,9 @@ router.get('/:id', auth, BookController.getBook);
 router.put('/:id', auth, BookController.updateBook);
 router.delete('/:id', auth, BookController.deleteBook);
 
+// Rotas específicas para PDF
 router.get('/:id/status', auth, BookController.getBookStatus);
+router.get('/:id/pdf', auth, BookController.getBookPDF);
+router.get('/:id/pdf-viewer', auth, BookController.getBookPDFViewer);
 
 export default router;

@@ -2,6 +2,21 @@
 
 ## [Não publicado]
 
+### Corrigido
+- Correção de navegação para FlipBookScreen com tratamento de ID undefined
+- Adicionado tratamento de erro mais robusto na busca de PDF
+- Validação adicional para URL do PDF
+- Melhoria na segurança da navegação entre telas
+- Correção da transformação de IDs de livros no frontend
+- Mapeamento correto dos campos de livros vindos do backend
+- Adicionado fallback para imagem de capa e campos opcionais
+- Tratamento de status de livros para compatibilidade frontend/backend
+
+### Adicionado
+- Logs de erro detalhados para problemas de navegação e carregamento de PDF
+- Mapeamento robusto de dados de livros
+- Suporte a campos opcionais e valores padrão
+
 ### Planejado
 - Sistema de visualização de livros na HomeScreen
 - Visualizador de PDF com modo flip

@@ -154,26 +154,29 @@ export class BookController {
 
       // Geração do PDF do livro com formatação de livro infantil (formato A3)
       const pdfUrl = await generateBookPDF(savedBook, { ...defaultOptions, format: 'A3' });
+      
+      // Log adicional para verificar o PDF
+      logger.info('Tentando salvar URL do PDF', { 
+        bookId: savedBook._id, 
+        pdfUrl: pdfUrl 
+      });
+
       savedBook.pdfUrl = pdfUrl;
       await savedBook.save();
       logger.info(`PDF gerado com URL: ${pdfUrl}`);
 
-      // Recupera o livro completo para retorno
-      const createdBook = await Book.findById(savedBook._id);
-      if (!createdBook) {
-        throw new Error('Erro ao recuperar livro após criação');
+      // Verificação extra
+      const updatedBook = await Book.findById(savedBook._id);
+      if (!updatedBook || !updatedBook.pdfUrl) {
+        logger.error('Falha ao salvar URL do PDF no banco de dados', { 
+          bookId: savedBook._id 
+        });
+      } else {
+        logger.info('URL do PDF salva com sucesso', { 
+          bookId: updatedBook._id, 
+          pdfUrl: updatedBook.pdfUrl 
+        });
       }
-      logger.info('Processo de criação do livro concluído com sucesso');
-      const responseBook = createdBook.toPlainObject();
-      logger.info(`Retornando livro com ID: ${responseBook._id}`);
-
-      return res.status(201).json({
-        message: 'Livro criado com sucesso',
-        book: {
-          ...responseBook,
-          wordCount
-        }
-      });
     } catch (error) {
       logger.error(`Erro ao criar livro: ${error.message}`);
       return res.status(500).json({ 
@@ -276,7 +279,7 @@ export class BookController {
     }
   }
 
-  // Novo endpoint: retorna a URL para visualizar o PDF com efeito flip
+  // Retorna a URL para visualizar o PDF com efeito flip
   public static async getBookPDFViewer(req: Request, res: Response): Promise<Response> {
     try {
       const { id } = req.params;
@@ -291,6 +294,101 @@ export class BookController {
       logger.error(`Erro ao buscar visualizador de PDF: ${error.message}`);
       return res.status(500).json({ 
         error: 'Erro ao buscar visualizador de PDF', 
+        details: error.message 
+      });
+    }
+  }
+
+  // Serve o arquivo PDF
+  public static async getBookPDF(req: Request, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+      logger.info(`Buscando PDF do livro ${id}`, { 
+        userId: req.user?.id 
+      });
+      
+      // Busca o livro com log detalhado
+      const book = await Book.findOne({ 
+        _id: id, 
+        userId: req.user?.id 
+      });
+      
+      // Log detalhado da busca do livro
+      if (!book) {
+        logger.error('Livro não encontrado', { 
+          bookId: id, 
+          userId: req.user?.id 
+        });
+        res.status(404).json({ 
+          error: 'Livro não encontrado', 
+          details: 'Verifique o ID do livro e suas permissões' 
+        });
+        return;
+      }
+
+      // Log do estado do PDF
+      if (!book.pdfUrl) {
+        logger.error('PDF não gerado para este livro', { 
+          bookId: id, 
+          userId: req.user?.id 
+        });
+        res.status(404).json({ 
+          error: 'PDF não encontrado', 
+          details: 'O PDF para este livro ainda não foi gerado' 
+        });
+        return;
+      }
+
+      // Remove a barra inicial e 'pdfs' do caminho do PDF se existir
+      const pdfPath = path.join(
+        __dirname, 
+        '../../public/pdfs', 
+        path.basename(book.pdfUrl)
+      );
+      
+      logger.info('Caminho do PDF', { 
+        bookId: id, 
+        pdfPath: pdfPath 
+      });
+      
+      // Verifica a existência do arquivo
+      if (!fs.existsSync(pdfPath)) {
+        logger.error('Arquivo PDF não encontrado no sistema de arquivos', { 
+          bookId: id, 
+          pdfPath: pdfPath 
+        });
+        res.status(404).json({ 
+          error: 'Arquivo PDF não encontrado', 
+          details: 'O arquivo PDF não existe no servidor' 
+        });
+        return;
+      }
+
+      // Configurar headers para download do PDF
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="${book.title}.pdf"`);
+      
+      // Criar stream de leitura e pipe para a resposta
+      const stream = fs.createReadStream(pdfPath);
+      stream.on('error', (error) => {
+        logger.error('Erro ao ler arquivo PDF', { 
+          bookId: id, 
+          error: error.message 
+        });
+        res.status(500).json({ 
+          error: 'Erro ao ler arquivo PDF', 
+          details: error.message 
+        });
+      });
+      
+      stream.pipe(res);
+    } catch (error) {
+      logger.error('Erro ao servir PDF', { 
+        error: error.message,
+        stack: error.stack 
+      });
+      res.status(500).json({ 
+        error: 'Erro ao servir PDF', 
         details: error.message 
       });
     }

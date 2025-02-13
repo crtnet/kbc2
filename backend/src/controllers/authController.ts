@@ -53,6 +53,7 @@ export class AuthController {
 
       return res.status(200).json({ 
         valid: true,
+        token,
         user: {
           id: user._id,
           name: user.name,

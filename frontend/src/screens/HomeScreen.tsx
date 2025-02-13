@@ -50,10 +50,10 @@ export const HomeScreen: React.FC = () => {
         isRefreshing={isRefreshing}
       />
       <FAB
-        icon="plus"
+        icon="add"
         onPress={handleCreateBook}
         style={styles.fab}
-        color={theme.colors.primary}
+        color={theme.colors.onPrimary}
       />
     </View>
   );

@@ -4,7 +4,7 @@ import path from 'path';
 import mongoose from 'mongoose';
 import { config } from './config';
 import bookRoutes from './routes/bookRoutes';
-import authRoutes from './routes/authRoutes';
+import authRoutes from './routes/auth.routes';
 
 class App {
   public express: express.Application;
@@ -21,6 +21,8 @@ class App {
     this.express.use(cors());
     
     // Servir arquivos estáticos da pasta public
+    this.express.use('/public', express.static(path.join(__dirname, '../public')));
+    // Alias específico para PDFs para manter compatibilidade
     this.express.use('/pdfs', express.static(path.join(__dirname, '../public/pdfs')));
   }
 

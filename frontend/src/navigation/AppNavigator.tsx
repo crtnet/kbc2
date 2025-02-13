@@ -3,11 +3,12 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { useAuth } from '../contexts/AuthContext';
 import LoginScreen from '../screens/LoginScreen';
-import HomeScreen from '../screens/HomeScreen';
+import { HomeScreen } from '../screens/HomeScreen';
 import RegisterScreen from '../screens/RegisterScreen';
 import CreateBookScreen from '../screens/CreateBookScreen';
 import ViewBookScreen from '../screens/ViewBookScreen';
 import ViewBookPDFScreen from '../screens/ViewBookPDFScreen';
+import FlipBookScreen from '../screens/FlipBookScreen';
 
 export type RootStackParamList = {
   Login: undefined;
@@ -16,15 +17,21 @@ export type RootStackParamList = {
   CreateBook: undefined;
   ViewBook: { bookId: string };
   ViewBookPDF: { bookId: string };
+  FlipBook: { bookId: string };
 };
 
 const Stack = createStackNavigator<RootStackParamList>();
 
-const AppNavigator = () => {
-  const { signed, loading } = useAuth();
+import { LoadingSpinner } from '../components/LoadingSpinner';
 
-  if (loading) {
-    return null; // ou um componente de loading
+const AppNavigator = () => {
+  const { signed, isLoading } = useAuth();
+
+  console.log('AppNavigator - signed:', signed);
+  console.log('AppNavigator - isLoading:', isLoading);
+
+  if (isLoading) {
+    return <LoadingSpinner />;
   }
 
   return (
@@ -85,6 +92,16 @@ const AppNavigator = () => {
                 headerShown: true,
                 headerTitle: 'PDF do Livro',
                 headerBackTitleVisible: false,
+              }}
+            />
+            <Stack.Screen 
+              name="FlipBook" 
+              component={FlipBookScreen}
+              options={{
+                headerShown: true,
+                headerTitle: 'Visualizar Livro',
+                headerBackTitleVisible: false,
+                presentation: 'modal',
               }}
             />
           </>
