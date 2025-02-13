@@ -1,26 +1,29 @@
 import React from 'react';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { NavigationContainer } from '@react-navigation/native';
-import { Provider as PaperProvider } from 'react-native-paper';
 import { IntlProvider } from 'react-intl';
-import { AuthProvider } from './src/contexts/AuthContext';
-import { AppNavigator } from './src/navigation/AppNavigator';
-import { setupIntl } from './src/config/i18n';
+import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import ptMessages from './src/translations/pt.json';
+
+const Stack = createNativeStackNavigator();
+
+const messages = {
+  pt: ptMessages
+};
 
 export default function App() {
-  const intlConfig = setupIntl();
+  const locale = 'pt';
 
   return (
-    <SafeAreaProvider>
-      <IntlProvider {...intlConfig}>
-        <AuthProvider>
-          <PaperProvider>
-            <NavigationContainer>
-              <AppNavigator />
-            </NavigationContainer>
-          </PaperProvider>
-        </AuthProvider>
-      </IntlProvider>
-    </SafeAreaProvider>
+    <IntlProvider
+      messages={messages[locale]}
+      locale={locale}
+      defaultLocale="pt"
+    >
+      <NavigationContainer>
+        <Stack.Navigator>
+          {/* Add your screens here */}
+        </Stack.Navigator>
+      </NavigationContainer>
+    </IntlProvider>
   );
 }
