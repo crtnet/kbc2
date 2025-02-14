@@ -5,7 +5,7 @@ interface User {
   id: string;
   name: string;
   email: string;
-  // Outras propriedades do usuário, se necessário
+  // Outras propriedades, se necessário
 }
 
 interface AuthContextData {
@@ -16,16 +16,16 @@ interface AuthContextData {
 
 const AuthContext = createContext<AuthContextData>({} as AuthContextData);
 
-// Variável para armazenar a função signOut de forma global
+// Variável para armazenar a função de signOut globalmente
 let globalSignOutFunction: (() => void) | null = null;
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
-    // Carregar o usuário do AsyncStorage, se necessário
+    // Carregue o usuário do AsyncStorage se necessário
     // Exemplo:
-    // AsyncStorage.getItem('user').then(storedUser => {
+    // AsyncStorage.getItem('user').then((storedUser) => {
     //   if (storedUser) setUser(JSON.parse(storedUser));
     // });
   }, []);
@@ -39,8 +39,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   globalSignOutFunction = localSignOut;
 
   const signIn = async (credentials: any) => {
-    // Lógica de autenticação
-    // Exemplo:
+    // Lógica de autenticação, por exemplo:
     // const response = await api.post('/login', credentials);
     // setUser(response.data.user);
     // await AsyncStorage.setItem('user', JSON.stringify(response.data.user));
@@ -57,11 +56,11 @@ export function useAuth() {
   return useContext(AuthContext);
 }
 
-// Exporta a função signOut global para ser usada em outros módulos
+// Exporta a função signOut para ser utilizada globalmente
 export function signOut() {
   if (globalSignOutFunction) {
     globalSignOutFunction();
   } else {
-    console.warn('signOut function is not defined yet.');
+    console.warn('A função signOut ainda não foi definida.');
   }
 }
