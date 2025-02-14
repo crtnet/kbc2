@@ -1,37 +1,17 @@
 import axios from 'axios';
-import { useAuth } from '../contexts/AuthContext';
+import { signOut } from '../contexts/AuthContext';
 
 const api = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:3333',
-});
-
-api.interceptors.request.use(async (config) => {
-  try {
-    const token = localStorage.getItem('@App:token');
-
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-
-    return config;
-  } catch (error) {
-    return Promise.reject(error);
-  }
+  baseURL: 'http://localhost:3000' // Ajuste conforme necessário
 });
 
 api.interceptors.response.use(
-  (response) => {
-    return response;
-  },
-  async (error) => {
-    if (error.response?.status === 401) {
-      const { useAuth } = require('../contexts/AuthContext');
-      const auth = useAuth();
-      
-      // Deslogar o usuário
-      auth.signOut();
+  response => response,
+  error => {
+    if (error.response && error.response.status === 401) {
+      // Deslogar o usuário em caso de não autorizado
+      signOut();
     }
-    
     return Promise.reject(error);
   }
 );

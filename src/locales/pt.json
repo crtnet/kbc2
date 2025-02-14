@@ -1,48 +1,11 @@
 {
+  "welcome": "Bem-vindo",
+  "error": "Ocorreu um erro. Por favor, tente novamente",
+  "server_error": "Não foi possível conectar a nenhum servidor",
   "I86Kj3": "HEIC para JPG",
   "y+7ihJ": "Qualidade",
-  "aZ1Q0A": "Arraste e solte imagens ou",
-  "qZGdi+": "Arquivos HEIC são permitidos",
-  "W4cWeE": "número ilimitado de arquivos",
-  "phdZCb": "Suas fotos não são enviadas para nenhum servidor",
-  "home": {
-    "title": "Meus Livros",
-    "empty": "Você ainda não criou nenhum livro",
-    "create": "Criar Novo Livro"
-  },
-  "book": {
-    "view": "Visualizar PDF",
-    "share": "Compartilhar",
-    "delete": "Excluir",
-    "edit": "Editar"
-  },
-  "avatar": {
-    "create": "Criar Avatar",
-    "edit": "Editar Avatar",
-    "save": "Salvar Avatar"
-  },
-  "settings": {
-    "theme": {
-      "title": "Tema",
-      "light": "Claro",
-      "dark": "Escuro",
-      "system": "Sistema"
-    },
-    "language": {
-      "title": "Idioma",
-      "pt": "Português",
-      "en": "English",
-      "es": "Español"
-    }
-  },
-  "common": {
-    "loading": "Carregando...",
-    "error": "Ocorreu um erro",
-    "retry": "Tentar novamente",
-    "save": "Salvar",
-    "cancel": "Cancelar",
-    "delete": "Excluir",
-    "edit": "Editar",
-    "share": "Compartilhar"
-  }
+  "aZ1Q0A": "Arraste e solte as imagens ou clique para fazer upload",
+  "qZGdi+": "Apenas arquivos HEIC são permitidos",
+  "W4cWeE": "Número ilimitado de arquivos",
+  "phdZCb": "Suas fotos não são enviadas para nenhum servidor."
 }

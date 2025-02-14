@@ -1,45 +1,67 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useState, useContext, ReactNode, useEffect } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+interface User {
+  id: string;
+  name: string;
+  email: string;
+  // Outras propriedades do usuário, se necessário
+}
 
 interface AuthContextData {
-  signed: boolean;
-  user: object | null;
-  signIn(): Promise<void>;
+  user: User | null;
+  signIn(credentials: any): Promise<void>;
   signOut(): void;
 }
 
 const AuthContext = createContext<AuthContextData>({} as AuthContextData);
 
-export const AuthProvider: React.FC = ({ children }) => {
-  const [user, setUser] = useState<object | null>(null);
+// Variável para armazenar a função signOut de forma global
+let globalSignOutFunction: (() => void) | null = null;
 
-  async function signIn() {
-    // Implementação do signIn
-  }
+export const AuthProvider = ({ children }: { children: ReactNode }) => {
+  const [user, setUser] = useState<User | null>(null);
 
-  function signOut() {
+  useEffect(() => {
+    // Carregar o usuário do AsyncStorage, se necessário
+    // Exemplo:
+    // AsyncStorage.getItem('user').then(storedUser => {
+    //   if (storedUser) setUser(JSON.parse(storedUser));
+    // });
+  }, []);
+
+  const localSignOut = () => {
     setUser(null);
-  }
+    AsyncStorage.removeItem('user');
+  };
+
+  // Atribui a função localSignOut à variável global
+  globalSignOutFunction = localSignOut;
+
+  const signIn = async (credentials: any) => {
+    // Lógica de autenticação
+    // Exemplo:
+    // const response = await api.post('/login', credentials);
+    // setUser(response.data.user);
+    // await AsyncStorage.setItem('user', JSON.stringify(response.data.user));
+  };
 
   return (
-    <AuthContext.Provider
-      value={{
-        signed: !!user,
-        user,
-        signIn,
-        signOut
-      }}
-    >
+    <AuthContext.Provider value={{ user, signIn, signOut: localSignOut }}>
       {children}
     </AuthContext.Provider>
   );
 };
 
-export function useAuth(): AuthContextData {
-  const context = useContext(AuthContext);
+export function useAuth() {
+  return useContext(AuthContext);
+}
 
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
+// Exporta a função signOut global para ser usada em outros módulos
+export function signOut() {
+  if (globalSignOutFunction) {
+    globalSignOutFunction();
+  } else {
+    console.warn('signOut function is not defined yet.');
   }
-
-  return context;
 }

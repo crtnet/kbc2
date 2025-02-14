@@ -1,48 +1,11 @@
 {
+  "welcome": "Welcome",
+  "error": "An error occurred. Please try again",
+  "server_error": "Could not connect to any server",
   "I86Kj3": "HEIC to JPG",
   "y+7ihJ": "Quality",
-  "aZ1Q0A": "Drag and drop images or",
+  "aZ1Q0A": "Drag and drop images or click to upload",
   "qZGdi+": "HEIC files are allowed",
-  "W4cWeE": "unlimited number of files",
-  "phdZCb": "Your photos are not uploaded to any server",
-  "home": {
-    "title": "My Books",
-    "empty": "You haven't created any books yet",
-    "create": "Create New Book"
-  },
-  "book": {
-    "view": "View PDF",
-    "share": "Share",
-    "delete": "Delete",
-    "edit": "Edit"
-  },
-  "avatar": {
-    "create": "Create Avatar",
-    "edit": "Edit Avatar",
-    "save": "Save Avatar"
-  },
-  "settings": {
-    "theme": {
-      "title": "Theme",
-      "light": "Light",
-      "dark": "Dark",
-      "system": "System"
-    },
-    "language": {
-      "title": "Language",
-      "pt": "Portuguese",
-      "en": "English",
-      "es": "Spanish"
-    }
-  },
-  "common": {
-    "loading": "Loading...",
-    "error": "An error occurred",
-    "retry": "Try again",
-    "save": "Save",
-    "cancel": "Cancel",
-    "delete": "Delete",
-    "edit": "Edit",
-    "share": "Share"
-  }
+  "W4cWeE": "Unlimited number of files",
+  "phdZCb": "Your photos are not uploaded to any server."
 }

@@ -1,24 +1,19 @@
-import i18n from 'i18next';
-import { initReactI18next } from 'react-i18next';
-import * as Localization from 'expo-localization';
-import pt from '../../translations/pt.json';
+import { getLocales } from 'expo-localization';
+import pt from '../locales/pt.json';
+import en from '../locales/en.json';
 
 const resources = {
-  pt: {
-    translation: pt
-  }
+  pt: { translation: pt },
+  en: { translation: en },
 };
 
-i18n
-  .use(initReactI18next)
-  .init({
-    resources,
-    lng: Localization.locale.split('-')[0],
-    fallbackLng: 'pt',
-    interpolation: {
-      escapeValue: false
-    },
-    compatibilityJSON: 'v3'
-  });
+const language = getLocales()[0].languageCode;
 
-export default i18n;
+export default {
+  resources,
+  lng: language,
+  fallbackLng: 'pt',
+  interpolation: {
+    escapeValue: false,
+  },
+};
