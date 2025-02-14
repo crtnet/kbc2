@@ -3,13 +3,17 @@
   "version": "1.0.0",
   "description": "Aplicativo para criação de livros infantis personalizados",
   "main": "index.js",
+  "resolutions": {
+    "webpack-manifest-plugin": "3.0.0"
+  } ,
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
     "clean": "rm -rf node_modules && rm -rf package-lock.json",
-    "reset": "npm run clean && npm install"
+    "reset": "npm run clean && npm install",
+    "preinstall": "npx npm-force-resolutions"
   },
   "dependencies": {
     "@react-navigation/native": "^6.1.7",
@@ -30,7 +34,7 @@
     "typescript": "^5.1.3"
   },
   "overrides": {
-    "webpack": "^5.88.0"
+    "webpack-manifest-plugin": "3.0.0"
   },
   "private": true
 }

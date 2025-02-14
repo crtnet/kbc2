@@ -1,63 +1,23 @@
-const path = require('path');
-const webpack = require('webpack');
-const Dotenv = require('dotenv-webpack');
+const createExpoWebpackConfigAsync = require('@expo/webpack-config');
 
-module.exports = {
-  entry: './src/index.tsx',
-  output: {
-    path: path.resolve(__dirname, 'dist'),
-    filename: 'bundle.js',
-    publicPath: '/',
-  },
-  module: {
-    rules: [
-      {
-        test: /\.(ts|tsx)$/,
-        use: 'ts-loader',
-        exclude: /node_modules/,
-      },
-      {
-        test: /\.json$/,
-        type: 'json'
-      },
-      {
-        test: /\.(png|svg|jpg|jpeg|gif)$/i,
-        type: 'asset/resource',
-      },
-    ],
-  },
-  resolve: {
-    extensions: ['.tsx', '.ts', '.js', '.json'],
-    fallback: {
-      "path": require.resolve("path-browserify"),
-      "fs": false,
-      "os": false
+module.exports = async function (env, argv) {
+  const config = await createExpoWebpackConfigAsync(env, argv);
+
+  // Liste os nomes dos plugins para debugar
+  console.log('Plugins antes do filtro:');
+  config.plugins.forEach((plugin) => {
+    console.log(plugin.constructor && plugin.constructor.name);
+  });
+
+  // Remove qualquer instância do WebpackManifestPlugin
+  config.plugins = config.plugins.filter((plugin) => {
+    const name = plugin.constructor && plugin.constructor.name;
+    if (name === 'WebpackManifestPlugin') {
+      console.log(`Removendo plugin: ${name}`);
+      return false;
     }
-  },
-  plugins: [
-    new Dotenv({
-      path: '.env',
-      safe: true,
-      systemvars: true,
-      defaults: false
-    }),
-    new webpack.DefinePlugin({
-      'process.env': JSON.stringify(process.env)
-    })
-  ],
-  devServer: {
-    static: {
-      directory: path.join(__dirname, 'public'),
-    },
-    historyApiFallback: true,
-    hot: true,
-    port: 3000,
-    client: {
-      webSocketURL: {
-        hostname: 'localhost',
-        pathname: '/ws',
-        port: 8081,
-      },
-    },
-  },
+    return true;
+  });
+
+  return config;
 };
