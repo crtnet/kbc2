@@ -1,11 +1,11 @@
-import React, { useEffect, useState, useCallback } from 'react';
+// src/screens/HomeScreen.tsx
+import React, { useState, useCallback } from 'react';
 import { View, StyleSheet } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { BookList } from '../components/BookList';
 import { FAB } from '../components/FAB';
 import { api } from '../services/api';
 import { useTheme } from '../hooks/useTheme';
-import { useTranslation } from 'react-i18next';
 import { logger } from '../utils/logger';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ErrorMessage } from '../components/ErrorMessage';
@@ -14,7 +14,6 @@ import { Book } from '../types/book';
 export const HomeScreen: React.FC = () => {
   const navigation = useNavigation();
   const { theme } = useTheme();
-  const { t } = useTranslation();
   const [books, setBooks] = useState<Book[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -28,7 +27,7 @@ export const HomeScreen: React.FC = () => {
       logger.info('Fetching user books');
       const response = await api.get('/books');
       
-      // Mapeia os livros para o formato esperado no frontend
+      // Mapeia os livros para o formato esperado
       const mappedBooks: Book[] = response.data.map((book: any) => ({
         id: book._id,
         title: book.title,
@@ -42,8 +41,8 @@ export const HomeScreen: React.FC = () => {
         status: book.status === 'completed' ? 'published' : 'draft',
         pages: book.pages?.map((page: any) => ({
           text: page.text,
-          image: page.imageUrl
-        })) || []
+          image: page.imageUrl,
+        })) || [],
       }));
       
       setBooks(mappedBooks);
@@ -57,21 +56,16 @@ export const HomeScreen: React.FC = () => {
     }
   }, []);
 
-  useEffect(() => {
-    logger.info('Loading user books');
-    fetchBooks();
-  }, [fetchBooks]);
+  useFocusEffect(
+    useCallback(() => {
+      fetchBooks();
+    }, [fetchBooks])
+  );
 
   const handleRefresh = async () => {
-    logger.info('Refreshing books list');
     setIsRefreshing(true);
     await fetchBooks();
     setIsRefreshing(false);
-  };
-
-  const handleCreateBook = () => {
-    logger.info('Navigating to create book screen');
-    navigation.navigate('CreateBook');
   };
 
   if (loading && !isRefreshing) {
@@ -90,8 +84,8 @@ export const HomeScreen: React.FC = () => {
         isRefreshing={isRefreshing}
       />
       <FAB
-        icon="add"
-        onPress={handleCreateBook}
+        icon="plus" // Certifique-se de que o ícone "plus" está disponível ou use "add"
+        onPress={() => navigation.navigate('CreateBook')}
         style={styles.fab}
         color={theme.colors.onPrimary}
       />
@@ -109,3 +103,5 @@ const styles = StyleSheet.create({
     bottom: 16,
   },
 });
+
+export default HomeScreen;

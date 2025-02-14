@@ -1,3 +1,4 @@
+// src/screens/CreateBookScreen.tsx
 import React, { useState } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
 import { TextInput, Button, Text, SegmentedButtons, Card, Snackbar } from 'react-native-paper';
@@ -14,13 +15,13 @@ interface BookData {
   ageRange: '1-2' | '3-4' | '5-6' | '7-8' | '9-10' | '11-12';
 }
 
-export default function CreateBookScreen({ navigation }) {
+function CreateBookScreen({ navigation }) {
   const { user } = useAuth();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [visible, setVisible] = useState(false);
-  
+
   const [bookData, setBookData] = useState<BookData>({
     title: '',
     genre: 'adventure',
@@ -58,6 +59,7 @@ export default function CreateBookScreen({ navigation }) {
       navigation.goBack();
     }
   };
+
   const handleCreateBook = async () => {
     try {
       setLoading(true);
@@ -124,6 +126,7 @@ export default function CreateBookScreen({ navigation }) {
       />
     </View>
   );
+
   const renderStep3 = () => (
     <View>
       <Text style={styles.stepTitle}>Tema, Tom e Faixa Etária</Text>
@@ -228,6 +231,7 @@ export default function CreateBookScreen({ navigation }) {
     </ScrollView>
   );
 }
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -274,3 +278,5 @@ const styles = StyleSheet.create({
     marginHorizontal: 5,
   },
 });
+
+export default CreateBookScreen;

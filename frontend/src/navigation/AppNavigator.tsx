@@ -9,6 +9,7 @@ import CreateBookScreen from '../screens/CreateBookScreen';
 import ViewBookScreen from '../screens/ViewBookScreen';
 import ViewBookPDFScreen from '../screens/ViewBookPDFScreen';
 import FlipBookScreen from '../screens/FlipBookScreen';
+import { LoadingSpinner } from '../components/LoadingSpinner';
 
 export type RootStackParamList = {
   Login: undefined;
@@ -22,14 +23,14 @@ export type RootStackParamList = {
 
 const Stack = createStackNavigator<RootStackParamList>();
 
-import { LoadingSpinner } from '../components/LoadingSpinner';
-
 const AppNavigator = () => {
   const { signed, isLoading } = useAuth();
 
-  console.log('AppNavigator - signed:', signed);
-  console.log('AppNavigator - isLoading:', isLoading);
+  // Logging para debug (você pode substituir por um logger mais sofisticado se necessário)
+  console.debug('AppNavigator - signed:', signed);
+  console.debug('AppNavigator - isLoading:', isLoading);
 
+  // Enquanto o estado de carregamento estiver ativo, exibe um spinner
   if (isLoading) {
     return <LoadingSpinner />;
   }
@@ -44,6 +45,7 @@ const AppNavigator = () => {
           gestureDirection: 'horizontal',
         }}
       >
+        {/* Se o usuário não estiver autenticado, exibe as telas de Login e Registro */}
         {!signed ? (
           <>
             <Stack.Screen 
@@ -59,6 +61,7 @@ const AppNavigator = () => {
             />
           </>
         ) : (
+          // Caso o usuário esteja autenticado, exibe as demais telas
           <>
             <Stack.Screen 
               name="Home" 

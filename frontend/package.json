@@ -54,11 +54,5 @@
     "webpack-cli": "^5.1.4",
     "webpack-dev-server": "^4.15.2"
   },
-  "private": true,
-  "overrides": {
-    "webpack": "^5.89.0"
-  },
-  "resolutions": {
-    "webpack": "^5.89.0"
-  }
+  "private": true
 }

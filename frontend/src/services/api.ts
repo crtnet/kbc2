@@ -1,7 +1,7 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { logger } from '../utils/logger';
-import { signOut } from '../contexts/AuthContext';
+import { signOutGlobal } from '../contexts/AuthContext';
 
 const api = axios.create({
   baseURL: process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000/api',
@@ -14,24 +14,27 @@ const api = axios.create({
 api.interceptors.request.use(
   async (config) => {
     try {
-      const token = await AsyncStorage.getItem('@KidsBookCreator:token');
+      // Recupera o token e remove aspas extras, se houver
+      let token = await AsyncStorage.getItem('token');
       if (token) {
+        token = token.replace(/^"|"$/g, '');
         config.headers.Authorization = `Bearer ${token}`;
       }
       
       logger.info('API Request', {
         method: config.method,
         url: config.url,
+        token, // para debug (remova em produção)
       });
       
       return config;
     } catch (error) {
-      logger.error('Error getting token from AsyncStorage', error);
+      logger.error('Erro ao obter token do AsyncStorage', error);
       return config;
     }
   },
   (error) => {
-    logger.error('API Request Error', error);
+    logger.error('Erro na requisição da API', error);
     return Promise.reject(error);
   }
 );
@@ -45,7 +48,7 @@ api.interceptors.response.use(
     return response;
   },
   async (error) => {
-    logger.error('API Response Error', {
+    logger.error('Erro na resposta da API', {
       status: error.response?.status,
       message: error.message,
       url: error.config?.url,
@@ -53,10 +56,10 @@ api.interceptors.response.use(
     
     if (error.response?.status === 401) {
       // Token expirado ou inválido
-      await AsyncStorage.removeItem('@KidsBookCreator:token');
+      await AsyncStorage.removeItem('token');
       
-      // Deslogar o usuário
-      signOut();
+      // Deslogar o usuário utilizando a função global
+      await signOutGlobal();
     }
     
     return Promise.reject(error);

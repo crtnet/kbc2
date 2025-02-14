@@ -19,14 +19,15 @@ const LoginScreen = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [emailError, setEmailError] = useState('');
   const [passwordError, setPasswordError] = useState('');
-  
+
   const navigation = useNavigation();
   const { signIn } = useAuth();
 
+  // Valida os campos do formulário de login
   const validateForm = () => {
     let isValid = true;
     
-    // Validação do email
+    // Validação do e-mail
     if (!email) {
       setEmailError('O e-mail é obrigatório');
       isValid = false;
@@ -51,14 +52,15 @@ const LoginScreen = () => {
     return isValid;
   };
 
+  // Função para efetuar o login
   const handleLogin = async () => {
     if (!validateForm()) return;
 
     try {
       setIsLoading(true);
       await signIn(email, password);
-      // A navegação será controlada automaticamente pelo AppNavigator
-      // que redirecionará para a HomeScreen quando signed = true
+      // A navegação será controlada automaticamente pelo AppNavigator,
+      // que redirecionará para a HomeScreen quando o estado de autenticação mudar.
     } catch (error) {
       Alert.alert(
         'Erro no login',

@@ -1,4 +1,10 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  useEffect,
+} from 'react';
 import { Alert } from 'react-native';
 import { api } from '../services/api';
 import { useAsyncStorage } from '../hooks/useAsyncStorage';
@@ -22,45 +28,57 @@ interface AuthContextData {
 
 const AuthContext = createContext<AuthContextData>({} as AuthContextData);
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { storedValue: token, setValue: setToken, removeValue: removeToken } = useAsyncStorage<string>('token');
-  const { storedValue: userData, setValue: setUserData, removeValue: removeUserData } = useAsyncStorage<User>('user');
+// Exporta uma referência global para a função signOut para uso fora de componentes
+export let signOutGlobal: () => Promise<void> = async () => {
+  console.warn('signOutGlobal ainda não foi inicializado.');
+};
+
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
+  const {
+    storedValue: token,
+    setValue: setToken,
+    removeValue: removeToken,
+  } = useAsyncStorage<string>('token');
+  const {
+    storedValue: userData,
+    setValue: setUserData,
+    removeValue: removeUserData,
+  } = useAsyncStorage<User>('user');
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    console.log('AuthContext - userData:', userData);
-    console.log('AuthContext - token:', token);
-    console.log('AuthContext - isLoading:', isLoading);
+    logger.info('AuthContext - userData:', userData);
+    logger.info('AuthContext - token:', token);
+    logger.info('AuthContext - isLoading:', isLoading);
 
-    // Verificar se o token é válido ao iniciar o app
     const validateToken = async () => {
       if (token) {
         try {
-          console.log('Validating token:', token);
+          logger.info('Validando token:', token);
           const response = await api.get('/auth/verify', {
-            headers: { Authorization: `Bearer ${token}` }
+            headers: { Authorization: `Bearer ${token}` },
           });
-          
-          console.log('Token validation response:', response.data);
-          
+
+          logger.info('Resposta da validação do token:', response.data);
+
           if (response.data.valid) {
-            logger.info('Token validated successfully');
-            
-            // Se recebeu um novo token, atualiza
+            logger.info('Token validado com sucesso');
+            // Se um novo token for recebido, atualiza-o
             if (response.data.token) {
-              await setToken(response.data.token);
+              await setToken(response.data.token.trim().replace(/^"|"$/g, ''));
             }
-            
             // Atualiza os dados do usuário
             if (response.data.user) {
               await setUserData(response.data.user);
             }
           } else {
-            logger.warn('Token is invalid');
+            logger.warn('Token é inválido');
             await signOut();
           }
         } catch (error) {
-          logger.error('Token validation failed', error);
+          logger.error('Falha na validação do token', error);
           await signOut();
         }
       }
@@ -74,19 +92,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setIsLoading(true);
       const response = await api.post('/auth/login', { email, password });
-      
+
       const { token, user } = response.data;
-      
-      console.log('SignIn - token:', token);
-      console.log('SignIn - user:', user);
-      
-      await setToken(token);
+
+      logger.info('SignIn - token recebido:', token);
+      logger.info('SignIn - user:', user);
+
+      // Remove eventuais aspas extras do token
+      const tokenStr =
+        typeof token === 'string'
+          ? token.trim().replace(/^"|"$/g, '')
+          : '';
+      if (!tokenStr) {
+        throw new Error('Token inválido retornado pelo servidor');
+      }
+
+      await setToken(tokenStr);
       await setUserData(user);
-      
-      logger.info('User signed in successfully', { userId: user.id });
+
+      logger.info('Usuário logado com sucesso', { userId: user.id });
     } catch (error) {
-      logger.error('Sign in failed', error);
-      Alert.alert('Erro', 'Não foi possível fazer login');
+      logger.error('Falha no login', error);
+      Alert.alert(
+        'Erro no login',
+        error instanceof Error ? error.message : 'Ocorreu um erro ao fazer login'
+      );
       throw error;
     } finally {
       setIsLoading(false);
@@ -97,42 +127,58 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await removeToken();
       await removeUserData();
-      logger.info('User signed out');
+      logger.info('Usuário deslogado');
     } catch (error) {
-      logger.error('Sign out failed', error);
+      logger.error('Falha ao deslogar', error);
     }
   }, []);
 
-  const signUp = useCallback(async (name: string, email: string, password: string) => {
-    try {
-      setIsLoading(true);
-      const response = await api.post('/auth/register', { name, email, password });
-      
-      const { token, user } = response.data;
-      
-      await setToken(token);
-      await setUserData(user);
-      
-      logger.info('User registered successfully', { userId: user.id });
-    } catch (error) {
-      logger.error('Sign up failed', error);
-      Alert.alert('Erro', 'Não foi possível criar a conta');
-      throw error;
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  // Atualiza a referência global para signOut
+  signOutGlobal = signOut;
+
+  const signUp = useCallback(
+    async (name: string, email: string, password: string) => {
+      try {
+        setIsLoading(true);
+        const response = await api.post('/auth/register', {
+          name,
+          email,
+          password,
+        });
+
+        const { token, user } = response.data;
+
+        await setToken(
+          typeof token === 'string'
+            ? token.trim().replace(/^"|"$/g, '')
+            : ''
+        );
+        await setUserData(user);
+
+        logger.info('Usuário registrado com sucesso', { userId: user.id });
+      } catch (error) {
+        logger.error('Falha ao registrar', error);
+        Alert.alert('Erro', 'Não foi possível criar a conta');
+        throw error;
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    []
+  );
 
   return (
-    <AuthContext.Provider value={{
-      user: userData,
-      token,
-      isLoading,
-      signed: !!userData && !!token,
-      signIn,
-      signOut,
-      signUp
-    }}>
+    <AuthContext.Provider
+      value={{
+        user: userData,
+        token,
+        isLoading,
+        signed: !!userData && !!token,
+        signIn,
+        signOut,
+        signUp,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
@@ -140,10 +186,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  
   if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    throw new Error('useAuth deve ser usado dentro de um AuthProvider');
   }
-  
   return context;
 };

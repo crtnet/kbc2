@@ -1,4 +1,5 @@
-export default {
+// src/config.ts
+export const config = {
   jwtSecret: process.env.JWT_SECRET || 'your-secret-key',
   jwtExpiresIn: '7d',
   mongoUri: process.env.MONGODB_URI || 'mongodb://localhost:27017/kids-book-creator',

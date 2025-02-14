@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import AuthController from '../controllers/authController';
+import AuthController from '../controllers/AuthController';
 import { auth } from './bookRoutes'; // Importar middleware de autenticação
 
 const router = Router();

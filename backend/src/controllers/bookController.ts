@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import path from 'path';
 import fs from 'fs';
 import { logger } from '../utils/logger';
-import { config } from '../config';
+import { config } from '../config';  // Importação usando named export
 import { ObjectId } from 'mongodb';
 
 class BookController {
