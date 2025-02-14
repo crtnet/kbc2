@@ -1,9 +1,8 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_URL } from '../config';
-
-const TOKEN_KEY = '@KidsBookCreator:token';
-const USER_KEY = '@KidsBookCreator:user';
+import { STORAGE_KEYS, API_ENDPOINTS, TOKEN_REFRESH_INTERVAL } from '../config/constants';
+import { logger } from '../utils/logger';
 
 export interface User {
   id: string;
@@ -27,7 +26,9 @@ class AuthService {
 
   async login(email: string, password: string): Promise<{ user: User; token: string }> {
     try {
-      const response = await axios.post(`${API_URL}/auth/login`, {
+      logger.info('Iniciando login', { email });
+      
+      const response = await axios.post(`${API_URL}${API_ENDPOINTS.AUTH.LOGIN}`, {
         email,
         password,
       });
@@ -39,22 +40,25 @@ class AuthService {
       this.setupAxiosInterceptors();
       this.scheduleTokenRefresh();
 
+      logger.info('Login realizado com sucesso', { userId: user.id });
       return { user, token };
     } catch (error) {
-      console.error('Erro no login:', error);
+      logger.error('Erro no login', error);
       throw error;
     }
   }
 
   async logout(): Promise<void> {
     try {
-      await AsyncStorage.multiRemove([TOKEN_KEY, USER_KEY]);
+      logger.info('Iniciando logout');
+      await AsyncStorage.multiRemove([STORAGE_KEYS.TOKEN, STORAGE_KEYS.USER]);
       if (this.tokenRefreshTimeout) {
         clearTimeout(this.tokenRefreshTimeout);
       }
       delete axios.defaults.headers.common['Authorization'];
+      logger.info('Logout realizado com sucesso');
     } catch (error) {
-      console.error('Erro no logout:', error);
+      logger.error('Erro no logout', error);
       throw error;
     }
   }

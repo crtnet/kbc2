@@ -22,16 +22,29 @@ export const ViewBookPDFScreen: React.FC = () => {
   useEffect(() => {
     const loadBookAndPdf = async () => {
       try {
-        logger.info('Opening book PDF', { bookId: route.params.bookId });
+        setLoading(true);
+        setError(null);
+        
+        logger.info('Carregando informações do livro', { bookId: route.params.bookId });
         const bookData = await getBookById(route.params.bookId);
         setBook(bookData);
 
-        logger.info('Fetching PDF URL', { bookId: route.params.bookId });
+        logger.info('Obtendo URL do PDF', { bookId: route.params.bookId });
         const url = await getBookPdfUrl(route.params.bookId);
         setPdfUrl(url);
-      } catch (err) {
-        logger.error('Error loading book PDF', { error: err.message });
-        setError(err.message);
+      } catch (err: any) {
+        logger.error('Erro ao carregar PDF do livro', { 
+          error: err.message,
+          status: err.response?.status 
+        });
+        
+        if (err.response?.status === 401) {
+          setError('Sessão expirada. Por favor, faça login novamente.');
+        } else if (err.response?.status === 404) {
+          setError('PDF não encontrado. O arquivo pode ainda estar sendo gerado.');
+        } else {
+          setError('Não foi possível carregar o PDF. Tente novamente mais tarde.');
+        }
       } finally {
         setLoading(false);
       }
@@ -73,7 +86,7 @@ export const ViewBookPDFScreen: React.FC = () => {
       <PDFViewer 
         pdfUrl={pdfUrl}
         onError={(error) => {
-          logger.error('Error displaying PDF', { error });
+          logger.error('Erro ao exibir PDF', { error });
           setError('Erro ao exibir o PDF');
         }}
       />

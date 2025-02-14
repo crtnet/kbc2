@@ -66,7 +66,7 @@ export default function CreateBookScreen({ navigation }) {
       const response = await bookService.createBook(bookData);
       console.log('Livro criado:', response);
       
-      navigation.navigate('ViewBook', { bookId: response.book._id });
+      navigation.navigate('ViewBook', { bookId: response.id });
     } catch (error) {
       console.error('Erro ao criar livro:', error);
       setError(error.response?.data?.message || 'Erro ao criar livro');

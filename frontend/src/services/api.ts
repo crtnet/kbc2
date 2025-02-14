@@ -1,10 +1,11 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { logger } from '../utils/logger';
+import { signOut } from '../contexts/AuthContext';
 
 const api = axios.create({
   baseURL: process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000/api',
-  timeout: 10000,
+  timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -43,7 +44,7 @@ api.interceptors.response.use(
     });
     return response;
   },
-  (error) => {
+  async (error) => {
     logger.error('API Response Error', {
       status: error.response?.status,
       message: error.message,
@@ -52,7 +53,10 @@ api.interceptors.response.use(
     
     if (error.response?.status === 401) {
       // Token expirado ou inválido
-      AsyncStorage.removeItem('@KidsBookCreator:token');
+      await AsyncStorage.removeItem('@KidsBookCreator:token');
+      
+      // Deslogar o usuário
+      signOut();
     }
     
     return Promise.reject(error);

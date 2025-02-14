@@ -1,19 +1,19 @@
 import React from 'react';
-import { View, SafeAreaView } from 'react-native';
+import { SafeAreaView } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
-import './config/i18n';
+import './i18n';
 import AppNavigator from './navigation/AppNavigator';
 import { ThemeProvider } from './contexts/ThemeContext';
 
 const App = () => {
   return (
-    <ThemeProvider>
-      <NavigationContainer>
-        <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container}>
+      <ThemeProvider>
+        <NavigationContainer>
           <AppNavigator />
-        </SafeAreaView>
-      </NavigationContainer>
-    </ThemeProvider>
+        </NavigationContainer>
+      </ThemeProvider>
+    </SafeAreaView>
   );
 };
 

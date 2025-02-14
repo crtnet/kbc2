@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import User from '../models/User';
+import { UserModel } from '../models/User';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 
@@ -18,7 +18,7 @@ export class AuthController {
       }
 
       const decoded = jwt.verify(token, config.jwtSecret);
-      const user = await User.findById(decoded.id);
+      const user = await UserModel.findById(decoded.id, req.db);
 
       if (!user) {
         return res.status(401).json({ 
@@ -74,7 +74,7 @@ export class AuthController {
       const { name, email, password, type } = req.body;
 
       // Verificar se usuário já existe
-      const existingUser = await User.findOne({ email });
+      const existingUser = await UserModel.findOne({ email }, req.db);
       if (existingUser) {
         return res.status(400).json({ error: 'Usuário já existe' });
       }
@@ -84,14 +84,12 @@ export class AuthController {
       const hashedPassword = await bcrypt.hash(password, salt);
 
       // Criar novo usuário
-      const user = new User({
+      const user = await UserModel.create({
         name,
         email,
         password: hashedPassword,
         type
-      });
-
-      await user.save();
+      }, req.db);
 
       logger.info(`Usuário registrado: ${email}`);
 
@@ -121,7 +119,7 @@ export class AuthController {
       }
 
       // Verificar se usuário existe
-      const user = await User.findOne({ email });
+      const user = await UserModel.findOne({ email }, req.db);
       if (!user) {
         return res.status(400).json({ error: 'Credenciais inválidas' });
       }
