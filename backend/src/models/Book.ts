@@ -1,116 +1,169 @@
-// Book.ts
 import mongoose, { Document, Schema } from 'mongoose';
-
-export interface IPage {
-  _id?: string | mongoose.Types.ObjectId;
-  text: string;
-  pageNumber: number;
-  imageUrl: string;
-}
+import { logger } from '../utils/logger';
 
 export type AgeRange = '1-2' | '3-4' | '5-6' | '7-8' | '9-10' | '11-12';
 
-export interface IBook extends Document {
-  _id: string | mongoose.Types.ObjectId;
-  title: string;
-  userId: string | mongoose.Types.ObjectId;
-  genre: string;
-  theme: string;
-  mainCharacter: string;
-  setting: string;
-  tone: string;
-  ageRange: AgeRange;
-  content: string;
-  wordCount: number;
-  status: 'generating' | 'completed' | 'error';
-  error?: string;
-  generationTime?: number;
-  pages: IPage[];
-  language: string;
-  pdfUrl?: string; // novo campo para armazenar o caminho do PDF
-  createdAt: Date;
-  updatedAt: Date;
-
-  // Método para converter para objeto plano com IDs como strings
-  toPlainObject(): any;
+interface IPage {
+  pageNumber: number;
+  text: string;
+  imageUrl: string;
 }
 
-const PageSchema = new Schema({
-  text: { type: String, required: true },
-  pageNumber: { type: Number, required: true },
-  imageUrl: { type: String, required: true }
+interface IMetadata {
+  wordCount: number;
+  pageCount: number;
+  createdAt: Date;
+  lastModified: Date;
+  error?: string;
+}
+
+export interface IBook extends Document {
+  title: string;
+  authorName: string;
+  userId: string;
+  ageRange: AgeRange;
+  theme: string;
+  language: string;
+  pages: IPage[];
+  status: 'processing' | 'completed' | 'error';
+  pdfUrl?: string;
+  metadata: IMetadata;
+}
+
+const pageSchema = new Schema<IPage>({
+  pageNumber: { 
+    type: Number, 
+    required: [true, 'Número da página é obrigatório'],
+    min: [1, 'Número da página deve ser maior que 0']
+  },
+  text: { 
+    type: String, 
+    required: [true, 'Texto da página é obrigatório'],
+    trim: true
+  },
+  imageUrl: { 
+    type: String, 
+    default: '',
+    trim: true
+  }
 });
 
-const BookSchema = new Schema({
-  title: { type: String, required: true },
+const metadataSchema = new Schema<IMetadata>({
+  wordCount: { 
+    type: Number, 
+    required: [true, 'Contagem de palavras é obrigatória'],
+    min: [1, 'Contagem de palavras deve ser maior que 0']
+  },
+  pageCount: { 
+    type: Number, 
+    required: [true, 'Contagem de páginas é obrigatória'],
+    min: [1, 'Contagem de páginas deve ser maior que 0']
+  },
+  createdAt: { 
+    type: Date, 
+    required: true,
+    default: Date.now
+  },
+  lastModified: { 
+    type: Date, 
+    required: true,
+    default: Date.now
+  },
+  error: { 
+    type: String,
+    trim: true
+  }
+});
+
+const bookSchema = new Schema<IBook>({
+  title: { 
+    type: String, 
+    required: [true, 'Título é obrigatório'],
+    trim: true,
+    minlength: [2, 'Título deve ter pelo menos 2 caracteres'],
+    maxlength: [100, 'Título deve ter no máximo 100 caracteres']
+  },
+  authorName: { 
+    type: String, 
+    required: [true, 'Nome do autor é obrigatório'],
+    trim: true,
+    minlength: [2, 'Nome do autor deve ter pelo menos 2 caracteres'],
+    maxlength: [100, 'Nome do autor deve ter no máximo 100 caracteres']
+  },
   userId: { 
-    type: Schema.Types.ObjectId, 
-    ref: 'User',
-    required: true,
-    index: true
+    type: String, 
+    required: [true, 'ID do usuário é obrigatório'],
+    trim: true
   },
-  genre: { type: String, required: true },
-  theme: { type: String, required: true },
-  mainCharacter: { type: String, required: true },
-  setting: { type: String, required: true },
-  tone: { type: String, required: true },
-  ageRange: {
+  ageRange: { 
+    type: String, 
+    enum: {
+      values: ['1-2', '3-4', '5-6', '7-8', '9-10', '11-12'],
+      message: 'Faixa etária inválida'
+    },
+    required: [true, 'Faixa etária é obrigatória']
+  },
+  theme: { 
+    type: String, 
+    default: 'default',
+    trim: true
+  },
+  language: { 
+    type: String, 
+    default: 'pt-BR',
+    trim: true
+  },
+  pages: [pageSchema],
+  status: { 
+    type: String, 
+    enum: {
+      values: ['processing', 'completed', 'error'],
+      message: 'Status inválido'
+    },
+    default: 'processing'
+  },
+  pdfUrl: { 
     type: String,
-    required: true,
-    enum: ['1-2', '3-4', '5-6', '7-8', '9-10', '11-12'],
-    validate: {
-      validator: function(v: string) {
-        return ['1-2', '3-4', '5-6', '7-8', '9-10', '11-12'].includes(v);
-      },
-      message: props => `${props.value} não é uma faixa etária válida`
-    }
+    trim: true
   },
-  content: { type: String, required: false },
-  wordCount: { type: Number, required: false },
-  status: {
-    type: String,
-    required: true,
-    enum: ['generating', 'completed', 'error'],
-    default: 'generating'
-  },
-  error: { type: String, required: false },
-  generationTime: { type: Number, required: false },
-  pages: {
-    type: [PageSchema],
-    required: false,
-    default: []
-  },
-  language: { type: String, required: true, default: 'pt-BR' },
-  pdfUrl: { type: String, required: false } // novo campo
+  metadata: { 
+    type: metadataSchema, 
+    required: [true, 'Metadados são obrigatórios']
+  }
 }, {
   timestamps: true
 });
 
-// Método para converter ObjectIds para strings
-BookSchema.methods.toPlainObject = function() {
-  const obj = this.toObject();
-  obj._id = obj._id.toString();
-  obj.userId = obj.userId.toString();
-  if (obj.pages && Array.isArray(obj.pages)) {
-    obj.pages = obj.pages.map(page => ({
-      ...page,
-      _id: page._id ? page._id.toString() : undefined
-    }));
-  }
-  return obj;
-};
+// Índices
+bookSchema.index({ userId: 1, 'metadata.createdAt': -1 });
+bookSchema.index({ status: 1 });
+bookSchema.index({ title: 'text', authorName: 'text' });
 
-BookSchema.index({ userId: 1, createdAt: -1 });
-BookSchema.index({ title: 'text' });
+// Middleware de validação
+bookSchema.pre('save', async function(next) {
+  try {
+    // Verifica conexão com o banco
+    if (mongoose.connection.readyState !== 1) {
+      throw new Error('Sem conexão com o banco de dados');
+    }
 
-BookSchema.pre('save', function(next) {
-  if (!this.isModified('pages')) return next();
-  const pages = this.pages as IPage[];
-  const isSequential = pages.every((page, index) => page.pageNumber === index + 1);
-  if (!isSequential) {
-    next(new Error('Números das páginas devem ser sequenciais'));
+    // Validações adicionais
+    if (this.pages.length === 0) {
+      throw new Error('O livro deve ter pelo menos uma página');
+    }
+
+    if (!this.userId) {
+      throw new Error('ID do usuário é obrigatório');
+    }
+
+    // Atualiza lastModified
+    this.metadata.lastModified = new Date();
+
+    next();
+  } catch (error) {
+    logger.error('Erro na validação do livro:', error);
+    next(error);
   }
-  next();
 });
 
-export default mongoose.model<IBook>('Book', BookSchema);
+export const Book = mongoose.model<IBook>('Book', bookSchema);

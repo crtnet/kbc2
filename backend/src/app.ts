@@ -5,7 +5,8 @@ import { config } from './config';
 import bookRoutes from './routes/bookRoutes';
 import authRoutes from './routes/auth.routes';
 import { logger } from './utils/logger';
-import { databaseMiddleware, connectToDatabase } from './middleware/databaseMiddleware';
+import { databaseMiddleware } from './middleware/databaseMiddleware';
+import { connectDatabase } from './config/database';
 
 class App {
   public express: express.Application;
@@ -15,6 +16,7 @@ class App {
     this.middlewares();
     this.database();
     this.routes();
+    this.errorHandling();
   }
 
   private middlewares(): void {
@@ -35,35 +37,54 @@ class App {
         res.setHeader('Content-Type', 'application/pdf');
       }
     }));
-
-    // Tratamento de erros global
-    this.express.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
-      logger.error('Erro não tratado', {
-        message: err.message,
-        stack: err.stack,
-        path: req.path
-      });
-
-      res.status(500).json({
-        error: 'Erro interno do servidor',
-        message: process.env.NODE_ENV === 'production' ? 'Ocorreu um erro' : err.message
-      });
-    });
   }
 
   private async database(): Promise<void> {
     try {
-      await connectToDatabase();
+      // Tenta conectar ao banco de dados
+      await connectDatabase();
       logger.info('Conexão com o banco de dados estabelecida');
     } catch (error) {
-      logger.error('Erro ao conectar com o banco de dados', error);
-      process.exit(1);
+      logger.error('Erro ao conectar com o banco de dados:', {
+        error: error instanceof Error ? error.message : 'Erro desconhecido',
+        stack: error instanceof Error ? error.stack : undefined
+      });
+      // Não finaliza o processo, permite que o servidor continue tentando reconectar
     }
   }
 
   private routes(): void {
     this.express.use('/api/books', bookRoutes);
     this.express.use('/api/auth', authRoutes);
+  }
+
+  private errorHandling(): void {
+    // Tratamento para rotas não encontradas
+    this.express.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
+      res.status(404).json({
+        error: 'Rota não encontrada',
+        path: req.path
+      });
+    });
+
+    // Tratamento de erros global
+    this.express.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+      logger.error('Erro não tratado', {
+        message: err.message,
+        stack: err.stack,
+        path: req.path,
+        body: req.body,
+        method: req.method
+      });
+
+      const errorResponse = {
+        error: 'Erro interno do servidor',
+        message: process.env.NODE_ENV === 'production' ? 'Ocorreu um erro' : err.message,
+        stack: process.env.NODE_ENV !== 'production' ? err.stack : undefined
+      };
+
+      res.status(500).json(errorResponse);
+    });
   }
 }
 

@@ -1,14 +1,33 @@
 # Kids Book Creator
 
 ## Sobre o Projeto
-Kids Book Creator é uma aplicação para criar livros infantis personalizados usando tecnologias modernas como geração de texto e imagens por IA.
+Kids Book Creator é uma aplicação para criar livros infantis personalizados usando tecnologias modernas como geração de texto e imagens por IA. O projeto permite que usuários criem histórias únicas e personalizadas, com ilustrações geradas por IA e um layout profissional em PDF.
+
+## Estado Atual do Projeto
+O projeto está em desenvolvimento ativo com as seguintes funcionalidades já implementadas:
+- ✅ Sistema de geração de PDF com layout profissional
+- ✅ Visualização de livros na HomeScreen
+- ✅ Sistema de temas visuais (claro/escuro)
+- ✅ Cache de imagens e otimização de performance
+- ⏳ Geração de imagens via DALL-E (em desenvolvimento)
+- ⏳ Sistema de avatar personalizado (em desenvolvimento)
+- ⏳ Compartilhamento de livros (planejado)
+- ⏳ Suporte a múltiplos idiomas (planejado)
 
 ## Tecnologias Utilizadas
-- Frontend: React Native/Expo com TypeScript
-- Backend: Node.js com TypeScript
-- Banco de Dados: MongoDB
+- Frontend: 
+  - React Native/Expo com TypeScript
+  - Expo Router para navegação
+  - Context API para gerenciamento de estado
+  - Styled Components para estilização
+- Backend: 
+  - Node.js com TypeScript
+  - Express para API REST
+  - Winston para logging
+  - Jest para testes
+- Banco de Dados: MongoDB com Mongoose
 - Geração de Imagens: DALL-E (OpenAI)
-- Geração de PDF: PDFKit
+- Geração de PDF: PDFKit com suporte a fontes personalizadas
 
 ## Funcionalidades
 - Geração de histórias personalizadas

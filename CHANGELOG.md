@@ -1,33 +1,52 @@
 # Changelog
 
-## [Não publicado]
-
-### Corrigido
-- Correção de navegação para FlipBookScreen com tratamento de ID undefined
-- Adicionado tratamento de erro mais robusto na busca de PDF
-- Validação adicional para URL do PDF
-- Melhoria na segurança da navegação entre telas
-- Correção da transformação de IDs de livros no frontend
-- Mapeamento correto dos campos de livros vindos do backend
-- Adicionado fallback para imagem de capa e campos opcionais
-- Tratamento de status de livros para compatibilidade frontend/backend
-
-### Adicionado
-- Logs de erro detalhados para problemas de navegação e carregamento de PDF
-- Mapeamento robusto de dados de livros
-- Suporte a campos opcionais e valores padrão
+## [v0.3.0] - Em Desenvolvimento
 
 ### Planejado
-- Sistema de visualização de livros na HomeScreen
-- Visualizador de PDF com modo flip
-- Sistema de geração e persistência de avatar
-- Suporte a diferentes temas visuais
+- Integração com ChatGPT para geração de histórias
+- Integração com DALL-E para geração de imagens
+- Sistema de visualização de livro com modo flip
+- Geração de PDF em formato A3
+- Sistema de avatar personalizado
+- Expansão do sistema de temas
+- Suporte a múltiplos idiomas (i18n)
 - Sistema de compartilhamento de livros
-- Suporte a múltiplos idiomas
+- Recursos sociais (likes, comentários)
+
+### Adicionado
+- Plano de desenvolvimento detalhado (DEVELOPMENT_PLAN.md)
+- Estrutura inicial para novas funcionalidades
+- Documentação expandida
+
+## [v0.2.0] - Em Desenvolvimento
+
+### Adicionado
+- Sistema completo de temas com suporte a modo claro/escuro
+- Novo sistema de navegação com Expo Router
+- Sistema de cache de imagens para melhor performance
+- Logs detalhados usando Winston no backend
+- Sistema robusto de tratamento de erros
+- Validações aprimoradas em todas as rotas da API
+
+### Corrigido
+- Navegação para FlipBookScreen com tratamento de ID undefined
+- Tratamento de erro na busca de PDF
+- Validação de URL do PDF
+- Segurança na navegação entre telas
+- Transformação de IDs de livros no frontend
+- Mapeamento de campos de livros do backend
+- Fallback para imagem de capa e campos opcionais
+- Compatibilidade de status de livros entre frontend/backend
 
 ### Em Desenvolvimento
-- Correção de dependências para suporte web
-- Instalação de @expo/webpack-config
+- Sistema de geração de imagens via DALL-E
+- Implementação do avatar personalizado
+- Suporte a web com @expo/webpack-config
+
+### Planejado
+- Sistema de compartilhamento de livros
+- Suporte a múltiplos idiomas
+- Modo flip para visualização de PDF
 
 ## [Anterior]
 

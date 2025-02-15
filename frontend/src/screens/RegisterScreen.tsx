@@ -14,7 +14,8 @@ import { useNavigation } from '@react-navigation/native';
 import { api } from '../services/api';
 
 export default function RegisterScreen() {
-  const navigation = useNavigation();
+  // Substitua "any" pelo tipo específico da sua navegação, se houver.
+  const navigation = useNavigation<any>();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -50,10 +51,10 @@ export default function RegisterScreen() {
           }
         ]
       );
-    } catch (error) {
+    } catch (error: any) {
       Alert.alert(
         'Erro',
-        error.response?.data?.message || 'Ocorreu um erro ao realizar o cadastro'
+        error?.response?.data?.message || 'Ocorreu um erro ao realizar o cadastro'
       );
     } finally {
       setLoading(false);

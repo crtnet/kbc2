@@ -1,295 +1,265 @@
 import { Request, Response } from 'express';
-import path from 'path';
-import fs from 'fs';
 import { logger } from '../utils/logger';
-import { config } from '../config';  // Importação usando named export
-import { ObjectId } from 'mongodb';
+import bookService from '../services/bookService';
+import { Book } from '../models/Book';
+import mongoose from 'mongoose';
+import { config } from '../config';
 
 class BookController {
-  async createBook(req: Request, res: Response) {
+  async listBooks(req: Request, res: Response) {
     try {
-      const userId = req.user.id;
-      const bookData = {
-        ...req.body,
-        userId,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      };
+      const userId = req.user?.id;
+      
+      // Log apenas em desenvolvimento
+      if (config.nodeEnv === 'development') {
+        logger.info('Listagem de livros - Usuário autenticado:', { userId });
+      }
 
-      logger.info('Criando novo livro', { userId });
+      if (!userId) {
+        logger.error('Usuário não autenticado na listagem de livros');
+        return res.status(401).json({ 
+          error: 'Não autorizado',
+          details: 'Usuário não autenticado'
+        });
+      }
 
-      const result = await req.db.collection('books').insertOne(bookData);
+      // Verifica a conexão com o banco antes de fazer a query
+      if (mongoose.connection.readyState !== 1) {
+        logger.error('Banco de dados não conectado');
+        return res.status(503).json({ 
+          error: 'Serviço indisponível',
+          details: 'Erro de conexão com o banco de dados'
+        });
+      }
 
-      logger.info('Livro criado com sucesso', { 
-        bookId: result.insertedId, 
-        userId 
+      const books = await Book.find({ userId })
+        .sort({ 'metadata.createdAt': -1 })
+        .select('-pages.text')
+        .lean()
+        .exec();
+      
+      // Log apenas em desenvolvimento
+      if (config.nodeEnv === 'development') {
+        logger.info(`Livros encontrados para o usuário ${userId}:`, { count: books.length });
+      }
+
+      return res.json({
+        success: true,
+        data: books,
+        count: books.length
       });
-
-      res.status(201).json({
-        id: result.insertedId,
-        ...bookData
-      });
-    } catch (error) {
-      logger.error('Erro ao criar livro', { 
+    } catch (error: any) {
+      logger.error('Erro ao listar livros:', {
         error: error.message,
-        userId: req.user.id 
+        stack: config.nodeEnv === 'development' ? error.stack : undefined,
+        code: error.code
       });
-      res.status(500).json({ error: 'Erro ao criar livro' });
-    }
-  }
-
-  async getBooks(req: Request, res: Response) {
-    try {
-      const userId = req.user.id;
-
-      logger.info('Buscando livros do usuário', { userId });
-
-      const books = await req.db.collection('books')
-        .find({ userId })
-        .toArray();
-
-      logger.info('Livros obtidos com sucesso', { 
-        userId, 
-        booksCount: books.length 
+      
+      // Tratamento específico para erros do MongoDB
+      if (error instanceof mongoose.Error) {
+        return res.status(503).json({
+          error: 'Erro no banco de dados',
+          details: config.nodeEnv === 'development' ? error.message : 'Erro ao acessar o banco de dados'
+        });
+      }
+      
+      return res.status(500).json({
+        error: 'Erro interno do servidor',
+        details: config.nodeEnv === 'development' ? error.message : 'Erro ao processar a requisição'
       });
-
-      res.json(books);
-    } catch (error) {
-      logger.error('Erro ao buscar livros', { 
-        error: error.message,
-        userId: req.user.id 
-      });
-      res.status(500).json({ error: 'Erro ao buscar livros' });
     }
   }
 
   async getBook(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const userId = req.user.id;
+      const userId = req.user?.id;
 
-      logger.info('Buscando livro específico', { bookId: id, userId });
+      // Log apenas em desenvolvimento
+      if (config.nodeEnv === 'development') {
+        logger.info('Busca de livro específico:', { bookId: id, userId });
+      }
 
-      const book = await req.db.collection('books').findOne({
-        _id: new ObjectId(id),
-        userId
-      });
+      if (!userId) {
+        logger.error('Usuário não autenticado na busca de livro');
+        return res.status(401).json({ 
+          error: 'Não autorizado',
+          details: 'Usuário não autenticado'
+        });
+      }
 
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        logger.error('ID de livro inválido', { bookId: id });
+        return res.status(400).json({ 
+          error: 'Requisição inválida',
+          details: 'ID de livro inválido'
+        });
+      }
+
+      // Verifica a conexão com o banco antes de fazer a query
+      if (mongoose.connection.readyState !== 1) {
+        logger.error('Banco de dados não conectado');
+        return res.status(503).json({ 
+          error: 'Serviço indisponível',
+          details: 'Erro de conexão com o banco de dados'
+        });
+      }
+
+      const book = await Book.findOne({ _id: id, userId });
+      
       if (!book) {
-        logger.warn('Livro não encontrado', { bookId: id, userId });
-        return res.status(404).json({ error: 'Livro não encontrado' });
+        logger.error('Livro não encontrado', { bookId: id, userId });
+        return res.status(404).json({ 
+          error: 'Não encontrado',
+          details: 'Livro não encontrado'
+        });
       }
 
-      logger.info('Livro obtido com sucesso', { bookId: id, userId });
-      res.json(book);
-    } catch (error) {
-      logger.error('Erro ao buscar livro', { 
+      return res.json({
+        success: true,
+        data: book
+      });
+    } catch (error: any) {
+      logger.error('Erro ao buscar livro:', {
         error: error.message,
-        bookId: req.params.id,
-        userId: req.user.id 
+        stack: config.nodeEnv === 'development' ? error.stack : undefined,
+        code: error.code
       });
-      res.status(500).json({ error: 'Erro ao buscar livro' });
+      
+      // Tratamento específico para erros do MongoDB
+      if (error instanceof mongoose.Error) {
+        return res.status(503).json({
+          error: 'Erro no banco de dados',
+          details: config.nodeEnv === 'development' ? error.message : 'Erro ao acessar o banco de dados'
+        });
+      }
+      
+      return res.status(500).json({
+        error: 'Erro interno do servidor',
+        details: config.nodeEnv === 'development' ? error.message : 'Erro ao processar a requisição'
+      });
     }
   }
 
-  async updateBook(req: Request, res: Response) {
+  async createBook(req: Request, res: Response) {
     try {
-      const { id } = req.params;
-      const userId = req.user.id;
-      const updateData = {
-        ...req.body,
-        updatedAt: new Date()
-      };
+      const { 
+        title, 
+        prompt, 
+        ageRange, 
+        authorName,
+        theme = 'default',
+        language = 'pt-BR'
+      } = req.body;
 
-      logger.info('Atualizando livro', { bookId: id, userId });
-
-      const result = await req.db.collection('books').updateOne(
-        { 
-          _id: new ObjectId(id), 
-          userId 
-        },
-        { $set: updateData }
-      );
-
-      if (result.matchedCount === 0) {
-        logger.warn('Livro não encontrado para atualização', { bookId: id, userId });
-        return res.status(404).json({ error: 'Livro não encontrado' });
+      // Log apenas em desenvolvimento
+      if (config.nodeEnv === 'development') {
+        logger.info('Requisição de criação de livro recebida:', {
+          title,
+          ageRange,
+          theme,
+          language
+        });
       }
 
-      logger.info('Livro atualizado com sucesso', { bookId: id, userId });
-      res.json({ 
-        id, 
-        ...updateData 
-      });
-    } catch (error) {
-      logger.error('Erro ao atualizar livro', { 
-        error: error.message,
-        bookId: req.params.id,
-        userId: req.user.id 
-      });
-      res.status(500).json({ error: 'Erro ao atualizar livro' });
-    }
-  }
-
-  async deleteBook(req: Request, res: Response) {
-    try {
-      const { id } = req.params;
-      const userId = req.user.id;
-
-      logger.info('Excluindo livro', { bookId: id, userId });
-
-      const result = await req.db.collection('books').deleteOne({
-        _id: new ObjectId(id),
-        userId
-      });
-
-      if (result.deletedCount === 0) {
-        logger.warn('Livro não encontrado para exclusão', { bookId: id, userId });
-        return res.status(404).json({ error: 'Livro não encontrado' });
+      // Validações dos campos obrigatórios
+      if (!title || !prompt || !ageRange || !authorName) {
+        logger.error('Dados inválidos na requisição', { 
+          title: !!title,
+          prompt: !!prompt,
+          ageRange: !!ageRange,
+          authorName: !!authorName
+        });
+        return res.status(400).json({ 
+          error: 'Dados inválidos',
+          details: 'Todos os campos são obrigatórios: title, prompt, ageRange, authorName'
+        });
       }
 
-      // Tenta remover o PDF associado
-      const pdfPath = path.join(config.pdfDirectory, `${id}.pdf`);
-      if (fs.existsSync(pdfPath)) {
-        fs.unlinkSync(pdfPath);
-        logger.info('PDF do livro removido', { bookId: id });
+      // Validação da faixa etária
+      const validAgeRanges = ['1-2', '3-4', '5-6', '7-8', '9-10', '11-12'];
+      if (!validAgeRanges.includes(ageRange)) {
+        logger.error('Faixa etária inválida', { ageRange });
+        return res.status(400).json({
+          error: 'Dados inválidos',
+          details: `A faixa etária deve ser uma das seguintes: ${validAgeRanges.join(', ')}`
+        });
       }
 
-      logger.info('Livro excluído com sucesso', { bookId: id, userId });
-      res.status(204).send();
-    } catch (error) {
-      logger.error('Erro ao excluir livro', { 
-        error: error.message,
-        bookId: req.params.id,
-        userId: req.user.id 
-      });
-      res.status(500).json({ error: 'Erro ao excluir livro' });
-    }
-  }
-
-  async getBookPDF(req: Request, res: Response) {
-    try {
-      const { id } = req.params;
-      const userId = req.user.id;
-
-      logger.info('Solicitação de PDF recebida', { bookId: id, userId });
-
-      // Verifica se o livro existe e pertence ao usuário
-      const book = await req.db.collection('books').findOne({
-        _id: new ObjectId(id),
-        userId
-      });
-
-      if (!book) {
-        logger.warn('Livro não encontrado ou acesso negado', { bookId: id, userId });
-        return res.status(404).json({ error: 'Livro não encontrado' });
+      const userId = req.user?.id;
+      
+      if (!userId) {
+        logger.error('Usuário não autenticado na criação de livro');
+        return res.status(401).json({ 
+          error: 'Não autorizado',
+          details: 'Usuário não autenticado'
+        });
       }
 
-      // Constrói o caminho do arquivo PDF
-      const pdfPath = path.join(config.pdfDirectory, `${id}.pdf`);
-
-      // Verifica se o arquivo existe
-      if (!fs.existsSync(pdfPath)) {
-        logger.warn('Arquivo PDF não encontrado', { bookId: id, pdfPath });
-        return res.status(404).json({ error: 'PDF não encontrado' });
+      // Verifica a conexão com o banco antes de criar o livro
+      if (mongoose.connection.readyState !== 1) {
+        logger.error('Banco de dados não conectado');
+        return res.status(503).json({ 
+          error: 'Serviço indisponível',
+          details: 'Erro de conexão com o banco de dados'
+        });
       }
 
-      // Gera uma URL temporária para o PDF
-      const pdfUrl = `${config.apiUrl}/pdfs/${id}.pdf`;
-
-      logger.info('URL do PDF gerada com sucesso', { bookId: id, userId });
-
-      res.json({ url: pdfUrl });
-    } catch (error) {
-      logger.error('Erro ao obter PDF do livro', {
-        bookId: req.params.id,
-        error: error.message
-      });
-      res.status(500).json({ error: 'Erro ao obter PDF do livro' });
-    }
-  }
-
-  async getBookStatus(req: Request, res: Response) {
-    try {
-      const { id } = req.params;
-      const userId = req.user.id;
-
-      logger.info('Verificando status do livro', { bookId: id, userId });
-
-      // Verifica se o livro existe e pertence ao usuário
-      const book = await req.db.collection('books').findOne({
-        _id: new ObjectId(id),
-        userId
-      });
-
-      if (!book) {
-        logger.warn('Livro não encontrado ou acesso negado', { bookId: id, userId });
-        return res.status(404).json({ error: 'Livro não encontrado' });
-      }
-
-      // Verifica se o PDF existe
-      const pdfPath = path.join(config.pdfDirectory, `${id}.pdf`);
-      const pdfExists = fs.existsSync(pdfPath);
-
-      logger.info('Status do livro verificado', { 
-        bookId: id, 
+      // Criar livro usando o serviço
+      const book = await bookService.createBook({
+        title,
+        prompt,
+        ageRange,
+        authorName,
         userId,
-        pdfExists,
-        status: book.status 
+        theme,
+        language
       });
 
-      res.json({
-        status: book.status,
-        pdfReady: pdfExists
-      });
-    } catch (error) {
-      logger.error('Erro ao verificar status do livro', {
-        bookId: req.params.id,
-        error: error.message
-      });
-      res.status(500).json({ error: 'Erro ao verificar status do livro' });
-    }
-  }
-
-  async getBookPDFViewer(req: Request, res: Response) {
-    try {
-      const { id } = req.params;
-      const userId = req.user.id;
-
-      logger.info('Solicitação de visualizador de PDF recebida', { bookId: id, userId });
-
-      // Verifica se o livro existe e pertence ao usuário
-      const book = await req.db.collection('books').findOne({
-        _id: new ObjectId(id),
-        userId
-      });
-
-      if (!book) {
-        logger.warn('Livro não encontrado ou acesso negado', { bookId: id, userId });
-        return res.status(404).json({ error: 'Livro não encontrado' });
+      // Log apenas em desenvolvimento
+      if (config.nodeEnv === 'development') {
+        logger.info('Livro criado com sucesso', { 
+          bookId: book._id,
+          status: book.status
+        });
       }
 
-      // Constrói o caminho do arquivo PDF
-      const pdfPath = path.join(config.pdfDirectory, `${id}.pdf`);
+      return res.status(201).json({
+        success: true,
+        message: 'Livro criado com sucesso, gerando imagens...',
+        data: {
+          bookId: book._id,
+          status: book.status,
+          pages: book.pages.length
+        }
+      });
 
-      // Verifica se o arquivo existe
-      if (!fs.existsSync(pdfPath)) {
-        logger.warn('Arquivo PDF não encontrado', { bookId: id, pdfPath });
-        return res.status(404).json({ error: 'PDF não encontrado' });
+    } catch (error: any) {
+      logger.error('Erro ao criar livro:', {
+        error: error.message,
+        stack: config.nodeEnv === 'development' ? error.stack : undefined,
+        name: error.name,
+        code: error.code
+      });
+      
+      if (error.name === 'ValidationError') {
+        return res.status(400).json({
+          error: 'Erro de validação',
+          details: error.message
+        });
       }
-
-      // Retorna a página do visualizador com o ID do livro
-      res.render('pdf-viewer', { 
-        bookId: id,
-        title: book.title,
-        pdfUrl: `/pdfs/${id}.pdf`
+      
+      if (error instanceof mongoose.Error) {
+        return res.status(503).json({
+          error: 'Erro no banco de dados',
+          details: config.nodeEnv === 'development' ? error.message : 'Erro ao salvar no banco de dados'
+        });
+      }
+      
+      return res.status(500).json({
+        error: 'Erro interno do servidor',
+        details: config.nodeEnv === 'development' ? error.message : 'Erro ao processar a requisição'
       });
-    } catch (error) {
-      logger.error('Erro ao carregar visualizador de PDF', {
-        bookId: req.params.id,
-        error: error.message
-      });
-      res.status(500).json({ error: 'Erro ao carregar visualizador de PDF' });
     }
   }
 }

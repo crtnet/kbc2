@@ -12,7 +12,8 @@ import { ErrorMessage } from '../components/ErrorMessage';
 import { Book } from '../types/book';
 
 export const HomeScreen: React.FC = () => {
-  const navigation = useNavigation();
+  // Se você tiver um tipo específico para a navegação, substitua "any" pelo tipo adequado.
+  const navigation = useNavigation<any>();
   const { theme } = useTheme();
   const [books, setBooks] = useState<Book[]>([]);
   const [loading, setLoading] = useState(true);
@@ -23,10 +24,10 @@ export const HomeScreen: React.FC = () => {
     try {
       setError(null);
       setLoading(true);
-      
+
       logger.info('Fetching user books');
       const response = await api.get('/books');
-      
+
       // Mapeia os livros para o formato esperado
       const mappedBooks: Book[] = response.data.map((book: any) => ({
         id: book._id,
@@ -44,7 +45,7 @@ export const HomeScreen: React.FC = () => {
           image: page.imageUrl,
         })) || [],
       }));
-      
+
       setBooks(mappedBooks);
       logger.info('Books fetched successfully', { count: mappedBooks.length });
     } catch (err) {

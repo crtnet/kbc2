@@ -17,16 +17,52 @@ export const authMiddleware = async (
   next: NextFunction
 ): Promise<Response | void> => {
   try {
-    const authHeader = req.headers.authorization;
-
-    if (!authHeader) {
-      return res.status(401).json({ error: 'Token não fornecido' });
+    // Verifica se o JWT_SECRET está configurado
+    if (!config.jwtSecret) {
+      logger.error('JWT_SECRET não configurado no ambiente');
+      return res.status(500).json({ 
+        error: 'Erro de configuração do servidor',
+        details: 'Configuração de autenticação ausente'
+      });
     }
 
-    const [, token] = authHeader.split(' ');
+    const authHeader = req.headers.authorization;
 
-    if (!token) {
-      return res.status(401).json({ error: 'Token mal formatado' });
+    // Log dos headers apenas em desenvolvimento
+    if (config.nodeEnv === 'development') {
+      logger.info('Middleware de autenticação - Headers recebidos:', {
+        method: req.method,
+        path: req.path,
+        hasAuth: !!authHeader
+      });
+    }
+
+    if (!authHeader) {
+      logger.error('Token não fornecido');
+      return res.status(401).json({ 
+        error: 'Não autorizado',
+        details: 'Token não fornecido'
+      });
+    }
+
+    const parts = authHeader.split(' ');
+
+    if (parts.length !== 2) {
+      logger.error('Token mal formatado - número incorreto de partes');
+      return res.status(401).json({ 
+        error: 'Não autorizado',
+        details: 'Token mal formatado'
+      });
+    }
+
+    const [scheme, token] = parts;
+
+    if (!/^Bearer$/i.test(scheme)) {
+      logger.error('Token mal formatado - scheme inválido', { scheme });
+      return res.status(401).json({ 
+        error: 'Não autorizado',
+        details: 'Token mal formatado'
+      });
     }
 
     try {
@@ -34,17 +70,87 @@ export const authMiddleware = async (
         id: string;
         email: string;
         type: string;
+        iat?: number;
+        exp?: number;
       };
 
-      req.user = decoded;
+      // Validações do payload do token
+      if (!decoded.id || !decoded.email || !decoded.type) {
+        logger.error('Token com payload inválido', { 
+          hasId: !!decoded.id,
+          hasEmail: !!decoded.email,
+          hasType: !!decoded.type
+        });
+        return res.status(401).json({ 
+          error: 'Não autorizado',
+          details: 'Token inválido'
+        });
+      }
+
+      // Verifica se o token expirou
+      if (decoded.exp && decoded.exp < Date.now() / 1000) {
+        logger.error('Token expirado', { 
+          exp: decoded.exp,
+          now: Date.now() / 1000
+        });
+        return res.status(401).json({ 
+          error: 'Não autorizado',
+          details: 'Token expirado'
+        });
+      }
+
+      // Log apenas em desenvolvimento
+      if (config.nodeEnv === 'development') {
+        logger.info('Token validado com sucesso:', { 
+          userId: decoded.id,
+          email: decoded.email,
+          type: decoded.type
+        });
+      }
+
+      // Atribui os dados do usuário à requisição
+      req.user = {
+        id: decoded.id,
+        email: decoded.email,
+        type: decoded.type
+      };
       
       return next();
-    } catch (error) {
-      logger.error(`Erro na verificação do token: ${error.message}`);
-      return res.status(401).json({ error: 'Token inválido' });
+    } catch (error: any) {
+      logger.error('Erro na verificação do token:', {
+        message: error.message,
+        name: error.name
+      });
+
+      // Mensagens de erro específicas baseadas no tipo de erro
+      if (error.name === 'JsonWebTokenError') {
+        return res.status(401).json({ 
+          error: 'Não autorizado',
+          details: 'Token inválido'
+        });
+      }
+
+      if (error.name === 'TokenExpiredError') {
+        return res.status(401).json({ 
+          error: 'Não autorizado',
+          details: 'Token expirado'
+        });
+      }
+
+      return res.status(401).json({ 
+        error: 'Não autorizado',
+        details: 'Erro na validação do token'
+      });
     }
-  } catch (error) {
-    logger.error(`Erro no middleware de autenticação: ${error.message}`);
-    return res.status(500).json({ error: 'Erro interno do servidor' });
+  } catch (error: any) {
+    logger.error('Erro no middleware de autenticação:', {
+      message: error.message,
+      stack: config.nodeEnv === 'development' ? error.stack : undefined
+    });
+    
+    return res.status(500).json({ 
+      error: 'Erro interno do servidor',
+      details: config.nodeEnv === 'development' ? error.message : undefined
+    });
   }
 };

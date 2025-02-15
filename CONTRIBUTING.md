@@ -1,38 +1,169 @@
 # Contribuindo para o Kids Book Creator
 
-Primeiramente, obrigado por considerar contribuir para o Kids Book Creator! É graças a pessoas como você que podemos criar ferramentas incríveis para estimular a criatividade das crianças.
+## Visão Geral
 
-## Código de Conduta
+O Kids Book Creator é um projeto open-source focado em criar uma plataforma robusta para geração de livros infantis personalizados. Valorizamos contribuições que mantenham nossos altos padrões de qualidade e foco na experiência do usuário.
 
-Este projeto e todos os participantes estão sob o Código de Conduta do Contribuidor. Ao participar, espera-se que você mantenha este código. Por favor, reporte comportamentos inaceitáveis.
+## Processo de Desenvolvimento
 
-## Como posso contribuir?
+### 1. Preparação do Ambiente
 
-### Reportando Bugs
+```bash
+# Clone o repositório
+git clone https://github.com/seu-usuario/kids-book-creator.git
+cd kids-book-creator
 
-- Verifique se o bug já não foi reportado procurando nas Issues do GitHub
-- Se você não encontrar uma issue aberta relacionada, crie uma nova
-- Inclua um título e uma descrição clara do problema
-- Adicione o máximo de informações relevantes possível
-- Se possível, adicione exemplos para demonstrar o bug
+# Instale as dependências do backend
+cd backend
+npm install
+cp .env.example .env
 
-### Sugerindo Melhorias
+# Instale as dependências do frontend
+cd ../frontend
+npm install
+cp .env.example .env
+```
 
-- Primeiro, leia a documentação e verifique se a funcionalidade já não existe
-- Verifique se a melhoria já não foi sugerida nas Issues do GitHub
-- Sugira sua melhoria criando uma nova issue
-- Inclua um título e uma descrição clara
-- Explique por que esta melhoria seria útil para a maioria dos usuários
+### 2. Padrões de Código
 
-### Pull Requests
+#### TypeScript
+- Use tipos explícitos sempre que possível
+- Evite `any`
+- Use interfaces para definir contratos
+- Implemente error handling adequado
 
-1. Faça um fork do repositório
-2. Clone o fork para sua máquina local
-3. Crie uma branch para sua feature (`git checkout -b feature/MinhaFeature`)
-4. Faça suas alterações
-5. Commit suas mudanças (`git commit -m 'Adiciona alguma feature'`)
-6. Push para a branch (`git push origin feature/MinhaFeature`)
-7. Abra um Pull Request
+```typescript
+// ✅ Bom
+interface BookProps {
+  id: string;
+  title: string;
+  coverUrl?: string;
+}
+
+function BookCard({ id, title, coverUrl }: BookProps) {
+  // ...
+}
+
+// ❌ Evitar
+function BookCard(props: any) {
+  // ...
+}
+```
+
+#### React/React Native
+- Use Hooks funcionais
+- Implemente error boundaries
+- Otimize re-renders
+- Use memo quando apropriado
+
+```typescript
+// ✅ Bom
+const BookList = memo(({ books }: { books: Book[] }) => {
+  const renderItem = useCallback(({ item }: { item: Book }) => (
+    <BookCard {...item} />
+  ), []);
+
+  return <FlatList data={books} renderItem={renderItem} />;
+});
+
+// ❌ Evitar
+class BookList extends React.Component {
+  // ...
+}
+```
+
+#### Estilização
+- Use Styled Components
+- Mantenha temas consistentes
+- Implemente responsividade
+- Suporte modo escuro
+
+```typescript
+// ✅ Bom
+const Container = styled.View`
+  padding: ${({ theme }) => theme.spacing.medium}px;
+  background-color: ${({ theme }) => theme.colors.background};
+`;
+
+// ❌ Evitar
+const styles = StyleSheet.create({
+  container: {
+    padding: 16,
+    backgroundColor: 'white',
+  },
+});
+```
+
+### 3. Testes
+
+- Escreva testes unitários para lógica de negócio
+- Implemente testes de integração para APIs
+- Use mocks apropriadamente
+- Mantenha cobertura >80%
+
+```typescript
+// ✅ Bom
+describe('BookService', () => {
+  it('should generate PDF with correct metadata', async () => {
+    const book = await BookService.generatePDF({
+      title: 'Test Book',
+      author: 'Test Author',
+    });
+    
+    expect(book.metadata.title).toBe('Test Book');
+  });
+});
+```
+
+### 4. Documentação
+
+- Documente APIs com JSDoc
+- Mantenha README atualizado
+- Adicione comentários em código complexo
+- Use Conventional Commits
+
+```typescript
+/**
+ * Gera um novo PDF do livro com metadados e imagens
+ * @param {BookConfig} config - Configuração do livro
+ * @returns {Promise<Book>} Livro gerado com URL do PDF
+ * @throws {ValidationError} Se config for inválido
+ */
+async function generateBook(config: BookConfig): Promise<Book> {
+  // ...
+}
+```
+
+### 5. Performance
+
+- Implemente lazy loading
+- Use cache apropriadamente
+- Otimize assets
+- Monitore bundle size
+
+### 6. Segurança
+
+- Valide inputs
+- Sanitize dados
+- Implemente rate limiting
+- Siga OWASP guidelines
+
+## Processo de Review
+
+1. Crie uma branch descritiva
+2. Faça commits atômicos
+3. Escreva testes
+4. Atualize documentação
+5. Abra PR com descrição detalhada
+6. Responda reviews prontamente
+
+## Recursos Úteis
+
+- [TypeScript Handbook](https://www.typescriptlang.org/docs/handbook/intro.html)
+- [React Native Best Practices](https://reactnative.dev/docs/performance)
+- [Styled Components Docs](https://styled-components.com/docs)
+- [Jest Documentation](https://jestjs.io/docs/getting-started)
+- [Conventional Commits](https://www.conventionalcommits.org/)
 
 ## Padrões de Código
 

@@ -4,6 +4,7 @@ import { logger } from '../utils/logger';
 import { signOutGlobal } from '../contexts/AuthContext';
 
 const api = axios.create({
+  // Utilize a variável de ambiente EXPO_PUBLIC_API_URL ou o valor padrão
   baseURL: process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000/api',
   timeout: 30000,
   headers: {
@@ -14,7 +15,7 @@ const api = axios.create({
 api.interceptors.request.use(
   async (config) => {
     try {
-      // Recupera o token e remove aspas extras, se houver
+      // Recupera o token do AsyncStorage e remove aspas extras, se houver
       let token = await AsyncStorage.getItem('token');
       if (token) {
         token = token.replace(/^"|"$/g, '');
@@ -55,10 +56,8 @@ api.interceptors.response.use(
     });
     
     if (error.response?.status === 401) {
-      // Token expirado ou inválido
+      // Token expirado ou inválido: remove o token e desloga o usuário
       await AsyncStorage.removeItem('token');
-      
-      // Deslogar o usuário utilizando a função global
       await signOutGlobal();
     }
     

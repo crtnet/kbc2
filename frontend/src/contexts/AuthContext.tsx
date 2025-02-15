@@ -67,7 +67,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
             logger.info('Token validado com sucesso');
             // Se um novo token for recebido, atualiza-o
             if (response.data.token) {
-              await setToken(response.data.token.trim().replace(/^"|"$/g, ''));
+              await setToken(
+                response.data.token.trim().replace(/^"|"$/g, '')
+              );
             }
             // Atualiza os dados do usuário
             if (response.data.user) {
@@ -92,7 +94,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     try {
       setIsLoading(true);
       const response = await api.post('/auth/login', { email, password });
-
       const { token, user } = response.data;
 
       logger.info('SignIn - token recebido:', token);
@@ -145,7 +146,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
           email,
           password,
         });
-
         const { token, user } = response.data;
 
         await setToken(

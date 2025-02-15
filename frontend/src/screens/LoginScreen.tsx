@@ -20,11 +20,12 @@ const LoginScreen = () => {
   const [emailError, setEmailError] = useState('');
   const [passwordError, setPasswordError] = useState('');
 
-  const navigation = useNavigation();
+  // Caso você tenha um tipo definido para a navegação, substitua "any" pelo tipo correto.
+  const navigation = useNavigation<any>(); 
   const { signIn } = useAuth();
 
   // Valida os campos do formulário de login
-  const validateForm = () => {
+  const validateForm = (): boolean => {
     let isValid = true;
     
     // Validação do e-mail

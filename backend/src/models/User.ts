@@ -1,7 +1,8 @@
+import mongoose, { Schema, Document } from 'mongoose';
 import { ObjectId } from 'mongodb';
 
-export interface IUser {
-  _id?: ObjectId;
+export interface IUser extends Document {
+  _id: ObjectId;
   name: string;
   email: string;
   password: string;
@@ -10,40 +11,35 @@ export interface IUser {
   updatedAt: Date;
 }
 
-export class UserModel {
-  static async findOne(query: Partial<IUser>, db: any) {
-    return db.collection('users').findOne(query);
+const UserSchema = new Schema<IUser>({
+  name: { 
+    type: String, 
+    required: true 
+  },
+  email: { 
+    type: String, 
+    required: true, 
+    unique: true,
+    lowercase: true,
+    trim: true
+  },
+  password: { 
+    type: String, 
+    required: true 
+  },
+  type: { 
+    type: String, 
+    enum: ['admin', 'user'], 
+    default: 'user' 
   }
+}, {
+  timestamps: true,
+  collection: 'users'
+});
 
-  static async findById(id: string, db: any) {
-    return db.collection('users').findOne({ _id: new ObjectId(id) });
-  }
+// Índices
+UserSchema.index({ email: 1 }, { unique: true });
 
-  static async create(userData: Partial<IUser>, db: any) {
-    const now = new Date();
-    const user = {
-      ...userData,
-      createdAt: now,
-      updatedAt: now
-    };
-    
-    const result = await db.collection('users').insertOne(user);
-    return { ...user, _id: result.insertedId };
-  }
-
-  static async update(id: string, updateData: Partial<IUser>, db: any) {
-    const result = await db.collection('users').findOneAndUpdate(
-      { _id: new ObjectId(id) },
-      { 
-        $set: { 
-          ...updateData,
-          updatedAt: new Date()
-        }
-      },
-      { returnDocument: 'after' }
-    );
-    return result.value;
-  }
-}
+export const UserModel = mongoose.model<IUser>('User', UserSchema);
 
 export default UserModel;

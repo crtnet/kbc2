@@ -17,9 +17,10 @@ export class PDFController {
         return;
       }
 
-      // Verificar se o usuário tem permissão para acessar o livro
-      if (book.userId.toString() !== req.user.id) {
-        logger.error(`Usuário ${req.user.id} não tem permissão para acessar o livro ${bookId}`);
+      // Verificar se o usuário tem permissão para acessar o livro.
+      // Supondo que req.user esteja definido (por exemplo, via middleware de autenticação).
+      if (!req.user || book.userId.toString() !== req.user.id) {
+        logger.error(`Usuário ${req.user?.id} não tem permissão para acessar o livro ${bookId}`);
         res.status(403).json({ error: 'Acesso não autorizado' });
         return;
       }
@@ -32,16 +33,16 @@ export class PDFController {
       await book.save();
 
       logger.info(`PDF gerado com sucesso: ${filepath}`);
-      
+
       res.status(200).json({
         message: 'PDF gerado com sucesso',
-        pdfUrl: filepath
+        pdfUrl: filepath,
       });
-    } catch (error) {
+    } catch (error: any) {
       logger.error(`Erro ao gerar PDF: ${error.message}`);
       res.status(500).json({
         error: 'Erro ao gerar PDF',
-        details: error.message
+        details: error.message,
       });
     }
   }
