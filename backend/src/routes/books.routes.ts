@@ -1,5 +1,6 @@
+// src/routes/books.routes.ts
 import { Router } from 'express';
-import { BooksController } from '../controllers/BooksController';
+import bookController from '../controllers/bookController';
 import { authMiddleware } from '../middlewares/auth';
 
 const router = Router();
@@ -7,10 +8,8 @@ const router = Router();
 // Todas as rotas de livros requerem autenticação
 router.use(authMiddleware);
 
-router.get('/', BooksController.index);
-router.post('/', BooksController.create);
-router.get('/:id', BooksController.show);
-router.put('/:id', BooksController.update);
-router.delete('/:id', BooksController.delete);
+router.get('/', bookController.listBooks);
+router.get('/:id', bookController.getBook);
+router.post('/', bookController.createBook);
 
 export default router;

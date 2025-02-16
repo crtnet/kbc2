@@ -70,12 +70,12 @@ class OpenAIService {
     while (this.imageQueue.length > 0) {
       const { prompt, resolve, reject } = this.imageQueue[0];
       let retries = 0;
-
-      while (retries < OpenAIService.MAX_RETRIES) {
+      let imageUrl: string | null = null;
+      
+      while (retries < OpenAIService.MAX_RETRIES && !imageUrl) {
         try {
           const now = Date.now();
           const timeSinceLastGeneration = now - this.lastImageGenerationTime;
-          
           if (timeSinceLastGeneration < OpenAIService.RATE_LIMIT_DELAY) {
             const waitTime = OpenAIService.RATE_LIMIT_DELAY - timeSinceLastGeneration;
             logger.info(`Aguardando ${waitTime}ms antes da próxima geração de imagem`);
@@ -85,7 +85,6 @@ class OpenAIService {
           const startTime = performance.now();
           logger.info(`Gerando imagem (tentativa ${retries + 1}) para: "${prompt.substring(0, 50)}..."`);
           
-          // Chamada atualizada para gerar imagem usando images.generate
           const response = await this.openai.images.generate({
             prompt: `${prompt}. Estilo: ilustração infantil, cores vibrantes, seguro para crianças.`,
             n: 1,
@@ -95,10 +94,8 @@ class OpenAIService {
           const endTime = performance.now();
           this.lastImageGenerationTime = Date.now();
 
-          // Tenta extrair a URL da imagem de forma robusta:
-          let imageUrl: string = '';
+          // Extrai a URL da imagem de forma robusta
           if (response && response.data) {
-            // Se response.data.data for um array, usa-o; se não, verifica se response.data é um array
             if (Array.isArray(response.data.data) && response.data.data.length > 0) {
               imageUrl = response.data.data[0].url;
             } else if (Array.isArray(response.data) && response.data.length > 0) {
@@ -111,24 +108,25 @@ class OpenAIService {
           }
           
           logger.info(`Imagem gerada com sucesso em ${((endTime - startTime) / 1000).toFixed(2)} segundos`);
-          
-          resolve(imageUrl);
-          this.imageQueue.shift();
-          break;
         } catch (error: any) {
-          if (error.status === 429 && retries < OpenAIService.MAX_RETRIES - 1) {
-            retries++;
-            logger.warn(`Rate limit atingido, tentativa ${retries} de ${OpenAIService.MAX_RETRIES}`);
+          retries++;
+          logger.error(`Erro ao gerar imagem na tentativa ${retries} para prompt "${prompt.substring(0, 50)}...": ${error.message}`);
+          if (retries < OpenAIService.MAX_RETRIES) {
+            // Aguarda um tempo antes de tentar novamente
             await new Promise(r => setTimeout(r, OpenAIService.RATE_LIMIT_DELAY));
-            continue;
           }
-          
-          logger.error(`Erro ao gerar imagem após ${retries + 1} tentativas: ${error.message}`);
-          reject(error);
-          this.imageQueue.shift();
-          break;
         }
       }
+
+      if (imageUrl) {
+        logger.info(`Imagem atribuída com sucesso para prompt: "${prompt.substring(0, 50)}..."`);
+        resolve(imageUrl);
+      } else {
+        logger.error(`Falha ao gerar imagem para prompt após ${OpenAIService.MAX_RETRIES} tentativas`);
+        reject(new Error(`Falha ao gerar imagem para o prompt: "${prompt}"`));
+      }
+      // Remove o item processado da fila
+      this.imageQueue.shift();
     }
 
     logger.info('Fila de imagens processada completamente');

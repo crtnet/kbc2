@@ -1,33 +1,61 @@
+// src/screens/CreateBookScreen.tsx
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useState } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
-import { Text, TextInput, Button, SegmentedButtons, Card } from 'react-native-paper';
+import {
+  TextInput,
+  Button,
+  Text,
+  SegmentedButtons,
+  Card,
+  Snackbar
+} from 'react-native-paper';
+import { useAuth } from '../contexts/AuthContext';
+import * as bookService from '../services/bookService';
 
-const genres = [
-  { value: 'adventure', label: 'Aventura' },
-  { value: 'fantasy', label: 'Fantasia' },
-  { value: 'mystery', label: 'Mistério' },
-  { value: 'educational', label: 'Educativo' }
-];
+interface BookData {
+  title: string;
+  genre: 'adventure' | 'fantasy' | 'mystery';
+  theme: 'friendship' | 'courage' | 'kindness';
+  mainCharacter: string;
+  setting: string;
+  tone: 'fun' | 'adventurous' | 'calm';
+  ageRange: '1-2' | '3-4' | '5-6' | '7-8' | '9-10' | '11-12';
+  prompt?: string;
+  authorName?: string;
+  language?: string;
+}
 
-const themes = [
-  { value: 'friendship', label: 'Amizade' },
-  { value: 'courage', label: 'Coragem' },
-  { value: 'kindness', label: 'Bondade' },
-  { value: 'responsibility', label: 'Responsabilidade' }
-];
-
-export default function CreateBookScreen({ navigation }) {
+function CreateBookScreen({ navigation }) {
+  const { user } = useAuth();
   const [step, setStep] = useState(1);
-  const [bookData, setBookData] = useState({
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [visible, setVisible] = useState(false);
+
+  const [bookData, setBookData] = useState<BookData>({
     title: '',
-    genre: '',
-    theme: '',
+    genre: 'adventure',
+    theme: 'friendship',
     mainCharacter: '',
     setting: '',
-    tone: 'fun', // fun, adventurous, calm, educational
+    tone: 'fun',
+    ageRange: '5-6'
   });
 
   const handleNext = () => {
+    if (step === 1 && !bookData.title) {
+      setError('Por favor, insira um título para o livro');
+      setVisible(true);
+      return;
+    }
+
+    if (step === 2 && (!bookData.mainCharacter || !bookData.setting)) {
+      setError('Por favor, preencha todos os campos');
+      setVisible(true);
+      return;
+    }
+
     if (step < 3) {
       setStep(step + 1);
     } else {
@@ -45,18 +73,54 @@ export default function CreateBookScreen({ navigation }) {
 
   const handleCreateBook = async () => {
     try {
-      console.log('Criando livro:', bookData);
-      // TODO: Implementar chamada à API
-      navigation.navigate('Home');
-    } catch (error) {
-      console.error('Erro ao criar livro:', error);
+      if (!user) {
+        setError('Usuário não autenticado');
+        setVisible(true);
+        return;
+      }
+      setLoading(true);
+
+      // Preparar os dados que serão enviados
+      const bookDataToSend = {
+        title: bookData.title,
+        genre: bookData.genre,
+        theme: bookData.theme,
+        mainCharacter: bookData.mainCharacter,
+        setting: bookData.setting,
+        tone: bookData.tone,
+        ageRange: bookData.ageRange,
+        prompt: `Create a children's story about ${bookData.mainCharacter} in ${bookData.setting}. Theme: ${bookData.theme}, Genre: ${bookData.genre}, Tone: ${bookData.tone}`,
+        authorName: user.name || 'Anonymous',
+        userId: user.id,
+        language: 'pt-BR'
+      };
+
+      console.log('Dados do usuário:', user);
+      const token = await AsyncStorage.getItem('token');
+      console.log('Token atual:', token);
+      console.log('Criando livro com os dados:', bookDataToSend);
+
+      const response = await bookService.createBook(bookDataToSend);
+      console.log('Resposta da criação do livro:', response);
+
+      if (!response.bookId) {
+        throw new Error('ID do livro não retornado pelo servidor');
+      }
+      
+      // Navegar para a tela de visualização do livro
+      navigation.navigate('ViewBook', { bookId: response.bookId });
+    } catch (err: any) {
+      console.error('Erro ao criar livro:', err);
+      setError(err.response?.data?.details || err.message || 'Erro ao criar livro');
+      setVisible(true);
+    } finally {
+      setLoading(false);
     }
   };
 
   const renderStep1 = () => (
     <View>
       <Text style={styles.stepTitle}>Informações Básicas</Text>
-      
       <TextInput
         label="Título do Livro"
         value={bookData.title}
@@ -64,12 +128,15 @@ export default function CreateBookScreen({ navigation }) {
         mode="outlined"
         style={styles.input}
       />
-
       <Text style={styles.label}>Gênero</Text>
       <SegmentedButtons
         value={bookData.genre}
         onValueChange={(value) => setBookData({ ...bookData, genre: value })}
-        buttons={genres}
+        buttons={[
+          { value: 'adventure', label: 'Aventura' },
+          { value: 'fantasy', label: 'Fantasia' },
+          { value: 'mystery', label: 'Mistério' }
+        ]}
         style={styles.segmentedButton}
       />
     </View>
@@ -78,7 +145,6 @@ export default function CreateBookScreen({ navigation }) {
   const renderStep2 = () => (
     <View>
       <Text style={styles.stepTitle}>Personagem e Ambiente</Text>
-      
       <TextInput
         label="Nome do Personagem Principal"
         value={bookData.mainCharacter}
@@ -86,7 +152,6 @@ export default function CreateBookScreen({ navigation }) {
         mode="outlined"
         style={styles.input}
       />
-
       <TextInput
         label="Cenário da História"
         value={bookData.setting}
@@ -100,16 +165,18 @@ export default function CreateBookScreen({ navigation }) {
 
   const renderStep3 = () => (
     <View>
-      <Text style={styles.stepTitle}>Tema e Tom da História</Text>
-
+      <Text style={styles.stepTitle}>Tema, Tom e Faixa Etária</Text>
       <Text style={styles.label}>Tema Principal</Text>
       <SegmentedButtons
         value={bookData.theme}
         onValueChange={(value) => setBookData({ ...bookData, theme: value })}
-        buttons={themes}
+        buttons={[
+          { value: 'friendship', label: 'Amizade' },
+          { value: 'courage', label: 'Coragem' },
+          { value: 'kindness', label: 'Bondade' }
+        ]}
         style={styles.segmentedButton}
       />
-
       <Text style={styles.label}>Tom da Narrativa</Text>
       <SegmentedButtons
         value={bookData.tone}
@@ -117,8 +184,21 @@ export default function CreateBookScreen({ navigation }) {
         buttons={[
           { value: 'fun', label: 'Divertido' },
           { value: 'adventurous', label: 'Aventureiro' },
-          { value: 'calm', label: 'Calmo' },
-          { value: 'educational', label: 'Educativo' }
+          { value: 'calm', label: 'Calmo' }
+        ]}
+        style={styles.segmentedButton}
+      />
+      <Text style={styles.label}>Faixa Etária</Text>
+      <SegmentedButtons
+        value={bookData.ageRange}
+        onValueChange={(value) => setBookData({ ...bookData, ageRange: value })}
+        buttons={[
+          { value: '1-2', label: '1-2 anos' },
+          { value: '3-4', label: '3-4 anos' },
+          { value: '5-6', label: '5-6 anos' },
+          { value: '7-8', label: '7-8 anos' },
+          { value: '9-10', label: '9-10 anos' },
+          { value: '11-12', label: '11-12 anos' }
         ]}
         style={styles.segmentedButton}
       />
@@ -129,7 +209,7 @@ export default function CreateBookScreen({ navigation }) {
     <ScrollView style={styles.container}>
       <Card style={styles.card}>
         <Card.Content>
-          {/* Progress Indicator */}
+          {/* Indicador de Progresso */}
           <View style={styles.progressContainer}>
             {[1, 2, 3].map((item) => (
               <View
@@ -141,18 +221,17 @@ export default function CreateBookScreen({ navigation }) {
               />
             ))}
           </View>
-
-          {/* Step Content */}
+          {/* Conteúdo do Passo */}
           {step === 1 && renderStep1()}
           {step === 2 && renderStep2()}
           {step === 3 && renderStep3()}
-
-          {/* Navigation Buttons */}
+          {/* Botões de Navegação */}
           <View style={styles.buttonContainer}>
             <Button
               mode="outlined"
               onPress={handleBack}
               style={styles.button}
+              disabled={loading}
             >
               {step === 1 ? 'Cancelar' : 'Voltar'}
             </Button>
@@ -160,12 +239,25 @@ export default function CreateBookScreen({ navigation }) {
               mode="contained"
               onPress={handleNext}
               style={styles.button}
+              loading={loading}
+              disabled={loading}
             >
               {step === 3 ? 'Criar Livro' : 'Próximo'}
             </Button>
           </View>
         </Card.Content>
       </Card>
+      <Snackbar
+        visible={visible}
+        onDismiss={() => setVisible(false)}
+        duration={3000}
+        action={{
+          label: 'OK',
+          onPress: () => setVisible(false)
+        }}
+      >
+        {error}
+      </Snackbar>
     </ScrollView>
   );
 }
@@ -173,46 +265,48 @@ export default function CreateBookScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#f5f5f5'
   },
   card: {
     margin: 10,
-    elevation: 2,
+    elevation: 2
   },
   progressContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 20,
+    marginBottom: 20
   },
   progressItem: {
     flex: 1,
     height: 4,
     marginHorizontal: 2,
-    borderRadius: 2,
+    borderRadius: 2
   },
   stepTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    marginBottom: 20,
+    marginBottom: 20
   },
   input: {
-    marginBottom: 15,
+    marginBottom: 15
   },
   label: {
     fontSize: 16,
     marginBottom: 10,
-    color: '#666',
+    color: '#666'
   },
   segmentedButton: {
-    marginBottom: 15,
+    marginBottom: 15
   },
   buttonContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 20,
+    marginTop: 20
   },
   button: {
     flex: 1,
-    marginHorizontal: 5,
-  },
+    marginHorizontal: 5
+  }
 });
+
+export default CreateBookScreen;

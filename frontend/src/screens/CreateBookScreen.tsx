@@ -21,10 +21,10 @@ interface BookData {
 
 function CreateBookScreen({ navigation }) {
   const { user } = useAuth();
-  const [step, setStep] = useState(1);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [visible, setVisible] = useState(false);
+  const [step, setStep] = useState<number>(1);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string>('');
+  const [visible, setVisible] = useState<boolean>(false);
 
   const [bookData, setBookData] = useState<BookData>({
     title: '',
@@ -73,6 +73,8 @@ function CreateBookScreen({ navigation }) {
       }
 
       setLoading(true);
+
+      // Preparar os dados do livro para envio
       const bookDataToSend = {
         title: bookData.title,
         genre: bookData.genre,
@@ -86,22 +88,26 @@ function CreateBookScreen({ navigation }) {
         userId: user.id,
         language: 'pt-BR'
       };
-      
+
       console.log('Dados do usuário:', user);
-      console.log('Token atual:', await AsyncStorage.getItem('token'));
+      // Buscando token para log (não é utilizado no payload)
+      const token = await AsyncStorage.getItem('token');
+      console.log('Token atual:', token);
       console.log('Criando livro:', bookDataToSend);
-      
+
       const response = await bookService.createBook(bookDataToSend);
       console.log('Resposta da criação do livro:', response);
-      
+
       if (!response.bookId) {
         throw new Error('ID do livro não retornado pelo servidor');
       }
-      
+
       navigation.navigate('ViewBook', { bookId: response.bookId });
-    } catch (error) {
-      console.error('Erro ao criar livro:', error);
-      setError(error.response?.data?.details || error.message || 'Erro ao criar livro');
+    } catch (err: any) {
+      console.error('Erro ao criar livro:', err);
+      // Exibe mensagem mais específica, se disponível
+      const errorMsg = err.response?.data?.details || err.message || 'Erro ao criar livro';
+      setError(errorMsg);
       setVisible(true);
     } finally {
       setLoading(false);
@@ -111,7 +117,6 @@ function CreateBookScreen({ navigation }) {
   const renderStep1 = () => (
     <View>
       <Text style={styles.stepTitle}>Informações Básicas</Text>
-      
       <TextInput
         label="Título do Livro"
         value={bookData.title}
@@ -119,7 +124,6 @@ function CreateBookScreen({ navigation }) {
         mode="outlined"
         style={styles.input}
       />
-
       <Text style={styles.label}>Gênero</Text>
       <SegmentedButtons
         value={bookData.genre}
@@ -137,7 +141,6 @@ function CreateBookScreen({ navigation }) {
   const renderStep2 = () => (
     <View>
       <Text style={styles.stepTitle}>Personagem e Ambiente</Text>
-      
       <TextInput
         label="Nome do Personagem Principal"
         value={bookData.mainCharacter}
@@ -145,7 +148,6 @@ function CreateBookScreen({ navigation }) {
         mode="outlined"
         style={styles.input}
       />
-
       <TextInput
         label="Cenário da História"
         value={bookData.setting}
@@ -160,7 +162,6 @@ function CreateBookScreen({ navigation }) {
   const renderStep3 = () => (
     <View>
       <Text style={styles.stepTitle}>Tema, Tom e Faixa Etária</Text>
-
       <Text style={styles.label}>Tema Principal</Text>
       <SegmentedButtons
         value={bookData.theme}
@@ -172,7 +173,6 @@ function CreateBookScreen({ navigation }) {
         ]}
         style={styles.segmentedButton}
       />
-
       <Text style={styles.label}>Tom da Narrativa</Text>
       <SegmentedButtons
         value={bookData.tone}
@@ -184,7 +184,6 @@ function CreateBookScreen({ navigation }) {
         ]}
         style={styles.segmentedButton}
       />
-
       <Text style={styles.label}>Faixa Etária</Text>
       <SegmentedButtons
         value={bookData.ageRange}
@@ -218,12 +217,10 @@ function CreateBookScreen({ navigation }) {
               />
             ))}
           </View>
-
           {/* Conteúdo do Passo */}
           {step === 1 && renderStep1()}
           {step === 2 && renderStep2()}
           {step === 3 && renderStep3()}
-
           {/* Botões de Navegação */}
           <View style={styles.buttonContainer}>
             <Button
@@ -265,48 +262,48 @@ function CreateBookScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#f5f5f5'
   },
   card: {
     margin: 10,
-    elevation: 2,
+    elevation: 2
   },
   progressContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 20,
+    marginBottom: 20
   },
   progressItem: {
     flex: 1,
     height: 4,
     marginHorizontal: 2,
-    borderRadius: 2,
+    borderRadius: 2
   },
   stepTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    marginBottom: 20,
+    marginBottom: 20
   },
   input: {
-    marginBottom: 15,
+    marginBottom: 15
   },
   label: {
     fontSize: 16,
     marginBottom: 10,
-    color: '#666',
+    color: '#666'
   },
   segmentedButton: {
-    marginBottom: 15,
+    marginBottom: 15
   },
   buttonContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 20,
+    marginTop: 20
   },
   button: {
     flex: 1,
-    marginHorizontal: 5,
-  },
+    marginHorizontal: 5
+  }
 });
 
 export default CreateBookScreen;
