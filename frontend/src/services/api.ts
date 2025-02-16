@@ -1,10 +1,9 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { logger } from '../utils/logger';
-import { signOutGlobal } from '../contexts/AuthContext';
+import { signOutGlobal, globalToken } from '../contexts/AuthContext';
 
 const api = axios.create({
-  // Utilize a variável de ambiente EXPO_PUBLIC_API_URL ou o valor padrão
   baseURL: process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000/api',
   timeout: 30000,
   headers: {
@@ -15,22 +14,26 @@ const api = axios.create({
 api.interceptors.request.use(
   async (config) => {
     try {
-      // Recupera o token do AsyncStorage e remove aspas extras, se houver
-      let token = await AsyncStorage.getItem('token');
+      // Prioriza o token armazenado em memória (globalToken)
+      let token = globalToken;
+      if (token) {
+        logger.info('Token recuperado do globalToken no interceptor:', token);
+      } else {
+        token = await AsyncStorage.getItem('token');
+        logger.info('Token recuperado do AsyncStorage no interceptor:', token);
+      }
       if (token) {
         token = token.replace(/^"|"$/g, '');
         config.headers.Authorization = `Bearer ${token}`;
       }
-      
       logger.info('API Request', {
         method: config.method,
         url: config.url,
-        token, // para debug (remova em produção)
+        token: token ? 'Present' : 'Missing',
       });
-      
       return config;
     } catch (error) {
-      logger.error('Erro ao obter token do AsyncStorage', error);
+      logger.error('Erro ao obter token no interceptor', error);
       return config;
     }
   },
@@ -54,13 +57,11 @@ api.interceptors.response.use(
       message: error.message,
       url: error.config?.url,
     });
-    
     if (error.response?.status === 401) {
       // Token expirado ou inválido: remove o token e desloga o usuário
       await AsyncStorage.removeItem('token');
       await signOutGlobal();
     }
-    
     return Promise.reject(error);
   }
 );

@@ -19,7 +19,7 @@ class OpenAIService {
     mainCharacter: string;
     setting: string;
     tone: string;
-  }) {
+  }): Promise<string> {
     try {
       const prompt = `
         Crie uma história infantil em português com as seguintes características:
@@ -61,8 +61,33 @@ class OpenAIService {
       }
 
       return story;
-    } catch (error) {
+    } catch (error: any) {
       logger.error('Erro ao gerar história:', error);
+      throw error;
+    }
+  }
+
+  async generateImage(prompt: string): Promise<string> {
+    try {
+      logger.info('Gerando imagem com OpenAI DALL-E...');
+      
+      const response = await this.openai.createImage({
+        prompt,
+        n: 1,
+        size: '512x512',
+      });
+      
+      // Supondo que a resposta venha no formato:
+      // { data: { data: [ { url: "https://..." } ] } }
+      const imageUrl = response.data.data[0].url;
+      if (!imageUrl) {
+        throw new Error('Imagem não gerada');
+      }
+      
+      logger.info('Imagem gerada com sucesso:', imageUrl);
+      return imageUrl;
+    } catch (error: any) {
+      logger.error('Erro ao gerar imagem:', error);
       throw error;
     }
   }

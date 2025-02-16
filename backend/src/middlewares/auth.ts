@@ -26,14 +26,15 @@ export const authMiddleware = async (
       });
     }
 
-    const authHeader = req.headers.authorization;
+    const authHeader = req.headers.authorization || req.headers['Authorization'];
 
     // Log dos headers apenas em desenvolvimento
     if (config.nodeEnv === 'development') {
       logger.info('Middleware de autenticação - Headers recebidos:', {
         method: req.method,
         path: req.path,
-        hasAuth: !!authHeader
+        hasAuth: !!authHeader,
+        headers: req.headers
       });
     }
 

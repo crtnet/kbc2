@@ -18,20 +18,27 @@ class BookService {
   async createBook(params: CreateBookParams): Promise<IBook> {
     try {
       logger.info('Iniciando criação de livro:', { 
-        title: params.title,
-        ageRange: params.ageRange,
-        userId: params.userId
+        ...params,
+        prompt: params.prompt.substring(0, 100) + '...' // Log parcial do prompt para não poluir
       });
 
       // Validar conexão com o banco
       if (mongoose.connection.readyState !== 1) {
-        throw new Error('Sem conexão com o banco de dados');
+        const error = new Error('Sem conexão com o banco de dados');
+        logger.error('Erro de conexão:', { 
+          readyState: mongoose.connection.readyState,
+          error: error.message 
+        });
+        throw error;
       }
 
       // Gerar história
-      logger.info('Gerando história...');
+      logger.info('Gerando história via OpenAI...');
       const { story, wordCount } = await openAIUnifiedService.generateStory(params.prompt, params.ageRange);
-      logger.info('História gerada com sucesso', { wordCount });
+      logger.info('História gerada com sucesso', { 
+        wordCount,
+        storyPreview: story.substring(0, 100) + '...'
+      });
 
       // Dividir em páginas
       const pages = this.splitStoryIntoPages(story);

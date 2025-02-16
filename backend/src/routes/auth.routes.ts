@@ -5,11 +5,11 @@ import { authMiddleware } from '../middlewares/auth';
 const router = Router();
 
 // Rotas públicas
-router.post('/register', AuthController.register);
-router.post('/login', AuthController.login);
+router.post('/register', (req, res) => AuthController.register(req, res));
+router.post('/login', (req, res) => AuthController.login(req, res));
 
 // Rotas protegidas
-router.get('/verify', authMiddleware, AuthController.verifyToken);
-router.post('/refresh-token', authMiddleware, AuthController.verifyToken);
+router.get('/verify', authMiddleware, (req, res) => AuthController.verifyToken(req, res));
+router.post('/refresh-token', (req, res) => AuthController.refreshToken(req, res));
 
 export default router;

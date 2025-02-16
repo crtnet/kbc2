@@ -46,7 +46,7 @@ class OpenAIService {
       logger.info(`História gerada em ${((endTime - startTime) / 1000).toFixed(2)} segundos`);
 
       return completion.choices[0].message.content || '';
-    } catch (error) {
+    } catch (error: any) {
       logger.error(`Erro ao gerar história: ${error.message}`);
       throw error;
     }
@@ -83,21 +83,33 @@ class OpenAIService {
           }
 
           const startTime = performance.now();
-          logger.info(`Gerando imagem ${this.imageQueue.length} de ${this.imageQueue.length}: "${prompt.substring(0, 50)}..."`);
+          logger.info(`Gerando imagem (tentativa ${retries + 1}) para: "${prompt.substring(0, 50)}..."`);
           
+          // Chamada atualizada para gerar imagem usando images.generate
           const response = await this.openai.images.generate({
-            model: "dall-e-3",
             prompt: `${prompt}. Estilo: ilustração infantil, cores vibrantes, seguro para crianças.`,
             n: 1,
-            size: "1024x1024",
-            quality: "standard",
-            style: "vivid"
+            size: "1024x1024"
           });
 
           const endTime = performance.now();
           this.lastImageGenerationTime = Date.now();
+
+          // Tenta extrair a URL da imagem de forma robusta:
+          let imageUrl: string = '';
+          if (response && response.data) {
+            // Se response.data.data for um array, usa-o; se não, verifica se response.data é um array
+            if (Array.isArray(response.data.data) && response.data.data.length > 0) {
+              imageUrl = response.data.data[0].url;
+            } else if (Array.isArray(response.data) && response.data.length > 0) {
+              imageUrl = response.data[0].url;
+            }
+          }
           
-          const imageUrl = response.data[0].url || '';
+          if (!imageUrl) {
+            throw new Error('Nenhuma URL de imagem retornada');
+          }
+          
           logger.info(`Imagem gerada com sucesso em ${((endTime - startTime) / 1000).toFixed(2)} segundos`);
           
           resolve(imageUrl);

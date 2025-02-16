@@ -7,6 +7,77 @@ import { logger } from '../utils/logger';
 import mongoose from 'mongoose';
 
 export class AuthController {
+  public static async register(req: Request, res: Response): Promise<Response> {
+    try {
+      logger.info('Iniciando processo de registro', { body: req.body });
+
+      const { name, email, password, type } = req.body;
+
+      // Validações básicas
+      if (!name || !email || !password) {
+        logger.warn('Dados incompletos para registro');
+        return res.status(400).json({ error: 'Nome, email e senha são obrigatórios' });
+      }
+
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        logger.warn('Formato de email inválido', { email });
+        return res.status(400).json({ error: 'Formato de email inválido' });
+      }
+
+      if (password.length < 6) {
+        logger.warn('Senha muito curta');
+        return res.status(400).json({ error: 'Senha deve ter no mínimo 6 caracteres' });
+      }
+
+      // Verifica se o email já está em uso
+      const existingUser = await UserModel.findOne({ email: email.toLowerCase() });
+      if (existingUser) {
+        logger.warn('Tentativa de registro com email já existente', { email });
+        return res.status(400).json({ error: 'Email já está em uso' });
+      }
+
+      // Hash da senha
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(password, salt);
+
+      // Cria o novo usuário
+      const user = new UserModel({
+        name,
+        email: email.toLowerCase(),
+        password: hashedPassword,
+        type: type || 'user'
+      });
+
+      await user.save();
+
+      const token = AuthController.generateToken(user);
+
+      logger.info('Novo usuário registrado com sucesso', { 
+        userId: user._id,
+        email: user.email 
+      });
+
+      return res.status(201).json({
+        token,
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          type: user.type
+        }
+      });
+    } catch (error: any) {
+      logger.error(`Erro no registro: ${error.message}`, {
+        stack: error.stack,
+        name: error.name
+      });
+      return res.status(500).json({ 
+        error: 'Erro no servidor',
+        details: process.env.NODE_ENV !== 'production' ? error.message : undefined
+      });
+    }
+  }
+
   public static generateToken(user: IUser): string {
     const payload = {
       id: user._id,
@@ -19,115 +90,27 @@ export class AuthController {
     });
   }
 
-  public static async verifyToken(req: Request, res: Response): Promise<Response> {
-    try {
-      const authHeader = req.headers.authorization;
-      const token = authHeader?.split(' ')[1]?.trim();
-
-      if (!token) {
-        logger.error('Token não fornecido na verificação');
-        return res.status(401).json({ valid: false, error: 'Token não fornecido' });
-      }
-
-      const decoded = jwt.verify(token, config.jwtSecret);
-      const user = await UserModel.findById((decoded as any).id).exec();
-
-      if (!user) {
-        logger.error('Usuário não encontrado para o token decodificado');
-        return res.status(401).json({ valid: false, error: 'Usuário não encontrado' });
-      }
-
-      const tokenExp = (decoded as any).exp * 1000;
-      const now = Date.now();
-      const sixHours = 6 * 60 * 60 * 1000;
-
-      if (tokenExp - now < sixHours) {
-        const newToken = this.generateToken(user);
-        logger.info('Token renovado');
-
-        return res.status(200).json({
-          valid: true,
-          token: newToken,
-          user: {
-            id: user._id,
-            name: user.name,
-            email: user.email,
-            type: user.type
-          }
-        });
-      }
-
-      return res.status(200).json({
-        valid: true,
-        token,
-        user: {
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          type: user.type
-        }
-      });
-    } catch (error: any) {
-      logger.error(`Erro na verificação do token: ${error.message}`);
-      return res.status(401).json({ valid: false, error: 'Token inválido' });
-    }
-  }
-
-  public static async register(req: Request, res: Response): Promise<Response> {
-    try {
-      const { name, email, password, type } = req.body;
-
-      const existingUser = await UserModel.findOne({ email: email.toLowerCase() }).exec();
-      if (existingUser) {
-        return res.status(400).json({ error: 'Usuário já existe' });
-      }
-
-      const salt = await bcrypt.genSalt(10);
-      const hashedPassword = await bcrypt.hash(password, salt);
-
-      const user = await UserModel.create({
-        name,
-        email: email.toLowerCase(),
-        password: hashedPassword,
-        type: type || 'user'
-      });
-
-      logger.info(`Usuário registrado: ${email}`);
-
-      return res.status(201).json({
-        message: 'Usuário criado com sucesso',
-        userId: user._id
-      });
-    } catch (error: any) {
-      logger.error(`Erro no registro: ${error.message}`);
-      return res.status(500).json({ error: 'Erro no servidor' });
-    }
-  }
-
   public static async login(req: Request, res: Response): Promise<Response> {
     try {
       logger.info('Iniciando processo de login', { body: req.body });
 
       const { email, password } = req.body;
 
-      // Validações de entrada
       if (!email || !password) {
         logger.warn('Email ou senha não fornecidos');
         return res.status(400).json({ error: 'Email e senha são obrigatórios' });
       }
 
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(email)) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         logger.warn('Formato de email inválido', { email });
         return res.status(400).json({ error: 'Formato de email inválido' });
       }
 
-      if (!password || password.length < 6) {
-        logger.warn('Senha inválida', { passwordLength: password?.length });
+      if (password.length < 6) {
+        logger.warn('Senha inválida', { passwordLength: password.length });
         return res.status(400).json({ error: 'Senha deve ter no mínimo 6 caracteres' });
       }
 
-      // Verifica se a conexão com o banco está ativa
       if (mongoose.connection.readyState !== 1) {
         logger.error('Conexão com o banco de dados não está ativa', { 
           readyState: mongoose.connection.readyState 
@@ -135,7 +118,6 @@ export class AuthController {
         return res.status(500).json({ error: 'Serviço de banco de dados indisponível' });
       }
 
-      // Busca o usuário com tratamento de erro
       const user = await UserModel.findOne({ email: email.toLowerCase() }).exec();
       
       if (!user) {
@@ -143,15 +125,13 @@ export class AuthController {
         return res.status(400).json({ error: 'Credenciais inválidas' });
       }
 
-      // Verifica a senha
       const isMatch = await bcrypt.compare(password, user.password);
       if (!isMatch) {
         logger.warn(`Tentativa de login com senha incorreta: ${email}`);
         return res.status(400).json({ error: 'Credenciais inválidas' });
       }
 
-      // Gera o token
-      const token = this.generateToken(user);
+      const token = AuthController.generateToken(user);
 
       logger.info(`Usuário logado: ${email}`, { 
         userId: user._id,
@@ -176,6 +156,90 @@ export class AuthController {
       return res.status(500).json({ 
         error: 'Erro no servidor', 
         details: process.env.NODE_ENV !== 'production' ? error.message : undefined 
+      });
+    }
+  }
+
+  public static async refreshToken(req: Request, res: Response): Promise<Response> {
+    try {
+      // Tenta obter o token do body ou do header Authorization
+      let token = req.body.token;
+      if (!token) {
+        const authHeader = req.headers.authorization;
+        token = authHeader ? authHeader.split(' ')[1] : null;
+      }
+      
+      if (!token) {
+        logger.warn('Token não fornecido para refresh');
+        return res.status(400).json({ error: 'Token é obrigatório' });
+      }
+
+      try {
+        // Verifica se o token atual ainda é válido
+        const decoded = jwt.verify(token, config.jwtSecret) as any;
+        
+        // Busca o usuário no banco
+        const user = await UserModel.findById(decoded.id);
+        
+        if (!user) {
+          logger.warn('Usuário não encontrado durante refresh do token', { userId: decoded.id });
+          return res.status(404).json({ error: 'Usuário não encontrado' });
+        }
+
+        // Gera um novo token
+        const newToken = AuthController.generateToken(user);
+
+        logger.info('Token refreshed com sucesso', { userId: user._id });
+
+        return res.status(200).json({
+          token: newToken,
+          user: {
+            id: user._id,
+            name: user.name,
+            email: user.email,
+            type: user.type
+          }
+        });
+      } catch (jwtError: any) {
+        logger.warn('Token inválido durante refresh', { error: jwtError.message });
+        return res.status(401).json({ error: 'Token inválido' });
+      }
+    } catch (error: any) {
+      logger.error(`Erro no refresh do token: ${error.message}`, {
+        stack: error.stack,
+        name: error.name
+      });
+      return res.status(500).json({ 
+        error: 'Erro no servidor',
+        details: process.env.NODE_ENV !== 'production' ? error.message : undefined
+      });
+    }
+  }
+
+  public static async verifyToken(req: Request, res: Response): Promise<Response> {
+    try {
+      // O token já foi verificado pelo middleware de autenticação
+      // Se chegou aqui, o token é válido
+      const user = req.user;
+
+      logger.info('Token verificado com sucesso', { userId: user!.id });
+
+      return res.status(200).json({
+        valid: true,
+        user: {
+          id: user!.id,
+          email: user!.email,
+          type: user!.type
+        }
+      });
+    } catch (error: any) {
+      logger.error(`Erro na verificação do token: ${error.message}`, {
+        stack: error.stack,
+        name: error.name
+      });
+      return res.status(500).json({ 
+        error: 'Erro no servidor',
+        details: process.env.NODE_ENV !== 'production' ? error.message : undefined
       });
     }
   }

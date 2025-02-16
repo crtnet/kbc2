@@ -1,148 +1,49 @@
 import { Request, Response } from 'express';
-import { logger } from '../utils/logger';
-import bookService from '../services/bookService';
-import { Book } from '../models/Book';
 import mongoose from 'mongoose';
-import { config } from '../config';
+import { logger } from '../utils/logger';
+import storyGenerator from '../services/storyGenerator';
+import openAIService from '../services/openai';
+import { generateBookPDF } from '../services/pdfGenerator';
+import { BookModel, IBook, AgeRange } from '../models/Book';
+
+// Define uma interface para requisição autenticada (com user)
+interface AuthRequest extends Request {
+  user: {
+    id: string;
+    email: string;
+    type: string;
+  };
+}
 
 class BookController {
+  // Método para listar livros do usuário autenticado
   async listBooks(req: Request, res: Response) {
     try {
-      const userId = req.user?.id;
-      
-      // Log apenas em desenvolvimento
-      if (config.nodeEnv === 'development') {
-        logger.info('Listagem de livros - Usuário autenticado:', { userId });
+      const authReq = req as AuthRequest;
+      if (!authReq.user) {
+        return res.status(401).json({ error: 'Usuário não autenticado' });
       }
-
-      if (!userId) {
-        logger.error('Usuário não autenticado na listagem de livros');
-        return res.status(401).json({ 
-          error: 'Não autorizado',
-          details: 'Usuário não autenticado'
-        });
-      }
-
-      // Verifica a conexão com o banco antes de fazer a query
-      if (mongoose.connection.readyState !== 1) {
-        logger.error('Banco de dados não conectado');
-        return res.status(503).json({ 
-          error: 'Serviço indisponível',
-          details: 'Erro de conexão com o banco de dados'
-        });
-      }
-
-      const books = await Book.find({ userId })
-        .sort({ 'metadata.createdAt': -1 })
-        .select('-pages.text')
-        .lean()
-        .exec();
-      
-      // Log apenas em desenvolvimento
-      if (config.nodeEnv === 'development') {
-        logger.info(`Livros encontrados para o usuário ${userId}:`, { count: books.length });
-      }
-
-      return res.json({
-        success: true,
-        data: books,
-        count: books.length
-      });
+      // Converte o id do usuário para ObjectId
+      const userId = new mongoose.Types.ObjectId(authReq.user.id);
+      const books = await BookModel.find({ userId }).sort({ 'metadata.createdAt': -1 }).exec();
+      logger.info('Books fetched successfully', { count: books.length });
+      return res.json(books);
     } catch (error: any) {
-      logger.error('Erro ao listar livros:', {
-        error: error.message,
-        stack: config.nodeEnv === 'development' ? error.stack : undefined,
-        code: error.code
-      });
-      
-      // Tratamento específico para erros do MongoDB
-      if (error instanceof mongoose.Error) {
-        return res.status(503).json({
-          error: 'Erro no banco de dados',
-          details: config.nodeEnv === 'development' ? error.message : 'Erro ao acessar o banco de dados'
-        });
-      }
-      
+      logger.error('Erro ao listar livros', { error: error.message });
       return res.status(500).json({
-        error: 'Erro interno do servidor',
-        details: config.nodeEnv === 'development' ? error.message : 'Erro ao processar a requisição'
-      });
-    }
-  }
-
-  async getBook(req: Request, res: Response) {
-    try {
-      const { id } = req.params;
-      const userId = req.user?.id;
-
-      // Log apenas em desenvolvimento
-      if (config.nodeEnv === 'development') {
-        logger.info('Busca de livro específico:', { bookId: id, userId });
-      }
-
-      if (!userId) {
-        logger.error('Usuário não autenticado na busca de livro');
-        return res.status(401).json({ 
-          error: 'Não autorizado',
-          details: 'Usuário não autenticado'
-        });
-      }
-
-      if (!mongoose.Types.ObjectId.isValid(id)) {
-        logger.error('ID de livro inválido', { bookId: id });
-        return res.status(400).json({ 
-          error: 'Requisição inválida',
-          details: 'ID de livro inválido'
-        });
-      }
-
-      // Verifica a conexão com o banco antes de fazer a query
-      if (mongoose.connection.readyState !== 1) {
-        logger.error('Banco de dados não conectado');
-        return res.status(503).json({ 
-          error: 'Serviço indisponível',
-          details: 'Erro de conexão com o banco de dados'
-        });
-      }
-
-      const book = await Book.findOne({ _id: id, userId });
-      
-      if (!book) {
-        logger.error('Livro não encontrado', { bookId: id, userId });
-        return res.status(404).json({ 
-          error: 'Não encontrado',
-          details: 'Livro não encontrado'
-        });
-      }
-
-      return res.json({
-        success: true,
-        data: book
-      });
-    } catch (error: any) {
-      logger.error('Erro ao buscar livro:', {
-        error: error.message,
-        stack: config.nodeEnv === 'development' ? error.stack : undefined,
-        code: error.code
-      });
-      
-      // Tratamento específico para erros do MongoDB
-      if (error instanceof mongoose.Error) {
-        return res.status(503).json({
-          error: 'Erro no banco de dados',
-          details: config.nodeEnv === 'development' ? error.message : 'Erro ao acessar o banco de dados'
-        });
-      }
-      
-      return res.status(500).json({
-        error: 'Erro interno do servidor',
-        details: config.nodeEnv === 'development' ? error.message : 'Erro ao processar a requisição'
+        error: 'Erro ao listar livros',
+        details: error.message,
       });
     }
   }
 
   async createBook(req: Request, res: Response) {
     try {
+      const authReq = req as AuthRequest;
+      if (!authReq.user) {
+        throw new Error('Usuário não autenticado');
+      }
+      
       const { 
         title, 
         prompt, 
@@ -152,114 +53,150 @@ class BookController {
         language = 'pt-BR'
       } = req.body;
 
-      // Log apenas em desenvolvimento
-      if (config.nodeEnv === 'development') {
-        logger.info('Requisição de criação de livro recebida:', {
-          title,
-          ageRange,
-          theme,
-          language
-        });
+      logger.info('Iniciando criação de novo livro', { title, ageRange });
+
+      // 1. Gerar história (note que se a API key não estiver correta, essa chamada retornará erro 401)
+      const { story, wordCount } = await storyGenerator.generateStory(prompt, ageRange as AgeRange);
+      logger.info('História gerada com sucesso', { wordCount, storySnippet: story.substring(0, 100) });
+
+      if (!story || story.trim().length === 0 || wordCount < 10) {
+        throw new Error('História gerada está vazia ou muito curta');
       }
 
-      // Validações dos campos obrigatórios
-      if (!title || !prompt || !ageRange || !authorName) {
-        logger.error('Dados inválidos na requisição', { 
-          title: !!title,
-          prompt: !!prompt,
-          ageRange: !!ageRange,
-          authorName: !!authorName
-        });
-        return res.status(400).json({ 
-          error: 'Dados inválidos',
-          details: 'Todos os campos são obrigatórios: title, prompt, ageRange, authorName'
-        });
+      // 2. Dividir história em páginas
+      const pages = this.splitStoryIntoPages(story);
+      logger.info(`História dividida em ${pages.length} páginas`);
+
+      if (pages.length === 0) {
+        throw new Error('Falha ao dividir a história em páginas');
       }
 
-      // Validação da faixa etária
-      const validAgeRanges = ['1-2', '3-4', '5-6', '7-8', '9-10', '11-12'];
-      if (!validAgeRanges.includes(ageRange)) {
-        logger.error('Faixa etária inválida', { ageRange });
-        return res.status(400).json({
-          error: 'Dados inválidos',
-          details: `A faixa etária deve ser uma das seguintes: ${validAgeRanges.join(', ')}`
-        });
-      }
+      logger.info('Páginas geradas:', { pages });
 
-      const userId = req.user?.id;
-      
-      if (!userId) {
-        logger.error('Usuário não autenticado na criação de livro');
-        return res.status(401).json({ 
-          error: 'Não autorizado',
-          details: 'Usuário não autenticado'
-        });
-      }
-
-      // Verifica a conexão com o banco antes de criar o livro
-      if (mongoose.connection.readyState !== 1) {
-        logger.error('Banco de dados não conectado');
-        return res.status(503).json({ 
-          error: 'Serviço indisponível',
-          details: 'Erro de conexão com o banco de dados'
-        });
-      }
-
-      // Criar livro usando o serviço
-      const book = await bookService.createBook({
+      // 3. Criar livro no banco de dados (incluindo o userId convertido)
+      const bookData: Partial<IBook> = {
         title,
-        prompt,
-        ageRange,
         authorName,
-        userId,
+        userId: new mongoose.Types.ObjectId(authReq.user.id),
+        ageRange,
         theme,
-        language
-      });
-
-      // Log apenas em desenvolvimento
-      if (config.nodeEnv === 'development') {
-        logger.info('Livro criado com sucesso', { 
-          bookId: book._id,
-          status: book.status
-        });
-      }
-
-      return res.status(201).json({
-        success: true,
-        message: 'Livro criado com sucesso, gerando imagens...',
-        data: {
-          bookId: book._id,
-          status: book.status,
-          pages: book.pages.length
+        language,
+        pages: pages.map((text, index) => ({
+          pageNumber: index + 1,
+          text,
+          imageUrl: '' // Será preenchido posteriormente
+        })),
+        status: 'processing',
+        metadata: {
+          wordCount,
+          pageCount: pages.length,
+          createdAt: new Date(),
+          lastModified: new Date()
         }
+      };
+
+      logger.info('Dados do livro a ser salvo:', { bookData });
+      
+      const book = new BookModel(bookData);
+      await book.save();
+      logger.info('Livro salvo no banco de dados', { bookId: book._id });
+
+      // 4. Iniciar geração de imagens em background
+      this.generateImagesForBook(book._id.toString(), pages).catch(error => {
+        logger.error('Erro ao gerar imagens para o livro', { 
+          bookId: book._id, 
+          error: error.message 
+        });
       });
 
+      return res.status(201).json({ 
+        message: 'Livro criado com sucesso, gerando imagens...',
+        bookId: book._id,
+        pages: book.pages.length
+      });
     } catch (error: any) {
-      logger.error('Erro ao criar livro:', {
+      logger.error('Erro ao criar livro', { error: error.message, stack: error.stack });
+      return res.status(500).json({ 
+        error: 'Erro no servidor ao criar o livro. Tente novamente mais tarde.',
+        details: error.message 
+      });
+    }
+  }
+
+  private splitStoryIntoPages(story: string): string[] {
+    const paragraphs = story.split('\n\n').filter(p => p.trim());
+    const pages: string[] = [];
+    let currentPage = '';
+
+    for (const paragraph of paragraphs) {
+      const tentativePage = currentPage ? currentPage + '\n\n' + paragraph : paragraph;
+      if (tentativePage.split(' ').length > 100 && currentPage) {
+        pages.push(currentPage);
+        currentPage = paragraph;
+      } else {
+        currentPage = tentativePage;
+      }
+    }
+
+    if (currentPage) {
+      pages.push(currentPage);
+    }
+
+    return pages;
+  }
+
+  private async generateImagesForBook(bookId: string, pages: string[]) {
+    try {
+      const book = await BookModel.findById(bookId);
+      if (!book) throw new Error('Livro não encontrado');
+
+      for (let i = 0; i < pages.length; i++) {
+        try {
+          const pageText = pages[i];
+          const prompt = `Ilustração para livro infantil: ${pageText.substring(0, 200)}`;
+          
+          logger.info(`Gerando imagem para página ${i + 1}`, { bookId });
+          const imageUrl = await openAIService.generateImage(prompt);
+          
+          if (book.pages[i]) {
+            book.pages[i].imageUrl = imageUrl;
+            await book.save();
+            logger.info(`Imagem gerada com sucesso para página ${i + 1}`, { bookId });
+          } else {
+            logger.warn(`Página ${i + 1} não encontrada no livro ${bookId}`);
+          }
+        } catch (error: any) {
+          logger.error(`Erro ao gerar imagem para página ${i + 1}`, {
+            bookId,
+            error: error.message,
+          });
+        }
+      }
+
+      logger.info('Iniciando geração do PDF', { bookId });
+      const pdfPath = await generateBookPDF(book);
+      
+      book.pdfUrl = pdfPath;
+      book.status = 'completed';
+      await book.save();
+      
+      logger.info('Livro finalizado com sucesso', { 
+        bookId,
+        pdfPath,
+        status: 'completed',
+      });
+    } catch (error: any) {
+      logger.error('Erro no processo de geração de imagens e PDF', {
+        bookId,
         error: error.message,
-        stack: config.nodeEnv === 'development' ? error.stack : undefined,
-        name: error.name,
-        code: error.code
       });
       
-      if (error.name === 'ValidationError') {
-        return res.status(400).json({
-          error: 'Erro de validação',
-          details: error.message
-        });
+      const book = await BookModel.findById(bookId);
+      if (book) {
+        book.status = 'error';
+        book.metadata.error = error.message;
+        await book.save();
       }
-      
-      if (error instanceof mongoose.Error) {
-        return res.status(503).json({
-          error: 'Erro no banco de dados',
-          details: config.nodeEnv === 'development' ? error.message : 'Erro ao salvar no banco de dados'
-        });
-      }
-      
-      return res.status(500).json({
-        error: 'Erro interno do servidor',
-        details: config.nodeEnv === 'development' ? error.message : 'Erro ao processar a requisição'
-      });
     }
   }
 }

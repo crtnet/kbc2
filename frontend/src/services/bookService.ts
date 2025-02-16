@@ -5,20 +5,55 @@ import { API_ENDPOINTS } from '../config/constants';
 
 export const createBook = async (bookData: Partial<Book>) => {
   try {
-    const response = await api.post(API_ENDPOINTS.BOOKS.BASE, bookData);
-    logger.info('Livro criado com sucesso', { bookId: response.data.id });
-    return response.data;
+    // Formata os dados conforme esperado pelo backend
+    const formattedData = {
+      title: bookData.title,
+      genre: bookData.genre,
+      theme: bookData.theme,
+      mainCharacter: bookData.mainCharacter,
+      setting: bookData.setting,
+      tone: bookData.tone || 'fun',
+      ageRange: bookData.ageRange || '5-6',
+      authorName: bookData.authorName || 'Anonymous',
+      userId: bookData.userId,
+      language: bookData.language || 'pt-BR',
+      prompt: bookData.prompt || `Create a children's story about ${bookData.mainCharacter} in ${bookData.setting}. Theme: ${bookData.theme}, Genre: ${bookData.genre}`
+    };
+
+    logger.info('Enviando dados para criação de livro', { 
+      ...formattedData,
+      prompt: formattedData.prompt.substring(0, 50) + '...' // Log parcial do prompt
+    });
+
+    const response = await api.post(API_ENDPOINTS.BOOKS.BASE, formattedData);
+    
+    logger.info('Resposta da API de criação de livro', {
+      status: response.status,
+      data: response.data
+    });
+
+    if (!response.data?.data?.bookId) {
+      throw new Error('ID do livro não retornado pelo servidor');
+    }
+    
+    logger.info('Livro criado com sucesso', { 
+      bookId: response.data.data.bookId,
+      status: response.data.data.status 
+    });
+    
+    return response.data.data;
   } catch (error) {
     logger.error('Erro ao criar livro', {
       error: error.message,
       status: error.response?.status,
-      data: error.response?.data
+      data: error.response?.data,
+      requestData: bookData
     });
     
     if (error.response?.status === 401) {
       throw new Error('Sessão expirada. Por favor, faça login novamente.');
     } else if (error.response?.status === 400) {
-      throw new Error(error.response.data.error || 'Dados inválidos para criação do livro');
+      throw new Error(error.response.data.details || 'Dados inválidos para criação do livro');
     } else if (error.response?.status === 500) {
       throw new Error('Erro no servidor ao criar o livro. Tente novamente mais tarde.');
     } else if (!error.response) {

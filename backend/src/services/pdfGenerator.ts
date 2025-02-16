@@ -1,4 +1,3 @@
-// services/pdfGenerator.ts
 import PDFDocument from 'pdfkit';
 import fs from 'fs';
 import path from 'path';
@@ -22,18 +21,18 @@ interface PDFOptions {
 }
 
 const defaultOptions: PDFOptions = {
-  format: 'A4', // Se desejar A3 por padrão, altere para 'A3'
+  format: 'A4', // ou 'A3' se preferir
   margins: {
     top: 72,
     bottom: 72,
     left: 72,
-    right: 72
+    right: 72,
   },
   fonts: {
     regular: path.join(__dirname, '../../assets/fonts/OpenSans-Regular.ttf'),
     bold: path.join(__dirname, '../../assets/fonts/OpenSans-Bold.ttf'),
-    italic: path.join(__dirname, '../../assets/fonts/OpenSans-Italic.ttf')
-  }
+    italic: path.join(__dirname, '../../assets/fonts/OpenSans-Italic.ttf'),
+  },
 };
 
 async function downloadImage(url: string, localPath: string): Promise<string> {
@@ -41,7 +40,7 @@ async function downloadImage(url: string, localPath: string): Promise<string> {
     const response = await axios.get(url, { responseType: 'arraybuffer' });
     fs.writeFileSync(localPath, response.data);
     return localPath;
-  } catch (error) {
+  } catch (error: any) {
     logger.error(`Erro ao baixar imagem de ${url}: ${error.message}`);
     throw error;
   }
@@ -61,7 +60,7 @@ async function prepareImages(book: IBook): Promise<Map<number, string>> {
       try {
         await downloadImage(page.imageUrl, localPath);
         imageMap.set(page.pageNumber, localPath);
-      } catch (error) {
+      } catch (error: any) {
         logger.error(`Erro ao preparar imagem para página ${page.pageNumber}: ${error.message}`);
       }
     } else if (page.imageUrl) {
@@ -90,7 +89,7 @@ export async function generateBookPDF(book: IBook, options: PDFOptions = default
       const pdfPath = path.join(pdfDir, pdfFilename);
       const stream = fs.createWriteStream(pdfPath);
       
-      // Configura o documento PDF
+      // Cria o documento PDF
       const doc = new PDFDocument({
         size: options.format,
         margins: options.margins,
@@ -98,15 +97,43 @@ export async function generateBookPDF(book: IBook, options: PDFOptions = default
       });
       doc.pipe(stream);
 
-      // Registra as fontes personalizadas
+      // Registra fontes personalizadas
       if (options.fonts) {
         doc.registerFont('Regular', options.fonts.regular);
         doc.registerFont('Bold', options.fonts.bold);
         doc.registerFont('Italic', options.fonts.italic);
       }
 
-      // Restante do código de geração do PDF permanece igual...
-      // (mantive o código anterior de geração de páginas)
+      // Gera uma página para cada página do livro
+      for (const page of book.pages) {
+        doc.addPage();
+        
+        // Escreve o texto da página
+        doc.font('Regular')
+           .fontSize(12)
+           .text(page.text, {
+             align: 'justify',
+             paragraphGap: 10,
+           });
+        
+        // Se houver imagem para essa página, adiciona a imagem
+        if (imageMap.has(page.pageNumber)) {
+          const imagePath = imageMap.get(page.pageNumber)!;
+          try {
+            // Adiciona a imagem centralizada, ajustando o tamanho conforme necessário
+            doc.moveDown();
+            doc.image(imagePath, {
+              fit: [400, 300],
+              align: 'center',
+              valign: 'center'
+            });
+          } catch (imgErr: any) {
+            logger.error(`Erro ao adicionar imagem na página ${page.pageNumber}: ${imgErr.message}`);
+          }
+        }
+      }
+
+      doc.end();
 
       stream.on('finish', () => {
         // Remove arquivos temporários (imagens baixadas)
@@ -116,16 +143,13 @@ export async function generateBookPDF(book: IBook, options: PDFOptions = default
           }
         });
 
-        // Retorna o caminho relativo do PDF
+        // Retorna o caminho relativo do PDF (para acesso via web, por exemplo)
         const relativePdfPath = `/pdfs/${pdfFilename}`;
-        
-        // Log adicional para verificação
         logger.info('PDF gerado com sucesso', { 
           bookId: book._id, 
           pdfPath: relativePdfPath,
           fullPath: pdfPath 
         });
-
         resolve(relativePdfPath);
       });
 
@@ -133,8 +157,7 @@ export async function generateBookPDF(book: IBook, options: PDFOptions = default
         logger.error('Erro ao gerar stream do PDF', { error: err.message });
         reject(err);
       });
-
-    } catch (error) {
+    } catch (error: any) {
       logger.error('Erro completo ao gerar PDF', { 
         bookId: book._id, 
         error: error.message,

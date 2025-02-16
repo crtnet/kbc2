@@ -2,6 +2,11 @@
 
 ## [v0.3.0] - Em Desenvolvimento
 
+### Corrigido
+- Erro na criação de livros onde o ID não era corretamente extraído da resposta da API
+- Tratamento adequado do ID do livro no fluxo de criação e visualização
+- Validação adicional para garantir que o ID do livro existe antes da navegação
+
 ### Planejado
 - Integração com ChatGPT para geração de histórias
 - Integração com DALL-E para geração de imagens

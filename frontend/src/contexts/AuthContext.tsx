@@ -6,6 +6,7 @@ import React, {
   useEffect,
 } from 'react';
 import { Alert } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../services/api';
 import { useAsyncStorage } from '../hooks/useAsyncStorage';
 import { logger } from '../utils/logger';
@@ -33,6 +34,9 @@ export let signOutGlobal: () => Promise<void> = async () => {
   console.warn('signOutGlobal ainda não foi inicializado.');
 };
 
+// Variável global para manter o token em memória
+export let globalToken: string | null = null;
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
@@ -53,25 +57,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     logger.info('AuthContext - token:', token);
     logger.info('AuthContext - isLoading:', isLoading);
 
+    // Se o token do hook for atualizado, atualiza também o globalToken
+    if (token) {
+      globalToken = token;
+    }
+
     const validateToken = async () => {
       if (token) {
         try {
-          logger.info('Validando token:', token);
+          logger.info('Validando token no useEffect:', token);
           const response = await api.get('/auth/verify', {
             headers: { Authorization: `Bearer ${token}` },
           });
-
           logger.info('Resposta da validação do token:', response.data);
-
           if (response.data.valid) {
             logger.info('Token validado com sucesso');
             // Se um novo token for recebido, atualiza-o
             if (response.data.token) {
-              await setToken(
-                response.data.token.trim().replace(/^"|"$/g, '')
-              );
+              const newToken = response.data.token.trim().replace(/^"|"$/g, '');
+              await setToken(newToken);
+              await AsyncStorage.setItem('token', newToken);
+              globalToken = newToken;
             }
-            // Atualiza os dados do usuário
             if (response.data.user) {
               await setUserData(response.data.user);
             }
@@ -95,11 +102,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       setIsLoading(true);
       const response = await api.post('/auth/login', { email, password });
       const { token, user } = response.data;
-
       logger.info('SignIn - token recebido:', token);
       logger.info('SignIn - user:', user);
-
-      // Remove eventuais aspas extras do token
       const tokenStr =
         typeof token === 'string'
           ? token.trim().replace(/^"|"$/g, '')
@@ -107,10 +111,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       if (!tokenStr) {
         throw new Error('Token inválido retornado pelo servidor');
       }
-
+      // Armazena o token e atualiza o globalToken
       await setToken(tokenStr);
+      await AsyncStorage.setItem('token', tokenStr);
+      globalToken = tokenStr;
       await setUserData(user);
-
       logger.info('Usuário logado com sucesso', { userId: user.id });
     } catch (error) {
       logger.error('Falha no login', error);
@@ -128,6 +133,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     try {
       await removeToken();
       await removeUserData();
+      await AsyncStorage.removeItem('token');
+      globalToken = null;
       logger.info('Usuário deslogado');
     } catch (error) {
       logger.error('Falha ao deslogar', error);
@@ -147,14 +154,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
           password,
         });
         const { token, user } = response.data;
-
-        await setToken(
+        const tokenStr =
           typeof token === 'string'
             ? token.trim().replace(/^"|"$/g, '')
-            : ''
-        );
+            : '';
+        await setToken(tokenStr);
+        await AsyncStorage.setItem('token', tokenStr);
+        globalToken = tokenStr;
         await setUserData(user);
-
         logger.info('Usuário registrado com sucesso', { userId: user.id });
       } catch (error) {
         logger.error('Falha ao registrar', error);

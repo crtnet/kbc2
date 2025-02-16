@@ -1,17 +1,32 @@
-// Define a estrutura de um objeto Book utilizado no aplicativo
+export type BookStatus = 'draft' | 'processing' | 'completed' | 'error';
+export type AgeRange = '1-2' | '3-4' | '5-6' | '7-8' | '9-10' | '11-12';
+
+export interface BookPage {
+  pageNumber: number;
+  text: string;
+  imageUrl: string;
+}
+
+export interface BookMetadata {
+  wordCount: number;
+  pageCount: number;
+  createdAt: Date;
+  lastModified: Date;
+  error?: string;
+}
+
 export interface Book {
   id: string;
   title: string;
-  coverImage: string;
-  createdAt: string;
-  updatedAt: string;
+  authorName: string;
   userId: string;
-  pdfUrl?: string; // URL do PDF (opcional)
+  ageRange: AgeRange;
+  pages: BookPage[];
+  status: BookStatus;
   language: string;
-  theme?: string;  // Tema do livro (opcional)
-  status: 'draft' | 'published'; // Status: rascunho ou publicado
-  pages: {
-    text: string;
-    image: string;
-  }[];
+  theme: string;
+  pdfUrl?: string;
+  metadata: BookMetadata;
+  createdAt: Date;
+  updatedAt: Date;
 }

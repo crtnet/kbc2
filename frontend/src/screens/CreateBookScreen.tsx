@@ -1,4 +1,5 @@
 // src/screens/CreateBookScreen.tsx
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useState } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
 import { TextInput, Button, Text, SegmentedButtons, Card, Snackbar } from 'react-native-paper';
@@ -7,12 +8,15 @@ import * as bookService from '../services/bookService';
 
 interface BookData {
   title: string;
-  genre: string;
-  theme: string;
+  genre: 'adventure' | 'fantasy' | 'mystery';
+  theme: 'friendship' | 'courage' | 'kindness';
   mainCharacter: string;
   setting: string;
-  tone: string;
+  tone: 'fun' | 'adventurous' | 'calm';
   ageRange: '1-2' | '3-4' | '5-6' | '7-8' | '9-10' | '11-12';
+  prompt?: string;
+  authorName?: string;
+  language?: string;
 }
 
 function CreateBookScreen({ navigation }) {
@@ -62,16 +66,42 @@ function CreateBookScreen({ navigation }) {
 
   const handleCreateBook = async () => {
     try {
+      if (!user) {
+        setError('Usuário não autenticado');
+        setVisible(true);
+        return;
+      }
+
       setLoading(true);
-      console.log('Criando livro:', bookData);
+      const bookDataToSend = {
+        title: bookData.title,
+        genre: bookData.genre,
+        theme: bookData.theme,
+        mainCharacter: bookData.mainCharacter,
+        setting: bookData.setting,
+        tone: bookData.tone,
+        ageRange: bookData.ageRange,
+        prompt: `Create a children's story about ${bookData.mainCharacter} in ${bookData.setting}. Theme: ${bookData.theme}, Genre: ${bookData.genre}, Tone: ${bookData.tone}`,
+        authorName: user.name || 'Anonymous',
+        userId: user.id,
+        language: 'pt-BR'
+      };
       
-      const response = await bookService.createBook(bookData);
-      console.log('Livro criado:', response);
+      console.log('Dados do usuário:', user);
+      console.log('Token atual:', await AsyncStorage.getItem('token'));
+      console.log('Criando livro:', bookDataToSend);
       
-      navigation.navigate('ViewBook', { bookId: response.id });
+      const response = await bookService.createBook(bookDataToSend);
+      console.log('Resposta da criação do livro:', response);
+      
+      if (!response.bookId) {
+        throw new Error('ID do livro não retornado pelo servidor');
+      }
+      
+      navigation.navigate('ViewBook', { bookId: response.bookId });
     } catch (error) {
       console.error('Erro ao criar livro:', error);
-      setError(error.response?.data?.message || 'Erro ao criar livro');
+      setError(error.response?.data?.details || error.message || 'Erro ao criar livro');
       setVisible(true);
     } finally {
       setLoading(false);
