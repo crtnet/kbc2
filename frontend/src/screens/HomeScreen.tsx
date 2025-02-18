@@ -10,15 +10,19 @@ import { logger } from '../utils/logger';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ErrorMessage } from '../components/ErrorMessage';
 import { Book } from '../types/book';
+import { Appbar, Menu } from 'react-native-paper';
 
 export const HomeScreen: React.FC = () => {
-  // Se você tiver um tipo específico para a navegação, substitua "any" pelo tipo adequado.
   const navigation = useNavigation<any>();
   const { theme } = useTheme();
   const [books, setBooks] = useState<Book[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [menuVisible, setMenuVisible] = useState(false);
+
+  const openMenu = () => setMenuVisible(true);
+  const closeMenu = () => setMenuVisible(false);
 
   const fetchBooks = useCallback(async () => {
     try {
@@ -28,7 +32,6 @@ export const HomeScreen: React.FC = () => {
       logger.info('Fetching user books');
       const response = await api.get('/books');
 
-      // Mapeia os livros para o formato esperado
       const mappedBooks: Book[] = response.data.map((book: any) => ({
         id: book._id,
         title: book.title,
@@ -69,6 +72,12 @@ export const HomeScreen: React.FC = () => {
     setIsRefreshing(false);
   };
 
+  const handleLogout = () => {
+    // Aqui você pode implementar a lógica de logout, como limpar tokens e redirecionar para a tela de login.
+    closeMenu();
+    navigation.navigate('Login');
+  };
+
   if (loading && !isRefreshing) {
     return <LoadingSpinner />;
   }
@@ -79,13 +88,52 @@ export const HomeScreen: React.FC = () => {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <Appbar.Header style={{ backgroundColor: theme.colors.primary }}>
+        <Appbar.Content
+          title="Meus livros"
+          subtitle={`Total de livros ${books.length}`}
+          titleStyle={styles.headerTitle}
+          subtitleStyle={styles.headerSubtitle}
+        />
+        <Menu
+          visible={menuVisible}
+          onDismiss={closeMenu}
+          anchor={
+            <Appbar.Action icon="menu" color="#fff" onPress={openMenu} />
+          }
+        >
+        <Menu.Item
+          leadingIcon="plus"
+          onPress={() => {
+            closeMenu();
+            navigation.navigate('CreateBook');
+          }}
+          title="Criar livro"
+        />
+        <Menu.Item
+          leadingIcon="account"
+          onPress={() => {
+            closeMenu();
+            navigation.navigate('Profile');
+          }}
+          title="Perfil"
+        />
+        <Menu.Item
+          leadingIcon="logout"
+          onPress={handleLogout}
+          title="Sair"
+        />
+        </Menu>
+      </Appbar.Header>
+
       <BookList
         books={books}
         onRefresh={handleRefresh}
         isRefreshing={isRefreshing}
       />
+
       <FAB
-        icon="plus" // Certifique-se de que o ícone "plus" está disponível ou use "add"
+        icon="add"
         onPress={() => navigation.navigate('CreateBook')}
         style={styles.fab}
         color={theme.colors.onPrimary}
@@ -102,6 +150,13 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 16,
     bottom: 16,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  headerSubtitle: {
+    fontSize: 14,
   },
 });
 

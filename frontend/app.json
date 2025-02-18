@@ -20,7 +20,8 @@
       "infoPlist": {
         "NSCameraUsageDescription": "Permitir acesso à câmera para criar avatares e imagens de livros",
         "NSPhotoLibraryUsageDescription": "Permitir acesso à biblioteca de fotos para selecionar imagens"
-      }
+      },
+      "bundleIdentifier": "com.anonymous.kids-book-creator"
     },
     "android": {
       "adaptiveIcon": {
