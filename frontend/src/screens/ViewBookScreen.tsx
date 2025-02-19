@@ -1,18 +1,19 @@
 // src/screens/ViewBookScreen.tsx
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useLayoutEffect } from 'react';
 import {
   View,
   StyleSheet,
   ScrollView,
-  RefreshControl
+  RefreshControl,
 } from 'react-native';
 import { Text, Card, ActivityIndicator, Button } from 'react-native-paper';
 import { getBookById } from '../services/bookService';
+import { useNavigation } from '@react-navigation/native';
 
 interface Page {
   pageNumber: number;
   text: string;
-  imageUrl?: string;
+  imageUrl?: string; // se "placeholder_image_url", tratamos como undefined
 }
 
 interface Book {
@@ -35,7 +36,9 @@ interface ViewBookScreenProps {
       bookId: string;
     };
   };
-  navigation: any; // ou useNavigation<StackNavigationProp<...>>
+  // se quiser tipar a navigation, use:
+  // navigation: StackNavigationProp<RootStackParamList, 'ViewBook'>;
+  navigation: any;
 }
 
 const ViewBookScreen: React.FC<ViewBookScreenProps> = ({ route, navigation }) => {
@@ -45,6 +48,26 @@ const ViewBookScreen: React.FC<ViewBookScreenProps> = ({ route, navigation }) =>
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
+
+  /**
+   * Customiza o header:
+   * - Remove botão de voltar
+   * - Exibe "Concluído" que leva para HomeScreen
+   */
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerLeft: () => null, // remove o botão de voltar
+      headerBackVisible: false, // em versões mais recentes do RN Navigation
+      headerRight: () => (
+        <Button
+          onPress={() => navigation.navigate('Home')}
+          mode="text"
+        >
+          Concluído
+        </Button>
+      ),
+    });
+  }, [navigation]);
 
   const loadBook = useCallback(async () => {
     try {
@@ -155,24 +178,25 @@ const ViewBookScreen: React.FC<ViewBookScreenProps> = ({ route, navigation }) =>
             </Card>
           );
         }
-        return book.pages.map((page) => (
-          <Card key={page.pageNumber} style={styles.pageCard}>
-            {page.imageUrl ? (
-              <Card.Cover source={{ uri: page.imageUrl }} style={styles.pageImage} />
-            ) : (
-              <Card.Cover
-                source={require('../assets/placeholder-image.png')}
-                style={styles.pageImage}
-              />
-            )}
-            <Card.Content>
-              <Text style={styles.pageNumber}>
-                Página {page.pageNumber}
-              </Text>
-              <Text style={styles.pageText}>{page.text}</Text>
-            </Card.Content>
-          </Card>
-        ));
+        return book.pages.map((page) => {
+          // Se page.imageUrl for 'placeholder_image_url' ou falsy, exibe placeholder local
+          const imageSource =
+            page.imageUrl && page.imageUrl !== 'placeholder_image_url'
+              ? { uri: page.imageUrl }
+              : require('../assets/placeholder-image.png');
+
+          return (
+            <Card key={page.pageNumber} style={styles.pageCard}>
+              <Card.Cover source={imageSource} style={styles.pageImage} />
+              <Card.Content>
+                <Text style={styles.pageNumber}>
+                  Página {page.pageNumber}
+                </Text>
+                <Text style={styles.pageText}>{page.text}</Text>
+              </Card.Content>
+            </Card>
+          );
+        });
       case 'error':
         return (
           <Card style={[styles.statusCard, styles.errorCard]}>
@@ -201,10 +225,9 @@ const ViewBookScreen: React.FC<ViewBookScreenProps> = ({ route, navigation }) =>
 
   const handleOpenPDF = () => {
     if (book.pdfUrl) {
-      // Exemplo: navega para FlipBookScreen (ou webview)
+      // Navega para FlipBookScreen
       navigation.navigate('FlipBook', { bookId: book._id });
     } else {
-      // Se preferir, pode mostrar um alerta ou algo do tipo
       console.log('PDF não disponível.');
     }
   };
