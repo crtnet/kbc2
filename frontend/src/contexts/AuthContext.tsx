@@ -1,3 +1,4 @@
+// /frontend/src/contexts/AuthContext.ts
 import React, {
   createContext,
   useContext,
@@ -7,7 +8,7 @@ import React, {
 } from 'react';
 import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { api } from '../services/api';
+import { api, setAuthToken, setLogoutHandler } from '../services/api';
 import { useAsyncStorage } from '../hooks/useAsyncStorage';
 import { logger } from '../utils/logger';
 
@@ -29,12 +30,11 @@ interface AuthContextData {
 
 const AuthContext = createContext<AuthContextData>({} as AuthContextData);
 
-// Exporta uma referência global para a função signOut para uso fora de componentes
+// Exporta referência global para signOut se quiser
 export let signOutGlobal: () => Promise<void> = async () => {
   console.warn('signOutGlobal ainda não foi inicializado.');
 };
 
-// Variável global para manter o token em memória
 export let globalToken: string | null = null;
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
@@ -45,31 +45,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     setValue: setToken,
     removeValue: removeToken,
   } = useAsyncStorage<string>('token');
+
   const {
     storedValue: userData,
     setValue: setUserData,
     removeValue: removeUserData,
   } = useAsyncStorage<User>('user');
+
   const [isLoading, setIsLoading] = useState(true);
+
+  // Injeta a função de logout no api
+  useEffect(() => {
+    setLogoutHandler(signOutGlobal);
+  }, []);
 
   useEffect(() => {
     logger.info('AuthContext - userData:', userData);
     logger.info('AuthContext - token:', token);
     logger.info('AuthContext - isLoading:', isLoading);
 
-    // Se o token do hook for atualizado, atualiza também o globalToken
+    // Sempre que o token mudar, setamos no axios via setAuthToken
     if (token) {
       globalToken = token;
+      setAuthToken(token);
+    } else {
+      globalToken = null;
+      setAuthToken(null);
     }
 
     const validateToken = async () => {
       if (token) {
         try {
           logger.info('Validando token no useEffect:', token);
-          const response = await api.get('/auth/verify', {
-            headers: { Authorization: `Bearer ${token}` },
-          });
+          const response = await api.get('/auth/verify');
           logger.info('Resposta da validação do token:', response.data);
+
           if (response.data.valid) {
             logger.info('Token validado com sucesso');
             // Se um novo token for recebido, atualiza-o
@@ -78,6 +88,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
               await setToken(newToken);
               await AsyncStorage.setItem('token', newToken);
               globalToken = newToken;
+              setAuthToken(newToken);
             }
             if (response.data.user) {
               await setUserData(response.data.user);
@@ -91,6 +102,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
           await signOut();
         }
       }
+      // Depois de tentar validar, marcamos isLoading como false
       setIsLoading(false);
     };
 
@@ -104,18 +116,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       const { token, user } = response.data;
       logger.info('SignIn - token recebido:', token);
       logger.info('SignIn - user:', user);
+
       const tokenStr =
-        typeof token === 'string'
-          ? token.trim().replace(/^"|"$/g, '')
-          : '';
+        typeof token === 'string' ? token.trim().replace(/^"|"$/g, '') : '';
+
       if (!tokenStr) {
         throw new Error('Token inválido retornado pelo servidor');
       }
-      // Armazena o token e atualiza o globalToken
+      // Armazena o token e atualiza
       await setToken(tokenStr);
       await AsyncStorage.setItem('token', tokenStr);
       globalToken = tokenStr;
+      setAuthToken(tokenStr);
+
       await setUserData(user);
+
       logger.info('Usuário logado com sucesso', { userId: user.id });
     } catch (error) {
       logger.error('Falha no login', error);
@@ -135,13 +150,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       await removeUserData();
       await AsyncStorage.removeItem('token');
       globalToken = null;
+      setAuthToken(null);
       logger.info('Usuário deslogado');
     } catch (error) {
       logger.error('Falha ao deslogar', error);
     }
   }, []);
 
-  // Atualiza a referência global para signOut
   signOutGlobal = signOut;
 
   const signUp = useCallback(
@@ -155,12 +170,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         });
         const { token, user } = response.data;
         const tokenStr =
-          typeof token === 'string'
-            ? token.trim().replace(/^"|"$/g, '')
-            : '';
+          typeof token === 'string' ? token.trim().replace(/^"|"$/g, '') : '';
+
         await setToken(tokenStr);
         await AsyncStorage.setItem('token', tokenStr);
         globalToken = tokenStr;
+        setAuthToken(tokenStr);
+
         await setUserData(user);
         logger.info('Usuário registrado com sucesso', { userId: user.id });
       } catch (error) {

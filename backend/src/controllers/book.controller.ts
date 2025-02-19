@@ -1,13 +1,21 @@
+// src/controllers/book.controller.ts
+
 import { Request, Response } from 'express';
+import mongoose from 'mongoose';
 import { Book } from '../models/book.model';
 import { openAIUnifiedService } from '../services/openai.unified';
 import { logger } from '../utils/logger';
 
 export const bookController = {
+  /**
+   * Cria um novo livro (POST /books)
+   */
   async create(req: Request, res: Response) {
     try {
+      // Pega dados do corpo
       const { title, genre, theme, mainCharacter, setting, tone, ageRange } = req.body;
-      const userId = req.user?.id;
+      // Usuário autenticado
+      const userId = req.user?.id; // assumindo que req.user é populado pelo authMiddleware
 
       if (!userId) {
         return res.status(401).json({ message: 'Usuário não autenticado' });
@@ -17,7 +25,15 @@ export const bookController = {
         title, genre, theme, mainCharacter, setting, tone, ageRange, userId
       });
 
-      // Criar o livro primeiro
+      // Validação simples de campos obrigatórios
+      if (!title || !genre || !theme || !mainCharacter || !setting || !tone || !ageRange) {
+        logger.warn('Campos obrigatórios ausentes na criação do livro');
+        return res.status(400).json({
+          message: 'Dados inválidos. Verifique se todos os campos estão preenchidos.'
+        });
+      }
+
+      // Cria o documento inicial do livro
       const book = new Book({
         title,
         genre,
@@ -27,14 +43,14 @@ export const bookController = {
         tone,
         ageRange,
         userId,
-        status: 'generating',
+        status: 'generating', // ou 'processing'
       });
 
       await book.save();
       logger.info(`Livro criado com ID: ${book._id}`);
 
-      // Gerar o conteúdo em background
-      this.generateBookContent(book._id, {
+      // Gera o conteúdo em background
+      this.generateBookContent(book._id.toString(), {
         title,
         genre,
         theme,
@@ -56,6 +72,10 @@ export const bookController = {
     }
   },
 
+  /**
+   * Gera conteúdo (história) para o livro em background.
+   * Atualiza o documento do livro com páginas, status etc.
+   */
   async generateBookContent(bookId: string, params: {
     title: string;
     genre: string;
@@ -69,7 +89,7 @@ export const bookController = {
       logger.info(`Iniciando geração de conteúdo para o livro ${bookId}`);
       const startTime = Date.now();
 
-      // Construir o prompt de forma estruturada
+      // Construir o prompt
       const prompt = `
         Crie uma história infantil divertida e envolvente com:
         - Título: ${params.title}
@@ -78,37 +98,38 @@ export const bookController = {
         - Personagem Principal: ${params.mainCharacter}
         - Cenário: ${params.setting}
         - Tom: ${params.tone}
-
         A história deve ser adequada para crianças de ${params.ageRange} anos.
       `;
 
       const { story, wordCount } = await openAIUnifiedService.generateStory(prompt, params.ageRange);
 
-      // Dividir a história em páginas (aproximadamente 30-50 palavras por página)
+      // Divide a história em ~5 páginas
       const words = story.split(/\s+/);
-      const wordsPerPage = Math.ceil(wordCount / 5); // 5 páginas no total
+      const totalWords = words.length;
       const pages = [];
-      
-      for (let i = 0; i < words.length; i += wordsPerPage) {
+      const pagesCount = 5; // quantas páginas fixas você quer
+      const wordsPerPage = Math.ceil(totalWords / pagesCount);
+
+      for (let i = 0; i < totalWords; i += wordsPerPage) {
         const pageText = words.slice(i, i + wordsPerPage).join(' ');
         pages.push({
           text: pageText,
           pageNumber: pages.length + 1,
-          imageUrl: 'placeholder_image_url' // Será substituído pela imagem gerada
+          imageUrl: 'placeholder_image_url'
         });
       }
 
-      // Atualizar o livro com o conteúdo gerado
+      // Atualiza o livro no banco
       const updatedBook = await Book.findByIdAndUpdate(
         bookId,
         {
           content: story,
           wordCount,
           pages,
-          status: 'completed',
+          status: 'completed', // finaliza
           generationTime: Date.now() - startTime
         },
-        { new: true } // Retorna o documento atualizado
+        { new: true }
       );
 
       if (!updatedBook) {
@@ -122,32 +143,44 @@ export const bookController = {
     } catch (error) {
       logger.error(`Erro ao gerar conteúdo para livro ${bookId}:`, error);
 
-      // Atualizar o status do livro para erro
+      // Marca o livro como erro
       await Book.findByIdAndUpdate(bookId, {
         status: 'error',
         error: error instanceof Error ? error.message : 'Erro desconhecido'
       });
 
-      throw error; // Propagar o erro para tratamento adequado
+      throw error;
     }
   },
 
+  /**
+   * Obtém um livro (GET /books/:id)
+   */
   async get(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const userId = req.user?.id;
+      logger.info('bookController.get - Recebido id:', id);
 
+      // Verifica se user está autenticado
+      const userId = req.user?.id;
       if (!userId) {
         return res.status(401).json({ message: 'Usuário não autenticado' });
       }
 
+      // Verifica se ID é válido
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        logger.warn('ID de livro inválido:', id);
+        return res.status(400).json({ message: 'ID de livro inválido' });
+      }
+
+      // Busca o livro pertencente ao user
       const book = await Book.findOne({ _id: id, userId });
 
       if (!book) {
         return res.status(404).json({ message: 'Livro não encontrado' });
       }
 
-      // Se o livro ainda estiver gerando, verificar o status
+      // Se estiver gerando
       if (book.status === 'generating') {
         return res.json({
           ...book.toObject(),
@@ -155,7 +188,7 @@ export const bookController = {
         });
       }
 
-      // Se houve erro na geração
+      // Se deu erro
       if (book.status === 'error') {
         return res.status(500).json({
           ...book.toObject(),
@@ -164,7 +197,7 @@ export const bookController = {
         });
       }
 
-      // Se está completo, retornar o livro
+      // Se está completo
       return res.json(book);
     } catch (error) {
       logger.error('Erro ao buscar livro:', error);
@@ -175,24 +208,36 @@ export const bookController = {
     }
   },
 
+  /**
+   * Verifica status do livro (GET /books/:id/status)
+   */
   async checkStatus(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const userId = req.user?.id;
+      logger.info('bookController.checkStatus - Recebido id:', id);
 
+      const userId = req.user?.id;
       if (!userId) {
         return res.status(401).json({ message: 'Usuário não autenticado' });
       }
 
-      const book = await Book.findOne({ _id: id, userId });
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        logger.warn('ID de livro inválido:', id);
+        return res.status(400).json({ message: 'ID de livro inválido' });
+      }
 
+      const book = await Book.findOne({ _id: id, userId });
       if (!book) {
         return res.status(404).json({ message: 'Livro não encontrado' });
       }
 
       return res.json({
         status: book.status,
-        progress: book.status === 'completed' ? 100 : book.status === 'error' ? 0 : 50,
+        progress: book.status === 'completed'
+          ? 100
+          : book.status === 'error'
+          ? 0
+          : 50,
         error: book.error,
         generationTime: book.generationTime
       });
@@ -202,10 +247,12 @@ export const bookController = {
     }
   },
 
+  /**
+   * Lista livros do usuário (GET /books)
+   */
   async list(req: Request, res: Response) {
     try {
       const userId = req.user?.id;
-
       if (!userId) {
         return res.status(401).json({ message: 'Usuário não autenticado' });
       }

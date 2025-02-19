@@ -29,8 +29,18 @@ interface Book {
   // outros campos, se necessário
 }
 
-const ViewBookScreen = ({ route, navigation }: { route: any; navigation: any }) => {
+interface ViewBookScreenProps {
+  route: {
+    params: {
+      bookId: string;
+    };
+  };
+  navigation: any; // ou useNavigation<StackNavigationProp<...>>
+}
+
+const ViewBookScreen: React.FC<ViewBookScreenProps> = ({ route, navigation }) => {
   const { bookId } = route.params;
+
   const [book, setBook] = useState<Book | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -40,13 +50,27 @@ const ViewBookScreen = ({ route, navigation }: { route: any; navigation: any }) 
     try {
       console.log(`Buscando livro com ID: ${bookId}`);
       setRefreshing(true);
+      setError('');
       const bookData = await getBookById(bookId);
       console.log('Livro obtido:', bookData);
       setBook(bookData);
-      setError('');
-    } catch (err) {
+    } catch (err: any) {
       console.error('Erro ao carregar livro:', err);
-      setError('Erro ao carregar o livro. Verifique sua conexão ou tente novamente.');
+
+      // Tratamento de erros específicos
+      if (err.response) {
+        // Se o backend retornou status code
+        const { status, data } = err.response;
+        if (status === 400) {
+          setError('O ID do livro é inválido.');
+        } else if (status === 404) {
+          setError('Livro não encontrado ou excluído.');
+        } else {
+          setError(data?.error || 'Erro ao carregar o livro.');
+        }
+      } else {
+        setError('Erro ao carregar o livro. Verifique sua conexão ou tente novamente.');
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -57,13 +81,12 @@ const ViewBookScreen = ({ route, navigation }: { route: any; navigation: any }) 
     loadBook();
   }, [loadBook]);
 
-  // Atualiza periodicamente enquanto o livro estiver em status "generating"
-  // ou enquanto o PDF não estiver disponível (indicando que o processo ainda está em andamento)
+  // Se o livro estiver em geração, podemos revalidar periodicamente
   useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (book && ((book.status && book.status === 'generating') || !book.pdfUrl)) {
-      console.log('Revalidando status do livro...');
+    let interval: NodeJS.Timeout | undefined;
+    if (book && (book.status === 'processing' || book.status === 'generating')) {
       interval = setInterval(() => {
+        console.log('Revalidando status do livro...');
         loadBook();
       }, 5000);
     }
@@ -92,13 +115,23 @@ const ViewBookScreen = ({ route, navigation }: { route: any; navigation: any }) 
     );
   }
 
-  const renderStatus = () => {
-    if (!book) return null;
+  // Se não houver erro nem loading, mas também não tiver 'book'
+  if (!book) {
+    return (
+      <View style={styles.centerContainer}>
+        <Text style={styles.errorText}>Não foi possível carregar o livro.</Text>
+        <Button mode="contained" onPress={loadBook}>
+          Tentar novamente
+        </Button>
+      </View>
+    );
+  }
 
-    // Se o status não estiver definido, trata como 'completed'
+  const renderStatus = () => {
     const status = book.status || 'completed';
 
     switch (status) {
+      case 'processing':
       case 'generating':
         return (
           <Card style={styles.statusCard}>
@@ -122,19 +155,20 @@ const ViewBookScreen = ({ route, navigation }: { route: any; navigation: any }) 
             </Card>
           );
         }
-        return book.pages.map((page, index) => (
-          <Card key={page.pageNumber || index} style={styles.pageCard}>
+        return book.pages.map((page) => (
+          <Card key={page.pageNumber} style={styles.pageCard}>
             {page.imageUrl ? (
               <Card.Cover source={{ uri: page.imageUrl }} style={styles.pageImage} />
             ) : (
-              // Exibe um placeholder se não houver imagem; verifique o caminho do arquivo
-              <Card.Cover 
+              <Card.Cover
                 source={require('../assets/placeholder-image.png')}
                 style={styles.pageImage}
               />
             )}
             <Card.Content>
-              <Text style={styles.pageNumber}>Página {page.pageNumber || index + 1}</Text>
+              <Text style={styles.pageNumber}>
+                Página {page.pageNumber}
+              </Text>
               <Text style={styles.pageText}>{page.text}</Text>
             </Card.Content>
           </Card>
@@ -165,6 +199,16 @@ const ViewBookScreen = ({ route, navigation }: { route: any; navigation: any }) 
     }
   };
 
+  const handleOpenPDF = () => {
+    if (book.pdfUrl) {
+      // Exemplo: navega para FlipBookScreen (ou webview)
+      navigation.navigate('FlipBook', { bookId: book._id });
+    } else {
+      // Se preferir, pode mostrar um alerta ou algo do tipo
+      console.log('PDF não disponível.');
+    }
+  };
+
   return (
     <ScrollView
       style={styles.container}
@@ -174,12 +218,22 @@ const ViewBookScreen = ({ route, navigation }: { route: any; navigation: any }) 
     >
       <Card style={styles.infoCard}>
         <Card.Content>
-          <Text style={styles.title}>{book?.title}</Text>
-          <Text style={styles.detail}>Personagem: {book?.mainCharacter}</Text>
-          <Text style={styles.detail}>Cenário: {book?.setting}</Text>
-          <Text style={styles.detail}>Gênero: {book?.genre}</Text>
-          <Text style={styles.detail}>Tema: {book?.theme}</Text>
-          <Text style={styles.detail}>Tom: {book?.tone}</Text>
+          <Text style={styles.title}>{book.title}</Text>
+          <Text style={styles.detail}>Personagem: {book.mainCharacter}</Text>
+          <Text style={styles.detail}>Cenário: {book.setting}</Text>
+          <Text style={styles.detail}>Gênero: {book.genre}</Text>
+          <Text style={styles.detail}>Tema: {book.theme}</Text>
+          <Text style={styles.detail}>Tom: {book.tone}</Text>
+
+          {book.pdfUrl && (
+            <Button
+              mode="contained"
+              onPress={handleOpenPDF}
+              style={styles.pdfButton}
+            >
+              Ver PDF
+            </Button>
+          )}
         </Card.Content>
       </Card>
       {renderStatus()}
@@ -254,6 +308,9 @@ const styles = StyleSheet.create({
   },
   retryButton: {
     marginTop: 10
+  },
+  pdfButton: {
+    marginTop: 20
   }
 });
 

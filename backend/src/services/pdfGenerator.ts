@@ -1,3 +1,4 @@
+// /src/services/pdfGenerator.ts
 import PDFDocument from 'pdfkit';
 import fs from 'fs';
 import path from 'path';
@@ -21,29 +22,19 @@ interface PDFOptions {
 }
 
 const defaultOptions: PDFOptions = {
-  format: 'A4', // ou 'A3' se preferir
+  format: 'A4',
   margins: {
     top: 72,
     bottom: 72,
     left: 72,
     right: 72,
   },
-  fonts: {
-    regular: path.join(__dirname, '../../assets/fonts/OpenSans-Regular.ttf'),
-    bold: path.join(__dirname, '../../assets/fonts/OpenSans-Bold.ttf'),
-    italic: path.join(__dirname, '../../assets/fonts/OpenSans-Italic.ttf'),
-  },
 };
 
 async function downloadImage(url: string, localPath: string): Promise<string> {
-  try {
-    const response = await axios.get(url, { responseType: 'arraybuffer' });
-    fs.writeFileSync(localPath, response.data);
-    return localPath;
-  } catch (error: any) {
-    logger.error(`Erro ao baixar imagem de ${url}: ${error.message}`);
-    throw error;
-  }
+  const response = await axios.get(url, { responseType: 'arraybuffer' });
+  fs.writeFileSync(localPath, response.data);
+  return localPath;
 }
 
 async function prepareImages(book: IBook): Promise<Map<number, string>> {
@@ -75,21 +66,22 @@ async function prepareImages(book: IBook): Promise<Map<number, string>> {
 export async function generateBookPDF(book: IBook, options: PDFOptions = defaultOptions): Promise<string> {
   return new Promise(async (resolve, reject) => {
     try {
-      // Prepara as imagens para cada página
       const imageMap = await prepareImages(book);
 
-      // Configura o diretório de saída para o PDF
+      // Pasta onde realmente salvamos o PDF
       const pdfDir = path.join(__dirname, '../../public/pdfs');
       if (!fs.existsSync(pdfDir)) {
         fs.mkdirSync(pdfDir, { recursive: true });
       }
 
-      // Nome do arquivo baseado no ID do livro
+      // Nome do arquivo PDF
       const pdfFilename = `${book._id}.pdf`;
-      const pdfPath = path.join(pdfDir, pdfFilename);
-      const stream = fs.createWriteStream(pdfPath);
-      
-      // Cria o documento PDF
+      // Caminho absoluto onde criaremos o PDF
+      const absolutePdfPath = path.join(pdfDir, pdfFilename);
+      // Caminho relativo que vamos guardar no banco
+      const relativePdfPath = `/pdfs/${pdfFilename}`;
+
+      const stream = fs.createWriteStream(absolutePdfPath);
       const doc = new PDFDocument({
         size: options.format,
         margins: options.margins,
@@ -97,30 +89,19 @@ export async function generateBookPDF(book: IBook, options: PDFOptions = default
       });
       doc.pipe(stream);
 
-      // Registra fontes personalizadas
-      if (options.fonts) {
-        doc.registerFont('Regular', options.fonts.regular);
-        doc.registerFont('Bold', options.fonts.bold);
-        doc.registerFont('Italic', options.fonts.italic);
-      }
+      // Exemplo: Se quiser registrar fontes, pode manter
+      // doc.registerFont('Regular', path.join(__dirname, '../../assets/fonts/OpenSans-Regular.ttf'));
 
-      // Gera uma página para cada página do livro
       for (const page of book.pages) {
         doc.addPage();
-        
-        // Escreve o texto da página
-        doc.font('Regular')
-           .fontSize(12)
-           .text(page.text, {
-             align: 'justify',
-             paragraphGap: 10,
-           });
-        
-        // Se houver imagem para essa página, adiciona a imagem
+        doc.fontSize(12).text(page.text || '', {
+          align: 'justify',
+          paragraphGap: 10,
+        });
+
         if (imageMap.has(page.pageNumber)) {
           const imagePath = imageMap.get(page.pageNumber)!;
           try {
-            // Adiciona a imagem centralizada, ajustando o tamanho conforme necessário
             doc.moveDown();
             doc.image(imagePath, {
               fit: [400, 300],
@@ -136,20 +117,19 @@ export async function generateBookPDF(book: IBook, options: PDFOptions = default
       doc.end();
 
       stream.on('finish', () => {
-        // Remove arquivos temporários (imagens baixadas)
+        // Limpa as imagens temporárias
         imageMap.forEach((imgPath) => {
           if (imgPath.includes('temp') && fs.existsSync(imgPath)) {
             fs.unlinkSync(imgPath);
           }
         });
 
-        // Retorna o caminho relativo do PDF (para acesso via web, por exemplo)
-        const relativePdfPath = `/pdfs/${pdfFilename}`;
         logger.info('PDF gerado com sucesso', { 
           bookId: book._id, 
           pdfPath: relativePdfPath,
-          fullPath: pdfPath 
+          absolutePdfPath
         });
+        // Retorna apenas o caminho relativo
         resolve(relativePdfPath);
       });
 
@@ -167,5 +147,3 @@ export async function generateBookPDF(book: IBook, options: PDFOptions = default
     }
   });
 }
-
-export { defaultOptions };

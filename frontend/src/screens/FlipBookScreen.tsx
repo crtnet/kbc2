@@ -1,3 +1,4 @@
+// /frontend/src/screens/FlipBookScreen.tsx
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -7,10 +8,11 @@ import {
   Text,
   TouchableOpacity,
 } from 'react-native';
-import { RouteProp, useRoute } from '@react-navigation/native';
+import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { useTheme } from '../hooks/useTheme';
-import { useAuth } from '../hooks/useAuth';
+// AQUI importamos do AuthContext real
+import { useAuth } from '../contexts/AuthContext'; 
 import { logger } from '../utils/logger';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ErrorMessage } from '../components/ErrorMessage';
@@ -21,23 +23,35 @@ type FlipBookScreenRouteProp = RouteProp<RootStackParamList, 'FlipBook'>;
 
 export const FlipBookScreen: React.FC = () => {
   const route = useRoute<FlipBookScreenRouteProp>();
+  const navigation = useNavigation();
   const { theme } = useTheme();
-  const { token } = useAuth();
+
+  // Importamos token e isLoading do AuthContext
+  const { token, isLoading } = useAuth();
+
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Pegamos o ID do livro que veio na rota
   const { bookId } = route.params;
 
-  // Se não for iOS ou Android, exibimos um fallback
+  // Log para depuração
+  console.log('FlipBookScreen => token:', token, 'isLoading:', isLoading, 'bookId:', bookId);
+
   if (Platform.OS !== 'ios' && Platform.OS !== 'android') {
     return (
       <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
         <Text style={{ color: theme.colors.text, padding: 16, textAlign: 'center' }}>
           Visualização de PDF não é suportada nesta plataforma.
         </Text>
-        <TouchableOpacity onPress={() => logger.warn('Tentou abrir PDF em plataforma não suportada')}>
+        <TouchableOpacity
+          onPress={() => {
+            logger.warn('Tentou abrir PDF em plataforma não suportada');
+            if (navigation.canGoBack()) {
+              navigation.goBack();
+            }
+          }}
+        >
           <Text style={{ textAlign: 'center', color: theme.colors.primary }}>
             Voltar
           </Text>
@@ -56,11 +70,6 @@ export const FlipBookScreen: React.FC = () => {
     buildPdfUrl();
   }, [bookId]);
 
-  /**
-   * Monta a URL do PDF baseado no baseURL da API e no bookId.
-   * O carregamento efetivo do PDF (e do token) acontece dentro
-   * do WebView, via PDF.js.
-   */
   const buildPdfUrl = async () => {
     try {
       setLoading(true);
@@ -83,6 +92,21 @@ export const FlipBookScreen: React.FC = () => {
     }
   };
 
+  // Se o AuthContext ainda está carregando, mostramos loading
+  if (isLoading) {
+    return <LoadingSpinner />;
+  }
+
+  // Se já não está mais carregando e ainda não temos token, exibimos erro
+  if (!token) {
+    return (
+      <ErrorMessage
+        message="Token de autenticação não encontrado"
+        onRetry={buildPdfUrl}
+      />
+    );
+  }
+
   if (loading) {
     return <LoadingSpinner />;
   }
@@ -100,7 +124,7 @@ export const FlipBookScreen: React.FC = () => {
     );
   }
 
-  // HTML injetado no WebView para carregar o PDF.js e renderizar a 1ª página
+  // HTML injetado no WebView para carregar PDF.js
   const html = `
     <!DOCTYPE html>
     <html>

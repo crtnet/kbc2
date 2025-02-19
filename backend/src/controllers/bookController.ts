@@ -1,13 +1,13 @@
 // src/controllers/bookController.ts
 import { Request, Response } from 'express';
 import mongoose from 'mongoose';
+import path from 'path';
 import { logger } from '../utils/logger';
 import storyGenerator from '../services/storyGenerator';
 import openAIService from '../services/openai';
 import { generateBookPDF } from '../services/pdfGenerator';
-import { Book, IBook, AgeRange } from '../models/Book'; // Importa o modelo "Book"
+import { Book, IBook, AgeRange } from '../models/Book';
 
-// Define uma interface para requisição autenticada (com user)
 interface AuthRequest extends Request {
   user: {
     id: string;
@@ -18,7 +18,10 @@ interface AuthRequest extends Request {
 }
 
 class BookController {
-  // Método para listar livros do usuário autenticado
+  /**
+   * GET /books
+   * Lista livros do usuário autenticado
+   */
   listBooks = async (req: Request, res: Response) => {
     try {
       const authReq = req as AuthRequest;
@@ -26,8 +29,10 @@ class BookController {
         return res.status(401).json({ error: 'Usuário não autenticado' });
       }
       const userId = new mongoose.Types.ObjectId(authReq.user.id);
+
       const books = await Book.find({ userId }).sort({ createdAt: -1 }).exec();
       logger.info('Books fetched successfully', { count: books.length });
+
       return res.json(books);
     } catch (error: any) {
       logger.error('Erro ao listar livros', { error: error.message, stack: error.stack });
@@ -38,26 +43,42 @@ class BookController {
     }
   };
 
-  // Método para obter um livro pelo ID (rota GET /books/:id)
+  /**
+   * GET /books/:bookId
+   * Retorna dados de um livro específico
+   */
   getBook = async (req: Request, res: Response) => {
     try {
-      const { id } = req.params;
-      if (!mongoose.Types.ObjectId.isValid(id)) {
+      const { bookId } = req.params;
+      logger.info('getBook - Recebido bookId:', bookId);
+
+      // Verifica se é um ObjectId válido
+      if (!mongoose.Types.ObjectId.isValid(bookId)) {
+        logger.warn('ID inválido detectado:', bookId);
         return res.status(400).json({ error: 'ID de livro inválido' });
       }
-      const book = await Book.findById(id).exec();
+
+      const book = await Book.findById(bookId).exec();
       if (!book) {
+        logger.warn('Livro não encontrado no banco', { bookId });
         return res.status(404).json({ error: 'Livro não encontrado' });
       }
-      logger.info('Livro obtido com sucesso', { bookId: id });
+
+      logger.info('Livro obtido com sucesso', { bookId });
       return res.json({ data: book });
     } catch (error: any) {
-      logger.error(`Erro ao obter livro ${req.params.id}`, { error: error.message, stack: error.stack });
+      logger.error(`Erro ao obter livro ${req.params.bookId}`, {
+        error: error.message,
+        stack: error.stack
+      });
       return res.status(500).json({ error: 'Erro ao obter livro' });
     }
   };
 
-  // Método para criar um novo livro
+  /**
+   * POST /books
+   * Cria um novo livro
+   */
   createBook = async (req: Request, res: Response) => {
     try {
       const authReq = req as AuthRequest;
@@ -78,7 +99,7 @@ class BookController {
         language = 'pt-BR'
       } = req.body;
 
-      // Validação dos campos obrigatórios
+      // Validação de campos obrigatórios
       if (!title || !prompt || !ageRange || !authorName || !genre || !mainCharacter || !setting || !tone) {
         logger.error('Erro de validação: campos obrigatórios ausentes', { 
           title, prompt, ageRange, authorName, genre, mainCharacter, setting, tone 
@@ -92,7 +113,7 @@ class BookController {
       logger.info('Iniciando criação de novo livro', { title, ageRange });
       logger.info('Iniciando geração de história com prompt', { prompt });
 
-      // 1. Gerar história
+      // 1. Gera a história
       const { story, wordCount } = await storyGenerator.generateStory(prompt, ageRange as AgeRange);
       logger.info('História gerada com sucesso', { wordCount, storySnippet: story.substring(0, 100) });
       
@@ -100,7 +121,7 @@ class BookController {
         throw new Error('História gerada está vazia ou muito curta');
       }
       
-      // 2. Dividir história em páginas
+      // 2. Divide história em páginas
       const pages = this.splitStoryIntoPages(story);
       logger.info(`História dividida em ${pages.length} páginas`);
       if (pages.length === 0) {
@@ -108,7 +129,7 @@ class BookController {
       }
       logger.debug('Páginas geradas:', { pages });
       
-      // 3. Preparar os dados do livro
+      // 3. Prepara os dados do livro
       const bookData: Partial<IBook> = {
         title,
         prompt,
@@ -145,11 +166,10 @@ class BookController {
           stack: saveError.stack,
           errors: saveError.errors ? JSON.stringify(saveError.errors, null, 2) : undefined
         });
-        console.error('Erro completo ao salvar livro:', saveError);
         throw saveError;
       }
       
-      // 4. Iniciar a geração de imagens e PDF em background (processo não aguardado)
+      // 4. Gera imagens e PDF em background
       this.generateImagesForBook(book._id.toString(), pages).catch(error => {
         logger.error('Erro ao gerar imagens para o livro', { 
           bookId: book._id, 
@@ -170,7 +190,6 @@ class BookController {
         errors: error.errors ? JSON.stringify(error.errors, null, 2) : undefined,
         requestBody: req.body
       });
-      console.error('Erro completo no createBook:', error);
       if (error.name === 'ValidationError') {
         return res.status(400).json({ error: 'Erro de validação', details: error.message });
       }
@@ -181,8 +200,48 @@ class BookController {
     }
   };
 
-  // Método privado para dividir a história em páginas (arrow function para preservar o this)
-  splitStoryIntoPages = (story: string): string[] => {
+  /**
+   * GET /books/:bookId/pdf
+   * Retorna o PDF de um livro
+   * book.pdfUrl é um caminho relativo ex.: "/pdfs/<bookId>.pdf"
+   */
+  getPDF = async (req: Request, res: Response) => {
+    try {
+      const { bookId } = req.params;
+      logger.info('getPDF - Recebido bookId:', bookId);
+
+      if (!mongoose.Types.ObjectId.isValid(bookId)) {
+        logger.warn('ID inválido detectado para PDF:', bookId);
+        return res.status(400).json({ error: 'ID de livro inválido' });
+      }
+
+      const book = await Book.findById(bookId).exec();
+      if (!book) {
+        return res.status(404).json({ error: 'Livro não encontrado' });
+      }
+
+      if (!book.pdfUrl) {
+        return res.status(404).json({ error: 'PDF não gerado para este livro' });
+      }
+
+      logger.info('Retornando PDF do livro', { bookId, pdfUrl: book.pdfUrl });
+
+      // Converte o caminho relativo em absoluto
+      const absolutePath = path.join(__dirname, '../../public', book.pdfUrl);
+      return res.sendFile(absolutePath);
+    } catch (error: any) {
+      logger.error(`Erro ao obter PDF do livro ${req.params.bookId}`, {
+        error: error.message,
+        stack: error.stack
+      });
+      return res.status(500).json({ error: 'Erro ao obter PDF' });
+    }
+  };
+
+  /**
+   * Método privado para dividir a história em páginas
+   */
+  private splitStoryIntoPages = (story: string): string[] => {
     const paragraphs = story.split('\n\n').filter(p => p.trim());
     const pages: string[] = [];
     let currentPage = '';
@@ -202,8 +261,11 @@ class BookController {
     return pages;
   };
 
-  // Método privado para gerar imagens para cada página e, em seguida, gerar o PDF
-  generateImagesForBook = async (bookId: string, pages: string[]) => {
+  /**
+   * Gera imagens para cada página e, em seguida, chama generateBookPDF.
+   * Armazena o caminho relativo em book.pdfUrl (ex.: "/pdfs/<bookId>.pdf")
+   */
+  private generateImagesForBook = async (bookId: string, pages: string[]) => {
     try {
       const book = await Book.findById(bookId);
       if (!book) throw new Error('Livro não encontrado');
@@ -231,10 +293,12 @@ class BookController {
       }
       
       logger.info('Iniciando geração do PDF', { bookId });
+      // generateBookPDF retorna caminho relativo ex.: "/pdfs/<bookId>.pdf"
       const pdfPath = await generateBookPDF(book);
-      book.pdfUrl = pdfPath;
+      book.pdfUrl = pdfPath;  // ex.: "/pdfs/<bookId>.pdf"
       book.status = 'completed';
       await book.save();
+
       logger.info('Livro finalizado com sucesso', { 
         bookId,
         pdfPath,

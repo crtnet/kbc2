@@ -11,9 +11,17 @@ export const useAsyncStorage = <T>(key: string, initialValue?: T) => {
       try {
         const item = await AsyncStorage.getItem(key);
         if (item) {
-          const parsedItem = JSON.parse(item);
+          let parsedItem: T;
+          try {
+            parsedItem = JSON.parse(item);
+            logger.info(`Loaded JSON value for key ${key}`, { value: parsedItem });
+          } catch (parseError) {
+            // Se não conseguir fazer parse, assumimos que é string pura
+            logger.warn(`Could not parse as JSON. Falling back to raw string for key ${key}`, parseError);
+            parsedItem = item as unknown as T;
+            logger.info(`Loaded RAW value for key ${key}`, { value: parsedItem });
+          }
           setStoredValue(parsedItem);
-          logger.info(`Loaded value for key ${key}`, { value: parsedItem });
         }
       } catch (error) {
         logger.error(`Error loading value for key ${key}`, error);
@@ -27,10 +35,11 @@ export const useAsyncStorage = <T>(key: string, initialValue?: T) => {
 
   const setValue = async (value: T) => {
     try {
-      const valueToStore = value instanceof Function ? value(storedValue) : value;
-      setStoredValue(valueToStore);
-      await AsyncStorage.setItem(key, JSON.stringify(valueToStore));
-      logger.info(`Stored value for key ${key}`, { value: valueToStore });
+      // Você pode armazenar sempre como JSON:
+      // Se 'value' já for string, será salvo como "\"string\"".
+      await AsyncStorage.setItem(key, JSON.stringify(value));
+      setStoredValue(value);
+      logger.info(`Stored value for key ${key}`, { value });
     } catch (error) {
       logger.error(`Error storing value for key ${key}`, error);
     }
