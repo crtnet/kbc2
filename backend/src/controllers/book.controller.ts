@@ -6,6 +6,88 @@ import { Book } from '../models/book.model';
 import { openAIUnifiedService } from '../services/openai.unified';
 import { logger } from '../utils/logger';
 
+/**
+ * Gera conteúdo (história) para o livro em background.
+ * Atualiza o documento do livro com páginas, status etc.
+ */
+async function generateBookContent(bookId: string, params: {
+  title: string;
+  genre: string;
+  theme: string;
+  mainCharacter: string;
+  setting: string;
+  tone: string;
+  ageRange: string;
+}) {
+  try {
+    logger.info(`Iniciando geração de conteúdo para o livro ${bookId}`);
+    const startTime = Date.now();
+
+    // Construir o prompt
+    const prompt = `
+      Crie uma história infantil divertida e envolvente com:
+      - Título: ${params.title}
+      - Gênero: ${params.genre}
+      - Tema: ${params.theme}
+      - Personagem Principal: ${params.mainCharacter}
+      - Cenário: ${params.setting}
+      - Tom: ${params.tone}
+      A história deve ser adequada para crianças de ${params.ageRange} anos.
+    `;
+
+    logger.info('Chamando openAIUnifiedService.generateStory com:', { prompt, ageRange: params.ageRange });
+    const { story, wordCount } = await openAIUnifiedService.generateStory(prompt, params.ageRange as AgeRange);
+
+    // Divide a história em ~5 páginas
+    const words = story.split(/\s+/);
+    const totalWords = words.length;
+    const pages = [];
+    const pagesCount = 5; // quantas páginas fixas você quer
+    const wordsPerPage = Math.ceil(totalWords / pagesCount);
+
+    for (let i = 0; i < totalWords; i += wordsPerPage) {
+      const pageText = words.slice(i, i + wordsPerPage).join(' ');
+      pages.push({
+        text: pageText,
+        pageNumber: pages.length + 1,
+        imageUrl: 'placeholder_image_url'
+      });
+    }
+
+    // Atualiza o livro no banco
+    const updatedBook = await Book.findByIdAndUpdate(
+      bookId,
+      {
+        content: story,
+        wordCount,
+        pages,
+        status: 'completed', // finaliza
+        generationTime: Date.now() - startTime
+      },
+      { new: true }
+    );
+
+    if (!updatedBook) {
+      throw new Error('Livro não encontrado após atualização');
+    }
+
+    logger.info(`Conteúdo do livro ${bookId} gerado com sucesso em ${(Date.now() - startTime) / 1000}s`);
+    logger.info(`Estatísticas do livro ${bookId}: ${wordCount} palavras, ${pages.length} páginas`);
+
+    return updatedBook;
+  } catch (error) {
+    logger.error(`Erro ao gerar conteúdo para livro ${bookId}:`, error);
+
+    // Marca o livro como erro
+    await Book.findByIdAndUpdate(bookId, {
+      status: 'error',
+      error: error instanceof Error ? error.message : 'Erro desconhecido'
+    });
+
+    throw error;
+  }
+}
+
 export const bookController = {
   /**
    * Cria um novo livro (POST /books)
@@ -50,7 +132,7 @@ export const bookController = {
       logger.info(`Livro criado com ID: ${book._id}`);
 
       // Gera o conteúdo em background
-      this.generateBookContent(book._id.toString(), {
+      generateBookContent(book._id.toString(), {
         title,
         genre,
         theme,

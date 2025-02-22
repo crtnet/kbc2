@@ -55,14 +55,30 @@ class OpenAIUnifiedService {
   };
 
   private constructor() {
+    if (!config.openaiApiKey) {
+      throw new Error('OpenAI API Key não configurada');
+    }
+    
     this.openai = new OpenAI({
       apiKey: config.openaiApiKey
     });
+    
+    // Validação da instância
+    if (!this.openai) {
+      throw new Error('Falha ao inicializar cliente OpenAI');
+    }
   }
 
   public static getInstance(): OpenAIUnifiedService {
     if (!OpenAIUnifiedService.instance) {
-      OpenAIUnifiedService.instance = new OpenAIUnifiedService();
+      logger.info('Criando nova instância do OpenAIUnifiedService');
+      try {
+        OpenAIUnifiedService.instance = new OpenAIUnifiedService();
+        logger.info('Instância do OpenAIUnifiedService criada com sucesso');
+      } catch (error) {
+        logger.error('Erro ao criar instância do OpenAIUnifiedService:', error);
+        throw error;
+      }
     }
     return OpenAIUnifiedService.instance;
   }

@@ -1,22 +1,23 @@
 // src/routes/books.routes.ts
+
 import { Router } from 'express';
-import bookController from '../controllers/bookController';
 import { authMiddleware } from '../middlewares/auth';
+import bookController from '../controllers/bookController';
 
 const router = Router();
 
-// Todas as rotas de livros requerem autenticação
+// Aplica o middleware de autenticação para todas as rotas
 router.use(authMiddleware);
 
 /**
  * GET /books
- * Lista todos os livros do usuário (ou de acordo com sua lógica)
+ * Lista todos os livros do usuário autenticado
  */
 router.get('/', bookController.listBooks);
 
 /**
  * GET /books/:bookId
- * Retorna dados de um livro específico
+ * Retorna dados de um livro específico (que pertença ao usuário)
  */
 router.get('/:bookId', bookController.getBook);
 
@@ -28,7 +29,7 @@ router.post('/', bookController.createBook);
 
 /**
  * GET /books/:bookId/pdf
- * Retorna o PDF do livro
+ * Retorna o PDF do livro (se o usuário for dono)
  */
 router.get('/:bookId/pdf', bookController.getPDF);
 

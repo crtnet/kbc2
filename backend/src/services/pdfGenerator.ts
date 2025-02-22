@@ -1,4 +1,3 @@
-// /src/services/pdfGenerator.ts
 import PDFDocument from 'pdfkit';
 import fs from 'fs';
 import path from 'path';
@@ -89,9 +88,88 @@ export async function generateBookPDF(book: IBook, options: PDFOptions = default
       });
       doc.pipe(stream);
 
-      // Exemplo: Se quiser registrar fontes, pode manter
-      // doc.registerFont('Regular', path.join(__dirname, '../../assets/fonts/OpenSans-Regular.ttf'));
+      // Adiciona capa personalizada
+      doc.addPage();
+      
+      // Configura dimensões da página
+      const pageWidth = doc.page.width;
+      const pageHeight = doc.page.height;
 
+      // Estilos de capa
+      const coverStyle = book.coverStyle || {};
+      const backgroundColor = coverStyle.backgroundColor || '#F0F0F0';
+      const titleColor = coverStyle.titleColor || '#333333';
+      const authorColor = coverStyle.authorColor || '#666666';
+      const titleFontSize = coverStyle.titleFontSize || 24;
+      const authorFontSize = coverStyle.authorFontSize || 12;
+      const coverImageStyle = coverStyle.coverImageStyle || {};
+
+      // Adiciona cor de fundo suave
+      doc
+        .rect(0, 0, pageWidth, pageHeight)
+        .fill(backgroundColor);
+
+      // Adiciona imagem de fundo (opcional)
+      if (book.pages[0]?.imageUrl) {
+        try {
+          const coverImagePath = imageMap.get(1);
+          if (coverImagePath) {
+            const imageWidth = pageWidth * (coverImageStyle.width || 0.8);
+            const imageHeight = pageHeight * (coverImageStyle.height || 0.6);
+            const opacity = coverImageStyle.opacity || 1;
+
+            doc.opacity(opacity);
+            doc.image(coverImagePath, {
+              width: imageWidth,
+              height: imageHeight,
+              align: 'center',
+              valign: 'center',
+              x: pageWidth * ((1 - (coverImageStyle.width || 0.8)) / 2),
+              y: pageHeight * 0.2
+            });
+            doc.opacity(1); // Restaura opacidade
+          }
+        } catch (imgErr) {
+          logger.warn('Erro ao adicionar imagem de capa', { error: imgErr });
+        }
+      }
+
+      // Título do livro no topo
+      doc
+        .fontSize(titleFontSize)
+        .font('Helvetica-Bold')
+        .fillColor(titleColor)
+        .text(book.title, {
+          align: 'center',
+          y: 100
+        });
+
+      // Autor no rodapé
+      doc
+        .fontSize(authorFontSize)
+        .font('Helvetica')
+        .fillColor(authorColor)
+        .text(`Autor: ${book.authorName || 'Anônimo'}`, {
+          align: 'center',
+          y: pageHeight - 100
+        });
+
+      // Adiciona decorações (opcional)
+      doc
+        .lineWidth(2)
+        .strokeColor('#999999')
+        .moveTo(50, 50)
+        .lineTo(pageWidth - 50, 50)
+        .stroke();
+
+      doc
+        .lineWidth(2)
+        .strokeColor('#999999')
+        .moveTo(50, pageHeight - 50)
+        .lineTo(pageWidth - 50, pageHeight - 50)
+        .stroke();
+
+      // Adiciona as páginas do livro
       for (const page of book.pages) {
         doc.addPage();
         doc.fontSize(12).text(page.text || '', {

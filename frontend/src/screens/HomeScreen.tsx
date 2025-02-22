@@ -11,10 +11,13 @@ import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ErrorMessage } from '../components/ErrorMessage';
 import { Book } from '../types/book';
 import { Appbar, Menu } from 'react-native-paper';
+// Exemplo: se você tiver AuthContext com signOut
+import { useAuth } from '../contexts/AuthContext';
 
 export const HomeScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const { theme } = useTheme();
+  const { signOut } = useAuth(); // se seu AuthContext tiver signOut
   const [books, setBooks] = useState<Book[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -24,6 +27,10 @@ export const HomeScreen: React.FC = () => {
   const openMenu = () => setMenuVisible(true);
   const closeMenu = () => setMenuVisible(false);
 
+  /**
+   * Busca os livros do usuário logado.
+   * O backend (bookController) já filtra por userId, retornando apenas livros do usuário autenticado.
+   */
   const fetchBooks = useCallback(async () => {
     try {
       setError(null);
@@ -31,7 +38,7 @@ export const HomeScreen: React.FC = () => {
 
       logger.info('Fetching user books');
       const response = await api.get('/books');
-
+      // O backend já retorna só os livros do usuário.
       const mappedBooks: Book[] = response.data.map((book: any) => ({
         id: book._id,
         title: book.title,
@@ -60,6 +67,7 @@ export const HomeScreen: React.FC = () => {
     }
   }, []);
 
+  // Carrega livros quando a tela entra em foco
   useFocusEffect(
     useCallback(() => {
       fetchBooks();
@@ -72,10 +80,26 @@ export const HomeScreen: React.FC = () => {
     setIsRefreshing(false);
   };
 
-  const handleLogout = () => {
-    // Aqui você pode implementar a lógica de logout, como limpar tokens e redirecionar para a tela de login.
+  /**
+   * Lógica de logout:
+   * 1. Fecha o menu
+   * 2. Se tiver signOut() no AuthContext, chama
+   * 3. Reseta a navegação para a tela de Login
+   */
+  const handleLogout = async () => {
     closeMenu();
-    navigation.navigate('Login');
+    try {
+      // Se seu AuthContext tiver signOut, chame aqui
+      await signOut?.();
+      logger.info('Usuário deslogado com sucesso');
+    } catch (error) {
+      logger.error('Erro ao fazer logout', { error });
+    }
+    // Redireciona para Login (ou a rota que desejar)
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'Login' }],
+    });
   };
 
   if (loading && !isRefreshing) {
@@ -102,27 +126,27 @@ export const HomeScreen: React.FC = () => {
             <Appbar.Action icon="menu" color="#fff" onPress={openMenu} />
           }
         >
-        <Menu.Item
-          leadingIcon="plus"
-          onPress={() => {
-            closeMenu();
-            navigation.navigate('CreateBook');
-          }}
-          title="Criar livro"
-        />
-        <Menu.Item
-          leadingIcon="account"
-          onPress={() => {
-            closeMenu();
-            navigation.navigate('Profile');
-          }}
-          title="Perfil"
-        />
-        <Menu.Item
-          leadingIcon="logout"
-          onPress={handleLogout}
-          title="Sair"
-        />
+          <Menu.Item
+            leadingIcon="plus"
+            onPress={() => {
+              closeMenu();
+              navigation.navigate('CreateBook');
+            }}
+            title="Criar livro"
+          />
+          <Menu.Item
+            leadingIcon="account"
+            onPress={() => {
+              closeMenu();
+              navigation.navigate('Profile');
+            }}
+            title="Perfil"
+          />
+          <Menu.Item
+            leadingIcon="logout"
+            onPress={handleLogout}
+            title="Sair"
+          />
         </Menu>
       </Appbar.Header>
 

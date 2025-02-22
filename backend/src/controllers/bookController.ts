@@ -1,15 +1,15 @@
 // src/controllers/bookController.ts
+
 import { Request, Response } from 'express';
 import mongoose from 'mongoose';
 import path from 'path';
 import { logger } from '../utils/logger';
-import storyGenerator from '../services/storyGenerator';
-import openAIService from '../services/openai';
+import { Book } from '../models/Book'; // Ajuste o import se necessário
 import { generateBookPDF } from '../services/pdfGenerator';
-import { Book, IBook, AgeRange } from '../models/Book';
+import { openaiService } from '../services/openai.service';
 
 interface AuthRequest extends Request {
-  user: {
+  user?: {
     id: string;
     email: string;
     type: string;
@@ -22,20 +22,20 @@ class BookController {
    * GET /books
    * Lista livros do usuário autenticado
    */
-  listBooks = async (req: Request, res: Response) => {
+  public listBooks = async (req: Request, res: Response) => {
     try {
       const authReq = req as AuthRequest;
       if (!authReq.user) {
         return res.status(401).json({ error: 'Usuário não autenticado' });
       }
+
       const userId = new mongoose.Types.ObjectId(authReq.user.id);
-
       const books = await Book.find({ userId }).sort({ createdAt: -1 }).exec();
-      logger.info('Books fetched successfully', { count: books.length });
 
+      logger.info('Books fetched successfully', { count: books.length });
       return res.json(books);
     } catch (error: any) {
-      logger.error('Erro ao listar livros', { error: error.message, stack: error.stack });
+      logger.error('Erro ao listar livros', { error: error.message });
       return res.status(500).json({
         error: 'Erro ao listar livros',
         details: error.message,
@@ -45,279 +45,317 @@ class BookController {
 
   /**
    * GET /books/:bookId
-   * Retorna dados de um livro específico
+   * Retorna dados de um livro específico do usuário
    */
-  getBook = async (req: Request, res: Response) => {
+  public getBook = async (req: Request, res: Response) => {
     try {
+      const authReq = req as AuthRequest;
+      if (!authReq.user) {
+        return res.status(401).json({ error: 'Usuário não autenticado' });
+      }
+
       const { bookId } = req.params;
       logger.info('getBook - Recebido bookId:', bookId);
 
-      // Verifica se é um ObjectId válido
       if (!mongoose.Types.ObjectId.isValid(bookId)) {
         logger.warn('ID inválido detectado:', bookId);
         return res.status(400).json({ error: 'ID de livro inválido' });
       }
 
-      const book = await Book.findById(bookId).exec();
+      const userId = new mongoose.Types.ObjectId(authReq.user.id);
+
+      // Garante que o livro pertença ao usuário
+      const book = await Book.findOne({ _id: bookId, userId }).exec();
       if (!book) {
-        logger.warn('Livro não encontrado no banco', { bookId });
+        logger.warn('Livro não encontrado ou não pertence ao usuário', { bookId });
         return res.status(404).json({ error: 'Livro não encontrado' });
       }
 
       logger.info('Livro obtido com sucesso', { bookId });
       return res.json({ data: book });
     } catch (error: any) {
-      logger.error(`Erro ao obter livro ${req.params.bookId}`, {
-        error: error.message,
-        stack: error.stack
-      });
+      logger.error(`Erro ao obter livro ${req.params.bookId}`, { error: error.message });
       return res.status(500).json({ error: 'Erro ao obter livro' });
     }
   };
 
   /**
    * POST /books
-   * Cria um novo livro
+   * Cria um novo livro para o usuário autenticado
    */
-  createBook = async (req: Request, res: Response) => {
+  public createBook = async (req: Request, res: Response) => {
     try {
       const authReq = req as AuthRequest;
       if (!authReq.user) {
-        throw new Error('Usuário não autenticado');
+        return res.status(401).json({ error: 'Usuário não autenticado' });
       }
-      
-      const { 
-        title, 
-        prompt, 
-        ageRange, 
-        authorName,
+
+      const {
+        title,
         genre,
+        theme,
         mainCharacter,
+        secondaryCharacter = '', // se quiser permitir personagem secundário
         setting,
         tone,
-        theme = 'default',
+        ageRange,
+        authorName,
         language = 'pt-BR'
       } = req.body;
 
-      // Validação de campos obrigatórios
-      if (!title || !prompt || !ageRange || !authorName || !genre || !mainCharacter || !setting || !tone) {
-        logger.error('Erro de validação: campos obrigatórios ausentes', { 
-          title, prompt, ageRange, authorName, genre, mainCharacter, setting, tone 
-        });
+      // Validação básica
+      if (!title || !genre || !theme || !mainCharacter || !setting || !tone) {
         return res.status(400).json({
           error: 'Dados inválidos',
-          details: 'Os campos title, prompt, ageRange, authorName, genre, mainCharacter, setting e tone são obrigatórios.'
+          details: 'Campos obrigatórios ausentes'
         });
       }
 
-      logger.info('Iniciando criação de novo livro', { title, ageRange });
-      logger.info('Iniciando geração de história com prompt', { prompt });
+      // Monta prompt (opcional) - ou receba do frontend
+      logger.info('Iniciando criação de novo livro', { title });
 
-      // 1. Gera a história
-      const { story, wordCount } = await storyGenerator.generateStory(prompt, ageRange as AgeRange);
-      logger.info('História gerada com sucesso', { wordCount, storySnippet: story.substring(0, 100) });
-      
-      if (!story || story.trim().length === 0 || wordCount < 10) {
-        throw new Error('História gerada está vazia ou muito curta');
-      }
-      
-      // 2. Divide história em páginas
-      const pages = this.splitStoryIntoPages(story);
-      logger.info(`História dividida em ${pages.length} páginas`);
-      if (pages.length === 0) {
-        throw new Error('Falha ao dividir a história em páginas');
-      }
-      logger.debug('Páginas geradas:', { pages });
-      
-      // 3. Prepara os dados do livro
-      const bookData: Partial<IBook> = {
+      // Gera a história usando openAIService (opcional, se quiser)
+      const story = await openaiService.generateStory({
         title,
-        prompt,
-        authorName,
         genre,
+        theme,
         mainCharacter,
+        secondaryCharacter,
         setting,
         tone,
-        userId: new mongoose.Types.ObjectId(authReq.user.id),
-        ageRange,
+        ageRange
+      });
+
+      const wordCount = story.split(/\s+/).length;
+
+      // Divide a história em páginas
+      const pages = this.splitStoryIntoPages(story);
+
+      // Monta objeto
+      const userId = new mongoose.Types.ObjectId(authReq.user.id);
+      const newBook = new Book({
+        title,
+        genre,
         theme,
+        mainCharacter,
+        secondaryCharacter,
+        setting,
+        tone,
+        ageRange,
+        authorName,
         language,
-        pages: pages.map((text, index) => ({
+        userId,
+        prompt: 'Gerado no backend', // se quiser
+        pages: pages.map((text: string, index: number) => ({
           pageNumber: index + 1,
           text,
           imageUrl: ''
         })),
-        status: 'processing',
         metadata: {
           wordCount,
-          pageCount: pages.length
-        }
-      };
-
-      logger.info('Dados do livro a ser salvo:', { bookData: JSON.stringify(bookData, null, 2) });
-      
-      const book = new Book(bookData);
-      try {
-        await book.save();
-        logger.info('Livro salvo no banco de dados', { bookId: book._id });
-      } catch (saveError: any) {
-        logger.error('Erro ao salvar livro', { 
-          error: saveError.message, 
-          stack: saveError.stack,
-          errors: saveError.errors ? JSON.stringify(saveError.errors, null, 2) : undefined
-        });
-        throw saveError;
-      }
-      
-      // 4. Gera imagens e PDF em background
-      this.generateImagesForBook(book._id.toString(), pages).catch(error => {
-        logger.error('Erro ao gerar imagens para o livro', { 
-          bookId: book._id, 
-          error: error.message,
-          stack: error.stack
-        });
+          pageCount: pages.length,
+        },
+        status: 'processing'
       });
 
-      return res.status(201).json({ 
+      await newBook.save();
+      logger.info('Livro salvo no banco de dados', { bookId: newBook._id });
+
+      // Inicia geração de imagens e PDF em background
+      this.generateImagesForBook(newBook._id.toString(), pages).catch(err => {
+        logger.error('Erro ao gerar imagens para o livro', { bookId: newBook._id, error: err.message });
+      });
+
+      return res.status(201).json({
         message: 'Livro criado com sucesso, gerando imagens...',
-        bookId: book._id,
-        pages: book.pages.length
+        bookId: newBook._id,
+        pages: newBook.pages.length
       });
     } catch (error: any) {
-      logger.error('Erro ao criar livro', { 
-        error: error.message, 
-        stack: error.stack,
-        errors: error.errors ? JSON.stringify(error.errors, null, 2) : undefined,
-        requestBody: req.body
-      });
-      if (error.name === 'ValidationError') {
-        return res.status(400).json({ error: 'Erro de validação', details: error.message });
-      }
-      return res.status(500).json({ 
-        error: 'Erro no servidor ao criar o livro. Tente novamente mais tarde.',
-        details: error.message 
+      logger.error('Erro ao criar livro', { error: error.message });
+      return res.status(500).json({
+        error: 'Erro no servidor ao criar o livro.',
+        details: error.message
       });
     }
   };
 
   /**
    * GET /books/:bookId/pdf
-   * Retorna o PDF de um livro
-   * book.pdfUrl é um caminho relativo ex.: "/pdfs/<bookId>.pdf"
+   * Retorna o PDF do livro (verifica se pertence ao usuário)
    */
-  getPDF = async (req: Request, res: Response) => {
+  public getPDF = async (req: Request, res: Response) => {
     try {
-      const { bookId } = req.params;
-      logger.info('getPDF - Recebido bookId:', bookId);
+      const authReq = req as AuthRequest;
+      if (!authReq.user) {
+        return res.status(401).json({ error: 'Usuário não autenticado' });
+      }
 
+      const { bookId } = req.params;
       if (!mongoose.Types.ObjectId.isValid(bookId)) {
-        logger.warn('ID inválido detectado para PDF:', bookId);
         return res.status(400).json({ error: 'ID de livro inválido' });
       }
 
-      const book = await Book.findById(bookId).exec();
+      const userId = new mongoose.Types.ObjectId(authReq.user.id);
+      const book = await Book.findOne({ _id: bookId, userId }).exec();
       if (!book) {
-        return res.status(404).json({ error: 'Livro não encontrado' });
+        return res.status(404).json({ error: 'Livro não encontrado ou não pertence ao usuário' });
       }
 
       if (!book.pdfUrl) {
         return res.status(404).json({ error: 'PDF não gerado para este livro' });
       }
 
-      logger.info('Retornando PDF do livro', { bookId, pdfUrl: book.pdfUrl });
-
-      // Converte o caminho relativo em absoluto
       const absolutePath = path.join(__dirname, '../../public', book.pdfUrl);
       return res.sendFile(absolutePath);
     } catch (error: any) {
-      logger.error(`Erro ao obter PDF do livro ${req.params.bookId}`, {
-        error: error.message,
-        stack: error.stack
-      });
+      logger.error(`Erro ao obter PDF do livro ${req.params.bookId}`, { error: error.message });
       return res.status(500).json({ error: 'Erro ao obter PDF' });
     }
   };
 
   /**
-   * Método privado para dividir a história em páginas
+   * Divide a história em páginas. Exemplo simples: ~100 palavras por página
    */
-  private splitStoryIntoPages = (story: string): string[] => {
-    const paragraphs = story.split('\n\n').filter(p => p.trim());
+  private splitStoryIntoPages(story: string): string[] {
+    // Remove espaços extras e normaliza quebras de linha
+    const normalizedStory = story
+      .replace(/\r\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+
+    // Divide em parágrafos, removendo linhas vazias
+    const paragraphs = normalizedStory
+      .split('\n\n')
+      .map(p => p.trim())
+      .filter(p => p.length > 0);
+
     const pages: string[] = [];
     let currentPage = '';
+    let currentWordCount = 0;
+    const TARGET_WORDS_PER_PAGE = 100;
 
     for (const paragraph of paragraphs) {
-      const tentativePage = currentPage ? currentPage + '\n\n' + paragraph : paragraph;
-      if (tentativePage.split(' ').length > 100 && currentPage) {
-        pages.push(currentPage);
+      const paragraphWordCount = paragraph.split(/\s+/).length;
+
+      // Se é uma página numerada explicitamente (ex: "Página 1:" ou "1.")
+      if (paragraph.match(/^(página|page|\d+)[.:]/i)) {
+        if (currentPage) {
+          pages.push(currentPage.trim());
+        }
         currentPage = paragraph;
+        currentWordCount = paragraphWordCount;
+        continue;
+      }
+
+      // Se adicionar este parágrafo excederia o limite de palavras
+      if (currentWordCount + paragraphWordCount > TARGET_WORDS_PER_PAGE && currentPage) {
+        pages.push(currentPage.trim());
+        currentPage = paragraph;
+        currentWordCount = paragraphWordCount;
       } else {
-        currentPage = tentativePage;
+        currentPage = currentPage 
+          ? currentPage + '\n\n' + paragraph 
+          : paragraph;
+        currentWordCount += paragraphWordCount;
       }
     }
+
+    // Adiciona a última página se houver conteúdo
     if (currentPage) {
-      pages.push(currentPage);
+      pages.push(currentPage.trim());
     }
-    return pages;
-  };
 
-  /**
-   * Gera imagens para cada página e, em seguida, chama generateBookPDF.
-   * Armazena o caminho relativo em book.pdfUrl (ex.: "/pdfs/<bookId>.pdf")
-   */
-  private generateImagesForBook = async (bookId: string, pages: string[]) => {
-    try {
-      const book = await Book.findById(bookId);
-      if (!book) throw new Error('Livro não encontrado');
+    // Garante que temos exatamente 5 páginas
+    while (pages.length < 5) {
+      // Divide a página mais longa
+      const longestPageIndex = pages
+        .map((page, index) => ({ index, length: page.split(/\s+/).length }))
+        .reduce((max, curr) => curr.length > max.length ? curr : max)
+        .index;
 
-      for (let i = 0; i < pages.length; i++) {
-        try {
-          const pageText = pages[i];
-          const imagePrompt = `Ilustração para livro infantil: ${pageText.substring(0, 200)}`;
-          logger.info(`Gerando imagem para página ${i + 1}`, { bookId, prompt: imagePrompt });
-          const imageUrl = await openAIService.generateImage(imagePrompt);
-          if (book.pages[i]) {
-            book.pages[i].imageUrl = imageUrl;
-            await book.save();
-            logger.info(`Imagem gerada com sucesso para página ${i + 1}`, { bookId, imageUrl });
-          } else {
-            logger.warn(`Página ${i + 1} não encontrada no livro ${bookId}`);
-          }
-        } catch (imgError: any) {
-          logger.error(`Erro ao gerar imagem para página ${i + 1}`, { 
-            bookId, 
-            error: imgError.message,
-            stack: imgError.stack
-          });
+      const pageToSplit = pages[longestPageIndex];
+      const paragraphsToSplit = pageToSplit.split('\n\n');
+      
+      if (paragraphsToSplit.length < 2) continue;
+
+      const midPoint = Math.ceil(paragraphsToSplit.length / 2);
+      const firstHalf = paragraphsToSplit.slice(0, midPoint).join('\n\n');
+      const secondHalf = paragraphsToSplit.slice(midPoint).join('\n\n');
+
+      pages.splice(longestPageIndex, 1, firstHalf, secondHalf);
+    }
+
+    // Se temos mais de 5 páginas, combina as menores
+    while (pages.length > 5) {
+      let shortestCombinedLength = Infinity;
+      let shortestPair = [0, 1];
+
+      // Encontra as duas páginas consecutivas que, juntas, têm o menor número de palavras
+      for (let i = 0; i < pages.length - 1; i++) {
+        const combinedLength = pages[i].split(/\s+/).length + pages[i + 1].split(/\s+/).length;
+        if (combinedLength < shortestCombinedLength) {
+          shortestCombinedLength = combinedLength;
+          shortestPair = [i, i + 1];
         }
       }
-      
-      logger.info('Iniciando geração do PDF', { bookId });
-      // generateBookPDF retorna caminho relativo ex.: "/pdfs/<bookId>.pdf"
-      const pdfPath = await generateBookPDF(book);
-      book.pdfUrl = pdfPath;  // ex.: "/pdfs/<bookId>.pdf"
-      book.status = 'completed';
-      await book.save();
 
-      logger.info('Livro finalizado com sucesso', { 
-        bookId,
-        pdfPath,
-        status: 'completed'
-      });
-    } catch (error: any) {
-      logger.error('Erro no processo de geração de imagens e PDF', { 
-        bookId, 
-        error: error.message,
-        stack: error.stack
-      });
-      const book = await Book.findById(bookId);
-      if (book) {
-        book.status = 'error';
-        book.metadata.error = error.message;
-        await book.save();
+      // Combina as duas páginas mais curtas
+      const combinedPage = pages[shortestPair[0]] + '\n\n' + pages[shortestPair[1]];
+      pages.splice(shortestPair[0], 2, combinedPage);
+    }
+
+    // Formata cada página para garantir consistência
+    return pages.map((page, index) => {
+      const pageNumber = index + 1;
+      const formattedPage = page
+        .split('\n\n')
+        .map(p => p.trim())
+        .filter(p => p.length > 0)
+        .join('\n\n');
+
+      // Remove qualquer numeração existente no início
+      const cleanPage = formattedPage.replace(/^(página|page|\d+)[.:]\s*/i, '');
+
+      return cleanPage;
+    });
+  }
+
+  /**
+   * Gera imagens para cada página e, em seguida, gera o PDF
+   */
+  private async generateImagesForBook(bookId: string, pages: string[]) {
+    const book = await Book.findById(bookId);
+    if (!book) throw new Error('Livro não encontrado');
+
+    for (let i = 0; i < pages.length; i++) {
+      try {
+        const snippet = pages[i].substring(0, 200);
+        const imagePrompt = `
+          Ilustração para livro infantil.
+          Trecho: "${snippet}".
+          Incluir personagem principal ${book.mainCharacter}.
+          ${book.secondaryCharacter ? `E também o secundário ${book.secondaryCharacter}.` : ''}
+          Estilo: cores vibrantes, seguro para crianças.
+        `;
+        const imageUrl = await openaiService.generateImage(imagePrompt);
+
+        if (book.pages[i]) {
+          book.pages[i].imageUrl = imageUrl;
+          await book.save();
+        }
+      } catch (imgError: any) {
+        logger.error(`Erro ao gerar imagem para página ${i + 1}`, { error: imgError.message });
       }
     }
-  };
+
+    // Gera PDF
+    logger.info('Iniciando geração do PDF', { bookId });
+    const pdfPath = await generateBookPDF(book);
+    book.pdfUrl = pdfPath;
+    book.status = 'completed';
+    await book.save();
+  }
 }
 
 export default new BookController();

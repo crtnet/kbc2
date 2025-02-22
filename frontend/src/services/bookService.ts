@@ -12,13 +12,14 @@ export const createBook = async (bookData: Partial<Book>) => {
       genre: bookData.genre,
       theme: bookData.theme,
       mainCharacter: bookData.mainCharacter,
+      secondaryCharacter: bookData.secondaryCharacter,
       setting: bookData.setting,
       tone: bookData.tone || 'fun',
       ageRange: bookData.ageRange || '5-6',
       authorName: bookData.authorName || 'Anonymous',
       userId: bookData.userId,
       language: bookData.language || 'pt-BR',
-      prompt: bookData.prompt || `Create a children's story about ${bookData.mainCharacter} in ${bookData.setting}. Theme: ${bookData.theme}, Genre: ${bookData.genre}`
+      prompt: bookData.prompt || `Create a children's story about ${bookData.mainCharacter}${bookData.secondaryCharacter ? ` and their friend ${bookData.secondaryCharacter}` : ''} in ${bookData.setting}. Theme: ${bookData.theme}, Genre: ${bookData.genre}. Make sure both characters interact and play important roles in the story.`
     };
 
     logger.info('Enviando dados para criação de livro', { 

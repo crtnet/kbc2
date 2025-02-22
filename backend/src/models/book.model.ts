@@ -1,6 +1,8 @@
 // src/models/book.model.ts
 import mongoose from 'mongoose';
 
+export type AgeRange = '1-2' | '3-4' | '5-6' | '7-8' | '9-10' | '11-12';
+
 // Schema para cada página do livro
 const pageSchema = new mongoose.Schema({
   pageNumber: { type: Number, required: true },

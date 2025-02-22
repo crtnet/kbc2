@@ -1,4 +1,5 @@
 // src/screens/CreateBookScreen.tsx
+
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useState } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
@@ -11,6 +12,7 @@ interface BookData {
   genre: 'adventure' | 'fantasy' | 'mystery';
   theme: 'friendship' | 'courage' | 'kindness';
   mainCharacter: string;
+  secondaryCharacter?: string; // NOVO
   setting: string;
   tone: 'fun' | 'adventurous' | 'calm';
   ageRange: '1-2' | '3-4' | '5-6' | '7-8' | '9-10' | '11-12';
@@ -28,17 +30,19 @@ function CreateBookScreen({ navigation }) {
 
   const [bookData, setBookData] = useState<BookData>({
     title: '',
+    authorName: '',
     genre: 'adventure',
     theme: 'friendship',
     mainCharacter: '',
+    secondaryCharacter: '',
     setting: '',
     tone: 'fun',
     ageRange: '5-6'
   });
 
   const handleNext = () => {
-    if (step === 1 && !bookData.title) {
-      setError('Por favor, insira um título para o livro');
+    if (step === 1 && (!bookData.title || !bookData.authorName)) {
+      setError('Por favor, insira o título do livro e o nome do autor');
       setVisible(true);
       return;
     }
@@ -74,26 +78,45 @@ function CreateBookScreen({ navigation }) {
 
       setLoading(true);
 
+      // Construímos o prompt usando TÍTULO, PERSONAGEM SECUNDÁRIO, etc.
+      const finalPrompt = `
+        Crie uma história infantil com o título "${bookData.title}".
+        O gênero é ${bookData.genre}, o tema é ${bookData.theme}, 
+        o tom é ${bookData.tone}, e se passa em ${bookData.setting}.
+        ${
+          bookData.secondaryCharacter 
+            ? `A história deve focar em DOIS personagens principais:\n
+               1. ${bookData.mainCharacter} (protagonista)\n
+               2. ${bookData.secondaryCharacter} (deuteragonista)\n
+               Ambos os personagens DEVEM ter papéis importantes na história, interagindo entre si e influenciando os eventos principais.`
+            : `O personagem principal é ${bookData.mainCharacter}.`
+        }
+        A história é para crianças de ${bookData.ageRange} anos.
+        A história deve ser escrita por ${bookData.authorName}.
+        
+        IMPORTANTE: Se houver um personagem secundário, certifique-se de que ele apareça em vários momentos da história, tenha falas e ações próprias, e seja fundamental para o desenvolvimento da trama.
+      `;
+
       // Preparar os dados do livro para envio
       const bookDataToSend = {
         title: bookData.title,
         genre: bookData.genre,
         theme: bookData.theme,
         mainCharacter: bookData.mainCharacter,
+        secondaryCharacter: bookData.secondaryCharacter,
         setting: bookData.setting,
         tone: bookData.tone,
         ageRange: bookData.ageRange,
-        prompt: `Create a children's story about ${bookData.mainCharacter} in ${bookData.setting}. Theme: ${bookData.theme}, Genre: ${bookData.genre}, Tone: ${bookData.tone}`,
-        authorName: user.name || 'Anonymous',
+        prompt: finalPrompt.trim(),
+        authorName: bookData.authorName,
         userId: user.id,
         language: 'pt-BR'
       };
 
-      console.log('Dados do usuário:', user);
-      // Buscando token para log (não é utilizado no payload)
+      console.log('Criando livro com dados:', bookDataToSend);
+
       const token = await AsyncStorage.getItem('token');
       console.log('Token atual:', token);
-      console.log('Criando livro:', bookDataToSend);
 
       const response = await bookService.createBook(bookDataToSend);
       console.log('Resposta da criação do livro:', response);
@@ -105,7 +128,6 @@ function CreateBookScreen({ navigation }) {
       navigation.navigate('ViewBook', { bookId: response.bookId });
     } catch (err: any) {
       console.error('Erro ao criar livro:', err);
-      // Exibe mensagem mais específica, se disponível
       const errorMsg = err.response?.data?.details || err.message || 'Erro ao criar livro';
       setError(errorMsg);
       setVisible(true);
@@ -114,6 +136,7 @@ function CreateBookScreen({ navigation }) {
     }
   };
 
+  // Passo 1: Título e Gênero
   const renderStep1 = () => (
     <View>
       <Text style={styles.stepTitle}>Informações Básicas</Text>
@@ -121,6 +144,13 @@ function CreateBookScreen({ navigation }) {
         label="Título do Livro"
         value={bookData.title}
         onChangeText={(text) => setBookData({ ...bookData, title: text })}
+        mode="outlined"
+        style={styles.input}
+      />
+      <TextInput
+        label="Nome do Autor"
+        value={bookData.authorName}
+        onChangeText={(text) => setBookData({ ...bookData, authorName: text })}
         mode="outlined"
         style={styles.input}
       />
@@ -138,13 +168,21 @@ function CreateBookScreen({ navigation }) {
     </View>
   );
 
+  // Passo 2: Personagens e Ambiente
   const renderStep2 = () => (
     <View>
-      <Text style={styles.stepTitle}>Personagem e Ambiente</Text>
+      <Text style={styles.stepTitle}>Personagens e Ambiente</Text>
       <TextInput
         label="Nome do Personagem Principal"
         value={bookData.mainCharacter}
         onChangeText={(text) => setBookData({ ...bookData, mainCharacter: text })}
+        mode="outlined"
+        style={styles.input}
+      />
+      <TextInput
+        label="Nome do Personagem Secundário (opcional)"
+        value={bookData.secondaryCharacter}
+        onChangeText={(text) => setBookData({ ...bookData, secondaryCharacter: text })}
         mode="outlined"
         style={styles.input}
       />
@@ -159,6 +197,7 @@ function CreateBookScreen({ navigation }) {
     </View>
   );
 
+  // Passo 3: Tema, Tom e Faixa Etária
   const renderStep3 = () => (
     <View>
       <Text style={styles.stepTitle}>Tema, Tom e Faixa Etária</Text>
@@ -217,10 +256,12 @@ function CreateBookScreen({ navigation }) {
               />
             ))}
           </View>
+
           {/* Conteúdo do Passo */}
           {step === 1 && renderStep1()}
           {step === 2 && renderStep2()}
           {step === 3 && renderStep3()}
+
           {/* Botões de Navegação */}
           <View style={styles.buttonContainer}>
             <Button
