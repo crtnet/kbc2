@@ -211,7 +211,7 @@ class OpenAIService {
       // Verifica cache primeiro
       const cacheKey = cacheService.generateKey('image', { prompt });
       const cachedImageUrl = await cacheService.get<string>(cacheKey);
-      
+      logger.warn('Prompo para gerar imagem: '+prompt);
       if (cachedImageUrl) {
         logger.info('Imagem encontrada no cache');
         return cachedImageUrl;

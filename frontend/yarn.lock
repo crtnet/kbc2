@@ -8761,6 +8761,11 @@ react-is@^18.0.0:
     hoist-non-react-statics "^3.3.0"
     invariant "^2.2.4"
 
+react-native-image-picker@^8.1.0:
+  version "8.1.0"
+  resolved "https://registry.npmjs.org/react-native-image-picker/-/react-native-image-picker-8.1.0.tgz"
+  integrity sha512-qD0pivr2LkzdCNRl5CyawldZA2o0YWsK3f4gh3086WzRiwYFoe+ksa+ggub1QD4opz/oS7YpIRzWwfHSoLFEog==
+
 react-native-paper@^5.11.1:
   version "5.13.1"
   resolved "https://registry.npmjs.org/react-native-paper/-/react-native-paper-5.13.1.tgz"

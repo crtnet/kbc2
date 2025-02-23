@@ -2,8 +2,9 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useState } from 'react';
-import { View, StyleSheet, ScrollView } from 'react-native';
-import { TextInput, Button, Text, SegmentedButtons, Card, Snackbar } from 'react-native-paper';
+import { View, StyleSheet, ScrollView, Image, TouchableOpacity } from 'react-native';
+import { TextInput, Button, Text, SegmentedButtons, Card, Snackbar, Portal } from 'react-native-paper';
+import AvatarSelector from '../components/character/AvatarSelector';
 import { useAuth } from '../contexts/AuthContext';
 import * as bookService from '../services/bookService';
 
@@ -12,7 +13,9 @@ interface BookData {
   genre: 'adventure' | 'fantasy' | 'mystery';
   theme: 'friendship' | 'courage' | 'kindness';
   mainCharacter: string;
-  secondaryCharacter?: string; // NOVO
+  mainCharacterAvatar?: string;
+  secondaryCharacter?: string;
+  secondaryCharacterAvatar?: string;
   setting: string;
   tone: 'fun' | 'adventurous' | 'calm';
   ageRange: '1-2' | '3-4' | '5-6' | '7-8' | '9-10' | '11-12';
@@ -28,13 +31,18 @@ function CreateBookScreen({ navigation }) {
   const [error, setError] = useState<string>('');
   const [visible, setVisible] = useState<boolean>(false);
 
+  const [mainAvatarModalVisible, setMainAvatarModalVisible] = useState<boolean>(false);
+  const [secondaryAvatarModalVisible, setSecondaryAvatarModalVisible] = useState<boolean>(false);
+
   const [bookData, setBookData] = useState<BookData>({
     title: '',
     authorName: '',
     genre: 'adventure',
     theme: 'friendship',
     mainCharacter: '',
+    mainCharacterAvatar: '',
     secondaryCharacter: '',
+    secondaryCharacterAvatar: '',
     setting: '',
     tone: 'fun',
     ageRange: '5-6'
@@ -94,7 +102,33 @@ function CreateBookScreen({ navigation }) {
         A história é para crianças de ${bookData.ageRange} anos.
         A história deve ser escrita por ${bookData.authorName}.
         
-        IMPORTANTE: Se houver um personagem secundário, certifique-se de que ele apareça em vários momentos da história, tenha falas e ações próprias, e seja fundamental para o desenvolvimento da trama.
+        INSTRUÇÕES PARA GERAÇÃO DE IMAGENS:
+        ${bookData.mainCharacterAvatar ? `
+        PERSONAGEM PRINCIPAL (${bookData.mainCharacter}):
+        - Use o avatar fornecido como referência EXATA para a aparência do personagem
+        - Mantenha as características físicas, roupas e cores do avatar em todas as ilustrações
+        - O personagem deve ser facilmente reconhecível e consistente em todas as cenas
+        - Preserve o estilo visual e personalidade transmitidos pelo avatar` : ''}
+        
+        ${bookData.secondaryCharacterAvatar ? `
+        PERSONAGEM SECUNDÁRIO (${bookData.secondaryCharacter}):
+        - Use o avatar fornecido como referência EXATA para a aparência do personagem
+        - Mantenha as características físicas, roupas e cores do avatar em todas as ilustrações
+        - O personagem deve ser facilmente reconhecível e consistente em todas as cenas
+        - Preserve o estilo visual e personalidade transmitidos pelo avatar` : ''}
+        
+        DIRETRIZES GERAIS PARA ILUSTRAÇÕES:
+        - Mantenha um estilo de arte consistente em todo o livro
+        - Use cores vibrantes e composições claras adequadas para livros infantis
+        - Certifique-se de que os personagens principais tenham presença significativa em cada cena
+        - Adapte o nível de detalhe e complexidade para a faixa etária de ${bookData.ageRange} anos
+        - Crie cenas dinâmicas que complementem e enriqueçam a narrativa
+        - As expressões faciais e linguagem corporal devem refletir claramente as emoções dos personagens
+        
+        IMPORTANTE:
+        - A consistência visual dos personagens é CRUCIAL - use os avatares como guia definitivo
+        - As ilustrações devem manter o mesmo nível de qualidade e detalhamento em todo o livro
+        - Cada cena deve ser memorável e cativante para o público infantil
       `;
 
       // Preparar os dados do livro para envio
@@ -103,7 +137,9 @@ function CreateBookScreen({ navigation }) {
         genre: bookData.genre,
         theme: bookData.theme,
         mainCharacter: bookData.mainCharacter,
+        mainCharacterAvatar: bookData.mainCharacterAvatar,
         secondaryCharacter: bookData.secondaryCharacter,
+        secondaryCharacterAvatar: bookData.secondaryCharacterAvatar,
         setting: bookData.setting,
         tone: bookData.tone,
         ageRange: bookData.ageRange,
@@ -172,20 +208,61 @@ function CreateBookScreen({ navigation }) {
   const renderStep2 = () => (
     <View>
       <Text style={styles.stepTitle}>Personagens e Ambiente</Text>
-      <TextInput
-        label="Nome do Personagem Principal"
-        value={bookData.mainCharacter}
-        onChangeText={(text) => setBookData({ ...bookData, mainCharacter: text })}
-        mode="outlined"
-        style={styles.input}
-      />
-      <TextInput
-        label="Nome do Personagem Secundário (opcional)"
-        value={bookData.secondaryCharacter}
-        onChangeText={(text) => setBookData({ ...bookData, secondaryCharacter: text })}
-        mode="outlined"
-        style={styles.input}
-      />
+      
+      <View style={styles.characterContainer}>
+        <View style={styles.characterInputContainer}>
+          <TextInput
+            label="Nome do Personagem Principal"
+            value={bookData.mainCharacter}
+            onChangeText={(text) => setBookData({ ...bookData, mainCharacter: text })}
+            mode="outlined"
+            style={styles.characterInput}
+          />
+          <TouchableOpacity
+            style={styles.avatarButton}
+            onPress={() => setMainAvatarModalVisible(true)}
+          >
+            {bookData.mainCharacterAvatar ? (
+              <Image
+                source={{ uri: bookData.mainCharacterAvatar }}
+                style={styles.avatarPreview}
+              />
+            ) : (
+              <View style={styles.avatarPlaceholder}>
+                <Text>Adicionar Avatar</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.characterInputContainer}>
+          <TextInput
+            label="Nome do Personagem Secundário (opcional)"
+            value={bookData.secondaryCharacter}
+            onChangeText={(text) => setBookData({ ...bookData, secondaryCharacter: text })}
+            mode="outlined"
+            style={styles.characterInput}
+          />
+          {bookData.secondaryCharacter && (
+            <TouchableOpacity
+              style={styles.avatarButton}
+              onPress={() => setSecondaryAvatarModalVisible(true)}
+            >
+              {bookData.secondaryCharacterAvatar ? (
+                <Image
+                  source={{ uri: bookData.secondaryCharacterAvatar }}
+                  style={styles.avatarPreview}
+                />
+              ) : (
+                <View style={styles.avatarPlaceholder}>
+                  <Text>Adicionar Avatar</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
       <TextInput
         label="Cenário da História"
         value={bookData.setting}
@@ -193,6 +270,20 @@ function CreateBookScreen({ navigation }) {
         mode="outlined"
         style={styles.input}
         placeholder="Ex: floresta encantada, cidade mágica..."
+      />
+
+      <AvatarSelector
+        visible={mainAvatarModalVisible}
+        onDismiss={() => setMainAvatarModalVisible(false)}
+        onSelectAvatar={(avatar) => setBookData({ ...bookData, mainCharacterAvatar: avatar })}
+        title="Selecione o Avatar do Personagem Principal"
+      />
+
+      <AvatarSelector
+        visible={secondaryAvatarModalVisible}
+        onDismiss={() => setSecondaryAvatarModalVisible(false)}
+        onSelectAvatar={(avatar) => setBookData({ ...bookData, secondaryCharacterAvatar: avatar })}
+        title="Selecione o Avatar do Personagem Secundário"
       />
     </View>
   );
@@ -344,6 +435,36 @@ const styles = StyleSheet.create({
   button: {
     flex: 1,
     marginHorizontal: 5
+  },
+  characterContainer: {
+    marginBottom: 15
+  },
+  characterInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 15
+  },
+  characterInput: {
+    flex: 1,
+    marginRight: 10
+  },
+  avatarButton: {
+    width: 60,
+    height: 60,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 30,
+    backgroundColor: '#f0f0f0',
+    overflow: 'hidden'
+  },
+  avatarPreview: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover'
+  },
+  avatarPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center'
   }
 });
 

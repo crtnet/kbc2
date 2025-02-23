@@ -336,7 +336,7 @@ class BookController {
           Trecho: "${snippet}".
           Incluir personagem principal ${book.mainCharacter}.
           ${book.secondaryCharacter ? `E também o secundário ${book.secondaryCharacter}.` : ''}
-          Estilo: cores vibrantes, seguro para crianças.
+          Estilo: ilustração infantil no estilo tradicional, utilizando técnicas que simulem aquarela, guache e colagem. A imagem deve ter uma aparência orgânica e única, com cores suaves e vibrantes, texturas ricas e detalhes delicados. Inclua personagens cativantes, em um cenário encantador com elementos naturais e lúdicos, que desperte a imaginação e seja seguro para crianças.
         `;
         const imageUrl = await openaiService.generateImage(imagePrompt);
 

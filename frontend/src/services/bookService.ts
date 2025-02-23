@@ -4,6 +4,34 @@ import { Book } from '../types/book';
 import { logger } from '../utils/logger';
 import { API_ENDPOINTS } from '../config/constants';
 
+const generateStoryPrompt = (bookData: Partial<Book>) => {
+  let prompt = `Create a children's story about ${bookData.mainCharacter}`;
+  
+  if (bookData.secondaryCharacter) {
+    prompt += ` and their friend ${bookData.secondaryCharacter}`;
+  }
+  
+  prompt += ` in ${bookData.setting}. Theme: ${bookData.theme}, Genre: ${bookData.genre}.`;
+
+  // Instruções específicas para o DALL-E sobre os avatares
+  if (bookData.mainCharacterAvatar) {
+    prompt += `\n\nFor the main character ${bookData.mainCharacter}, use the provided avatar image as a reference for their appearance in all illustrations. The character should maintain consistent visual features across all images, including their clothing style, color scheme, and distinctive characteristics shown in the avatar.`;
+  }
+
+  if (bookData.secondaryCharacter && bookData.secondaryCharacterAvatar) {
+    prompt += `\n\nFor the secondary character ${bookData.secondaryCharacter}, use the provided avatar image as a reference for their appearance in all illustrations. The character should maintain consistent visual features across all images, including their clothing style, color scheme, and distinctive characteristics shown in the avatar.`;
+  }
+
+  prompt += `\n\nImportant visual guidelines:
+  - Maintain consistent character designs throughout all illustrations
+  - Keep the art style child-friendly and appropriate for ${bookData.ageRange} year olds
+  - Ensure characters are easily recognizable in each scene
+  - Use vibrant colors and clear compositions suitable for children's books
+  - Make sure both characters have significant presence in the illustrations when they appear together`;
+
+  return prompt;
+};
+
 export const createBook = async (bookData: Partial<Book>) => {
   try {
     // Formata os dados conforme esperado pelo backend
@@ -12,14 +40,16 @@ export const createBook = async (bookData: Partial<Book>) => {
       genre: bookData.genre,
       theme: bookData.theme,
       mainCharacter: bookData.mainCharacter,
+      mainCharacterAvatar: bookData.mainCharacterAvatar,
       secondaryCharacter: bookData.secondaryCharacter,
+      secondaryCharacterAvatar: bookData.secondaryCharacterAvatar,
       setting: bookData.setting,
       tone: bookData.tone || 'fun',
       ageRange: bookData.ageRange || '5-6',
       authorName: bookData.authorName || 'Anonymous',
       userId: bookData.userId,
       language: bookData.language || 'pt-BR',
-      prompt: bookData.prompt || `Create a children's story about ${bookData.mainCharacter}${bookData.secondaryCharacter ? ` and their friend ${bookData.secondaryCharacter}` : ''} in ${bookData.setting}. Theme: ${bookData.theme}, Genre: ${bookData.genre}. Make sure both characters interact and play important roles in the story.`
+      prompt: bookData.prompt || generateStoryPrompt(bookData)
     };
 
     logger.info('Enviando dados para criação de livro', { 
