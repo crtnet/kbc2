@@ -15,6 +15,9 @@ async function generateBookContent(bookId: string, params: {
   genre: string;
   theme: string;
   mainCharacter: string;
+  mainCharacterAvatar: string;
+  secondaryCharacter?: string;
+  secondaryCharacterAvatar?: string;
   setting: string;
   tone: string;
   ageRange: string;
@@ -30,6 +33,7 @@ async function generateBookContent(bookId: string, params: {
       - Gênero: ${params.genre}
       - Tema: ${params.theme}
       - Personagem Principal: ${params.mainCharacter}
+      ${params.secondaryCharacter ? `- Personagem Secundário: ${params.secondaryCharacter}` : ''}
       - Cenário: ${params.setting}
       - Tom: ${params.tone}
       A história deve ser adequada para crianças de ${params.ageRange} anos.
@@ -42,16 +46,62 @@ async function generateBookContent(bookId: string, params: {
     const words = story.split(/\s+/);
     const totalWords = words.length;
     const pages = [];
-    const pagesCount = 5; // quantas páginas fixas você quer
+    const pagesCount = 5;
     const wordsPerPage = Math.ceil(totalWords / pagesCount);
 
+    // Preparar informações dos personagens para geração de imagens
+    const characters = {
+      main: {
+        name: params.mainCharacter,
+        avatarPath: params.mainCharacterAvatar
+      }
+    };
+
+    if (params.secondaryCharacter && params.secondaryCharacterAvatar) {
+      characters.secondary = {
+        name: params.secondaryCharacter,
+        avatarPath: params.secondaryCharacterAvatar
+      };
+    }
+
+    // Gerar páginas com imagens
     for (let i = 0; i < totalWords; i += wordsPerPage) {
       const pageText = words.slice(i, i + wordsPerPage).join(' ');
-      pages.push({
-        text: pageText,
-        pageNumber: pages.length + 1,
-        imageUrl: 'placeholder_image_url'
-      });
+      const pageNumber = pages.length + 1;
+
+      try {
+        // Gerar prompt específico para a imagem da página
+        const imagePrompt = `
+          Crie uma ilustração para um livro infantil que represente a seguinte cena:
+          ${pageText}
+          
+          Estilo da ilustração:
+          - Colorida e vibrante
+          - Estilo cartoon amigável
+          - Adequada para crianças de ${params.ageRange} anos
+          - Cenário: ${params.setting}
+          - Tom: ${params.tone}
+        `;
+
+        // Gerar imagem com referências dos avatares
+        const imageUrl = await openAIUnifiedService.generateImage(imagePrompt, characters);
+
+        pages.push({
+          text: pageText,
+          pageNumber,
+          imageUrl
+        });
+
+        logger.info(`Imagem gerada com sucesso para página ${pageNumber}`);
+      } catch (error) {
+        logger.error(`Erro ao gerar imagem para página ${pageNumber}:`, error);
+        // Continua com a próxima página mesmo se houver erro
+        pages.push({
+          text: pageText,
+          pageNumber,
+          imageUrl: 'placeholder_image_url'
+        });
+      }
     }
 
     // Atualiza o livro no banco
@@ -61,7 +111,7 @@ async function generateBookContent(bookId: string, params: {
         content: story,
         wordCount,
         pages,
-        status: 'completed', // finaliza
+        status: 'completed',
         generationTime: Date.now() - startTime
       },
       { new: true }
@@ -95,23 +145,45 @@ export const bookController = {
   async create(req: Request, res: Response) {
     try {
       // Pega dados do corpo
-      const { title, genre, theme, mainCharacter, setting, tone, ageRange } = req.body;
+      const { 
+        title, 
+        genre, 
+        theme, 
+        mainCharacter, 
+        mainCharacterAvatar,
+        secondaryCharacter,
+        secondaryCharacterAvatar,
+        setting, 
+        tone, 
+        ageRange 
+      } = req.body;
+      
       // Usuário autenticado
-      const userId = req.user?.id; // assumindo que req.user é populado pelo authMiddleware
+      const userId = req.user?.id;
 
       if (!userId) {
         return res.status(401).json({ message: 'Usuário não autenticado' });
       }
 
       logger.info('Dados recebidos para criação do livro:', {
-        title, genre, theme, mainCharacter, setting, tone, ageRange, userId
+        title,
+        genre,
+        theme,
+        mainCharacter,
+        hasMainAvatar: !!mainCharacterAvatar,
+        secondaryCharacter,
+        hasSecondaryAvatar: !!secondaryCharacterAvatar,
+        setting,
+        tone,
+        ageRange,
+        userId
       });
 
-      // Validação simples de campos obrigatórios
-      if (!title || !genre || !theme || !mainCharacter || !setting || !tone || !ageRange) {
+      // Validação de campos obrigatórios
+      if (!title || !genre || !theme || !mainCharacter || !mainCharacterAvatar || !setting || !tone || !ageRange) {
         logger.warn('Campos obrigatórios ausentes na criação do livro');
         return res.status(400).json({
-          message: 'Dados inválidos. Verifique se todos os campos estão preenchidos.'
+          message: 'Dados inválidos. Verifique se todos os campos obrigatórios estão preenchidos.'
         });
       }
 
@@ -121,11 +193,24 @@ export const bookController = {
         genre,
         theme,
         mainCharacter,
+        mainCharacterAvatar,
+        secondaryCharacter,
+        secondaryCharacterAvatar,
         setting,
         tone,
         ageRange,
         userId,
-        status: 'generating', // ou 'processing'
+        authorName: req.body.authorName || mainCharacter,
+        status: 'processing',
+        metadata: {
+          wordCount: 0,
+          pageCount: 0
+        },
+        pages: [{
+          pageNumber: 1,
+          text: 'Gerando história...',
+          imageUrl: ''
+        }]
       });
 
       await book.save();
@@ -137,6 +222,9 @@ export const bookController = {
         genre,
         theme,
         mainCharacter,
+        mainCharacterAvatar,
+        secondaryCharacter,
+        secondaryCharacterAvatar,
         setting,
         tone,
         ageRange,

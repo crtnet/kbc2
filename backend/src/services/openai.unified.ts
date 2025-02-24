@@ -1,220 +1,215 @@
 import OpenAI from 'openai';
+import { openaiConfig } from '../config/openai';
 import { logger } from '../utils/logger';
-import { config } from '../config';
-import { AgeRange } from '../models/Book';
-
-interface StoryGenerationConfig {
-  minWords: number;
-  maxWords: number;
-  complexity: number;
-  promptTemplate: string;
-}
+import { imageProcessor } from './imageProcessor';
+import { withRetry } from '../utils/retryHandler';
+import { cacheService } from './cache.service';
+import { storyFallbackService } from './storyFallback.service';
 
 class OpenAIUnifiedService {
   private openai: OpenAI;
-  private static instance: OpenAIUnifiedService;
+  private isServiceAvailable: boolean = true;
+  private readonly CACHE_TTL = 24 * 3600;
+  private readonly MAX_PROMPT_LENGTH = 1000;
+  private readonly MAX_RETRIES = 3;
+  private readonly INITIAL_RETRY_DELAY = 2000;
 
-  // Configurações otimizadas por faixa etária
-  private ageRangeConfigs: Record<AgeRange, StoryGenerationConfig> = {
-    '1-2': {
-      minWords: 50,
-      maxWords: 100,
-      complexity: 0.2,
-      promptTemplate: 'história muito simples para bebês (1-2 anos). Use frases curtas de 2-3 palavras, repetição e palavras básicas.'
-    },
-    '3-4': {
-      minWords: 100,
-      maxWords: 200,
-      complexity: 0.3,
-      promptTemplate: 'história simples para crianças pequenas (3-4 anos). Use frases curtas, vocabulário familiar e sequência clara.'
-    },
-    '5-6': {
-      minWords: 200,
-      maxWords: 300,
-      complexity: 0.4,
-      promptTemplate: 'história para pré-escolares (5-6 anos). Use frases simples conectadas, vocabulário descritivo e sequência lógica.'
-    },
-    '7-8': {
-      minWords: 300,
-      maxWords: 500,
-      complexity: 0.5,
-      promptTemplate: 'história para crianças (7-8 anos). Use parágrafos curtos, vocabulário rico e desenvolvimento de personagens.'
-    },
-    '9-10': {
-      minWords: 500,
-      maxWords: 700,
-      complexity: 0.6,
-      promptTemplate: 'história para crianças mais velhas (9-10 anos). Use narrativa elaborada, vocabulário variado e temas mais complexos.'
-    },
-    '11-12': {
-      minWords: 700,
-      maxWords: 1000,
-      complexity: 0.7,
-      promptTemplate: 'história para pré-adolescentes (11-12 anos). Use narrativa sofisticada, temas abstratos e desenvolvimento complexo.'
+  constructor() {
+    if (!openaiConfig.apiKey) {
+      logger.error('openaiConfig.apiKey não foi definido');
+      throw new Error('Chave de API da OpenAI não configurada');
     }
-  };
 
-  private constructor() {
-    if (!config.openaiApiKey) {
-      throw new Error('OpenAI API Key não configurada');
-    }
-    
     this.openai = new OpenAI({
-      apiKey: config.openaiApiKey
+      apiKey: openaiConfig.apiKey,
     });
-    
-    // Validação da instância
-    if (!this.openai) {
-      throw new Error('Falha ao inicializar cliente OpenAI');
-    }
+
+    setInterval(this.checkServiceAvailability.bind(this), 5 * 60 * 1000);
   }
 
-  public static getInstance(): OpenAIUnifiedService {
-    if (!OpenAIUnifiedService.instance) {
-      logger.info('Criando nova instância do OpenAIUnifiedService');
-      try {
-        OpenAIUnifiedService.instance = new OpenAIUnifiedService();
-        logger.info('Instância do OpenAIUnifiedService criada com sucesso');
-      } catch (error) {
-        logger.error('Erro ao criar instância do OpenAIUnifiedService:', error);
-        throw error;
-      }
-    }
-    return OpenAIUnifiedService.instance;
-  }
-
-  private estimateTokens(words: number): number {
-    // Em média, 1 palavra = 1.3 tokens em português
-    return Math.ceil(words * 1.3);
-  }
-
-  async generateStory(
-    prompt: string,
-    ageRange: AgeRange
-  ): Promise<{ story: string; wordCount: number }> {
+  private async checkServiceAvailability(): Promise<void> {
     try {
-      const config = this.ageRangeConfigs[ageRange];
-      const startTime = Date.now();
-      
-      logger.info(`Iniciando geração de história para faixa etária ${ageRange}`);
-      logger.info(`Parâmetros recebidos: ${JSON.stringify({ ageRange, wordRange: `${config.minWords}-${config.maxWords}` })}`);
+      await this.openai.chat.completions.create({
+        model: 'gpt-3.5-turbo',
+        messages: [{ role: 'user', content: 'test' }],
+        max_tokens: 5,
+      });
+      this.isServiceAvailable = true;
+    } catch (error) {
+      this.isServiceAvailable = false;
+      logger.error('Serviço OpenAI indisponível:', error);
+    }
+  }
 
-      // Prompt otimizado com instruções mais específicas
-      const optimizedPrompt = `Crie uma história infantil em português com exatamente estas características:
+  /**
+   * Remove prefixo de Data URL caso presente
+   */
+  private cleanBase64(dataUrl: string): string {
+    return dataUrl.replace(/^data:image\/\w+;base64,/, '');
+  }
 
-1. FORMATO:
-- Mínimo ${config.minWords} palavras
-- Máximo ${config.maxWords} palavras
-- Parágrafos curtos
-- Linguagem ${config.promptTemplate}
+  private optimizePrompt(prompt: string): string {
+    // Remover linhas desnecessárias
+    const lines = prompt
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 0)
+      .filter(line => !line.toLowerCase().includes('dall-e'))
+      .filter(line => line.length < 100);
 
-2. HISTÓRIA:
-${prompt}
+    // Manter apenas informações essenciais
+    const essentialLines = lines.filter(line =>
+      line.includes('cena') ||
+      line.includes('ação') ||
+      line.includes('personagem') ||
+      line.includes('ambiente')
+    );
 
-IMPORTANTE: Mantenha-se ESTRITAMENTE entre ${config.minWords} e ${config.maxWords} palavras.`;
+    return essentialLines
+      .slice(0, 5) // Limitar a 5 linhas
+      .join('\n');
+  }
 
-      const maxTokens = this.estimateTokens(config.maxWords * 1.1); // 10% de margem
+  private async generateImageWithRetry(
+    prompt: string,
+    referenceImages: string[] = []
+  ): Promise<string> {
+    return withRetry(
+      async () => {
+        try {
+          // Configuração base do DALL-E
+          const dalleParams: any = {
+            model: "dall-e-3",
+            prompt: prompt.substring(0, this.MAX_PROMPT_LENGTH),
+            n: 1,
+            size: "1024x1024",
+            quality: "standard",
+            style: "natural",
+            response_format: "url",
+          };
 
-      logger.info('Enviando requisição para OpenAI...');
-      
-      const completion = await this.openai.chat.completions.create({
-        model: "gpt-3.5-turbo",
-        messages: [
-          {
-            role: "system",
-            content: "Você é um escritor especializado em histórias infantis curtas e precisas, focado em manter o texto dentro do limite de palavras especificado."
-          },
-          {
-            role: "user",
-            content: optimizedPrompt
+          // Adicionar no máximo 2 imagens de referência
+          if (referenceImages.length > 0) {
+            dalleParams.reference_images = referenceImages.slice(0, 2);
           }
-        ],
-        temperature: config.complexity,
-        max_tokens: maxTokens,
-        presence_penalty: 0.2,
-        frequency_penalty: 0.3,
-        top_p: 0.8, // Aumenta a precisão das respostas
+
+          const response = await this.openai.images.generate(dalleParams);
+
+          if (!response?.data?.[0]?.url) {
+            throw new Error('Resposta inválida do DALL-E');
+          }
+
+          return response.data[0].url;
+        } catch (error: any) {
+          logger.error('Erro na chamada do DALL-E:', {
+            error: error.response?.data || error.message,
+            promptLength: prompt.length
+          });
+
+          // Se falhar com referências, tentar sem elas
+          if (referenceImages.length > 0) {
+            logger.warn('Tentando gerar sem imagens de referência');
+            return this.generateImageWithRetry(prompt, []);
+          }
+
+          throw error;
+        }
+      },
+      {
+        maxAttempts: this.MAX_RETRIES,
+        delayMs: this.INITIAL_RETRY_DELAY,
+        backoffMultiplier: 2,
+        shouldRetry: (error) => {
+          return !error.message.includes('safety system') &&
+                 !error.message.includes('content policy') &&
+                 !error.message.includes('invalid_request_error');
+        }
+      }
+    );
+  }
+
+  async generateImage(
+    scenePrompt: string,
+    characters?: {
+      main?: { name: string; avatarPath: string; },
+      secondary?: { name: string; avatarPath: string; }
+    }
+  ): Promise<string> {
+    try {
+      // Verificar cache
+      const cacheKey = cacheService.generateKey('image', {
+        prompt: scenePrompt,
+        mainCharacter: characters?.main?.name,
+        secondaryCharacter: characters?.secondary?.name
       });
 
-      const story = completion.choices[0].message.content?.trim() || '';
-      const wordCount = this.countWords(story);
-      const timeSpent = Date.now() - startTime;
-
-      logger.info(`História gerada em ${timeSpent}ms`);
-      logger.info(`Estatísticas: ${JSON.stringify({
-        wordCount,
-        tokensUsed: completion.usage?.total_tokens,
-        timeSpentSeconds: timeSpent / 1000
-      })}`);
-
-      // Verifica se está dentro dos limites
-      if (wordCount < config.minWords || wordCount > config.maxWords) {
-        logger.warn(`História fora do intervalo desejado. Tentando ajuste rápido...`);
-        
-        // Tenta um ajuste rápido sem nova chamada à API
-        const adjustedStory = await this.quickAdjustStory(story, config.minWords, config.maxWords);
-        const adjustedWordCount = this.countWords(adjustedStory);
-        
-        logger.info(`Ajuste concluído. Nova contagem: ${adjustedWordCount} palavras`);
-        return { story: adjustedStory, wordCount: adjustedWordCount };
+      const cachedImage = await cacheService.get<string>(cacheKey);
+      if (cachedImage) {
+        return cachedImage;
       }
 
-      return { story, wordCount };
+      // Se serviço indisponível, usar fallback
+      if (!this.isServiceAvailable) {
+        return await storyFallbackService.generateFallbackImage();
+      }
+
+      // Processar personagens
+      let characterPrompt = '';
+      let referenceImages: string[] = [];
+
+      if (characters) {
+        // Processar personagem principal
+        if (characters.main) {
+          const mainDesc = await imageProcessor.prepareCharacterDescription({
+            name: characters.main.name,
+            avatarPath: characters.main.avatarPath,
+            type: 'main'
+          });
+
+          const mainImageMatch = mainDesc.match(/<reference_image>(.*?)<\/reference_image>/);
+          if (mainImageMatch) {
+            // Remover prefixo se necessário
+            const cleanedImage = this.cleanBase64(mainImageMatch[1]);
+            referenceImages.push(cleanedImage);
+            characterPrompt += mainDesc.replace(/<reference_image>.*?<\/reference_image>\n\n/, '');
+          }
+        }
+
+        // Processar personagem secundário
+        if (characters.secondary) {
+          const secondaryDesc = await imageProcessor.prepareCharacterDescription({
+            name: characters.secondary.name,
+            avatarPath: characters.secondary.avatarPath,
+            type: 'secondary'
+          });
+
+          const secondaryImageMatch = secondaryDesc.match(/<reference_image>(.*?)<\/reference_image>/);
+          if (secondaryImageMatch) {
+            const cleanedImage = this.cleanBase64(secondaryImageMatch[1]);
+            referenceImages.push(cleanedImage);
+            characterPrompt += '\n' + secondaryDesc.replace(/<reference_image>.*?<\/reference_image>\n\n/, '');
+          }
+        }
+      }
+
+      // Otimizar prompt da cena
+      const optimizedScene = this.optimizePrompt(scenePrompt);
+      const finalPrompt = characterPrompt 
+        ? `${characterPrompt}\n\nCENA:\n${optimizedScene}`
+        : optimizedScene;
+
+      // Gerar imagem
+      const imageUrl = await this.generateImageWithRetry(finalPrompt, referenceImages);
+
+      // Salvar no cache
+      await cacheService.set(cacheKey, imageUrl, this.CACHE_TTL);
+
+      return imageUrl;
     } catch (error) {
-      logger.error(`Erro ao gerar história: ${error.message}`);
-      throw error;
+      logger.error('Erro na geração de imagem:', error);
+      return await storyFallbackService.generateFallbackImage();
     }
-  }
-
-  private async quickAdjustStory(story: string, minWords: number, maxWords: number): Promise<string> {
-    const words = story.split(/\s+/);
-    const currentCount = words.length;
-    
-    if (currentCount < minWords) {
-      // Adiciona detalhes simples para atingir o mínimo
-      const missingWords = minWords - currentCount;
-      const completion = await this.openai.chat.completions.create({
-        model: "gpt-3.5-turbo",
-        messages: [
-          {
-            role: "system",
-            content: "Adicione detalhes naturais à história mantendo o estilo e contexto."
-          },
-          {
-            role: "user",
-            content: `Adicione aproximadamente ${missingWords} palavras a esta história mantendo o mesmo estilo:\n\n${story}`
-          }
-        ],
-        temperature: 0.3,
-        max_tokens: this.estimateTokens(missingWords * 2),
-      });
-      return completion.choices[0].message.content?.trim() || story;
-    } else if (currentCount > maxWords) {
-      // Remove palavras mantendo a coerência
-      const completion = await this.openai.chat.completions.create({
-        model: "gpt-3.5-turbo",
-        messages: [
-          {
-            role: "system",
-            content: "Resuma a história mantendo os elementos principais e o estilo."
-          },
-          {
-            role: "user",
-            content: `Resuma esta história em no máximo ${maxWords} palavras mantendo a essência:\n\n${story}`
-          }
-        ],
-        temperature: 0.3,
-        max_tokens: this.estimateTokens(maxWords),
-      });
-      return completion.choices[0].message.content?.trim() || story;
-    }
-    
-    return story;
-  }
-
-  private countWords(text: string): number {
-    return text.trim().split(/\s+/).length;
   }
 }
 
-export const openAIUnifiedService = OpenAIUnifiedService.getInstance();
+export const openaiUnifiedService = new OpenAIUnifiedService();

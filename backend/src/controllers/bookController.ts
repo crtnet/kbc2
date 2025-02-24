@@ -95,7 +95,9 @@ class BookController {
         genre,
         theme,
         mainCharacter,
-        secondaryCharacter = '', // se quiser permitir personagem secundário
+        mainCharacterAvatar,
+        secondaryCharacter = '',
+        secondaryCharacterAvatar = '',
         setting,
         tone,
         ageRange,
@@ -104,23 +106,41 @@ class BookController {
       } = req.body;
 
       // Validação básica
-      if (!title || !genre || !theme || !mainCharacter || !setting || !tone) {
+      if (!title || !genre || !theme || !mainCharacter || !setting || !tone || !mainCharacterAvatar) {
         return res.status(400).json({
           error: 'Dados inválidos',
           details: 'Campos obrigatórios ausentes'
         });
       }
 
+      // Validação específica para avatares
+      if (!mainCharacterAvatar) {
+        return res.status(400).json({
+          error: 'Dados inválidos',
+          details: 'Avatar do personagem principal é obrigatório'
+        });
+      }
+
+      // Se tem personagem secundário, deve ter avatar
+      if (secondaryCharacter && !secondaryCharacterAvatar) {
+        return res.status(400).json({
+          error: 'Dados inválidos',
+          details: 'Avatar do personagem secundário é obrigatório quando há personagem secundário'
+        });
+      }
+
       // Monta prompt (opcional) - ou receba do frontend
       logger.info('Iniciando criação de novo livro', { title });
 
-      // Gera a história usando openAIService (opcional, se quiser)
+      // Gera a história usando openAIService
       const story = await openaiService.generateStory({
         title,
         genre,
         theme,
         mainCharacter,
+        mainCharacterAvatar,
         secondaryCharacter,
+        secondaryCharacterAvatar,
         setting,
         tone,
         ageRange
@@ -138,14 +158,16 @@ class BookController {
         genre,
         theme,
         mainCharacter,
+        mainCharacterAvatar,
         secondaryCharacter,
+        secondaryCharacterAvatar,
         setting,
         tone,
         ageRange,
         authorName,
         language,
         userId,
-        prompt: 'Gerado no backend', // se quiser
+        prompt: req.body.prompt, // Usa o prompt fornecido pelo frontend
         pages: pages.map((text: string, index: number) => ({
           pageNumber: index + 1,
           text,
@@ -328,6 +350,21 @@ class BookController {
     const book = await Book.findById(bookId);
     if (!book) throw new Error('Livro não encontrado');
 
+    // Preparar os personagens com seus avatares
+    const characters = {
+      main: {
+        name: book.mainCharacter,
+        avatarPath: book.mainCharacterAvatar
+      }
+    };
+
+    if (book.secondaryCharacter && book.secondaryCharacterAvatar) {
+      characters.secondary = {
+        name: book.secondaryCharacter,
+        avatarPath: book.secondaryCharacterAvatar
+      };
+    }
+
     for (let i = 0; i < pages.length; i++) {
       try {
         const snippet = pages[i].substring(0, 200);
@@ -338,7 +375,9 @@ class BookController {
           ${book.secondaryCharacter ? `E também o secundário ${book.secondaryCharacter}.` : ''}
           Estilo: ilustração infantil no estilo tradicional, utilizando técnicas que simulem aquarela, guache e colagem. A imagem deve ter uma aparência orgânica e única, com cores suaves e vibrantes, texturas ricas e detalhes delicados. Inclua personagens cativantes, em um cenário encantador com elementos naturais e lúdicos, que desperte a imaginação e seja seguro para crianças.
         `;
-        const imageUrl = await openaiService.generateImage(imagePrompt);
+        
+        // Gerar imagem passando os avatares como referência
+        const imageUrl = await openaiService.generateImage(imagePrompt, characters);
 
         if (book.pages[i]) {
           book.pages[i].imageUrl = imageUrl;
