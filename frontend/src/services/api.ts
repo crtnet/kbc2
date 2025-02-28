@@ -26,10 +26,11 @@ export function setLogoutHandler(fn: () => Promise<void>) {
 }
 
 const api = axios.create({
-  baseURL: process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000/api',
-  timeout: 30000,
+  baseURL: process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3333',
+  timeout: 60000, // Aumentando o timeout para 60 segundos
   headers: {
     'Content-Type': 'application/json',
+    'Accept': 'application/json',
   },
 });
 

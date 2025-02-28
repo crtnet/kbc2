@@ -20,5 +20,16 @@ export const config = {
   nodeEnv: process.env.NODE_ENV || 'development',
   logLevel: process.env.LOG_LEVEL || 'info',
   pdfOutputDir: process.env.PDF_OUTPUT_DIR || './storage/pdfs',
-  imageOutputDir: process.env.IMAGE_OUTPUT_DIR || './storage/images'
+  imageOutputDir: process.env.IMAGE_OUTPUT_DIR || './storage/images',
+  // Configuração para o servidor de avatares
+  avatarServer: process.env.AVATAR_SERVER_URL || 'http://localhost:3000',
+  // Configurações de timeouts e tentativas
+  downloadTimeout: parseInt(process.env.DOWNLOAD_TIMEOUT || '60000', 10),  // 60 segundos
+  openaiTimeout: parseInt(process.env.OPENAI_TIMEOUT || '120000', 10),     // 120 segundos
+  maxDownloadRetries: parseInt(process.env.MAX_DOWNLOAD_RETRIES || '5', 10), // 5 tentativas
+  // Configurações de dimensões de imagem para livro A5
+  bookImageWidth: 420,  // Largura ideal para A5
+  bookImageHeight: 595, // Altura ideal para A5
+  // Limite de tamanho de arquivo para imagens
+  maxImageSizeMB: parseInt(process.env.MAX_IMAGE_SIZE_MB || '2', 10),  // 2MB
 };

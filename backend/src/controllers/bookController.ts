@@ -4,9 +4,10 @@ import { Request, Response } from 'express';
 import mongoose from 'mongoose';
 import path from 'path';
 import { logger } from '../utils/logger';
-import { Book } from '../models/Book'; // Ajuste o import se necessário
+import { Book } from '../models/Book';
 import { generateBookPDF } from '../services/pdfGenerator';
 import { openaiService } from '../services/openai.service';
+import { avatarService } from '../services/avatarService';
 
 interface AuthRequest extends Request {
   user?: {
@@ -350,50 +351,67 @@ class BookController {
     const book = await Book.findById(bookId);
     if (!book) throw new Error('Livro não encontrado');
 
-    // Preparar os personagens com seus avatares
-    const characters = {
-      main: {
-        name: book.mainCharacter,
-        avatarPath: book.mainCharacterAvatar
-      }
-    };
-
-    if (book.secondaryCharacter && book.secondaryCharacterAvatar) {
-      characters.secondary = {
-        name: book.secondaryCharacter,
-        avatarPath: book.secondaryCharacterAvatar
-      };
-    }
-
-    for (let i = 0; i < pages.length; i++) {
-      try {
-        const snippet = pages[i].substring(0, 200);
-        const imagePrompt = `
-          Ilustração para livro infantil.
-          Trecho: "${snippet}".
-          Incluir personagem principal ${book.mainCharacter}.
-          ${book.secondaryCharacter ? `E também o secundário ${book.secondaryCharacter}.` : ''}
-          Estilo: ilustração infantil no estilo tradicional, utilizando técnicas que simulem aquarela, guache e colagem. A imagem deve ter uma aparência orgânica e única, com cores suaves e vibrantes, texturas ricas e detalhes delicados. Inclua personagens cativantes, em um cenário encantador com elementos naturais e lúdicos, que desperte a imaginação e seja seguro para crianças.
-        `;
-        
-        // Gerar imagem passando os avatares como referência
-        const imageUrl = await openaiService.generateImage(imagePrompt, characters);
-
-        if (book.pages[i]) {
-          book.pages[i].imageUrl = imageUrl;
-          await book.save();
+    try {
+      // Preparar os personagens com seus avatares usando avatarService
+      logger.info('Iniciando processamento dos avatares para geração de imagens', { bookId });
+      
+      // Processando personagem principal
+      const mainAvatarPath = await avatarService.processAvatar(book.mainCharacterAvatar, `main_${bookId}`);
+      
+      const characters = {
+        main: {
+          name: book.mainCharacter,
+          avatarPath: mainAvatarPath
         }
-      } catch (imgError: any) {
-        logger.error(`Erro ao gerar imagem para página ${i + 1}`, { error: imgError.message });
+      };
+
+      if (book.secondaryCharacter && book.secondaryCharacterAvatar) {
+        // Processando personagem secundário
+        const secondaryAvatarPath = await avatarService.processAvatar(book.secondaryCharacterAvatar, `secondary_${bookId}`);
+        
+        characters.secondary = {
+          name: book.secondaryCharacter,
+          avatarPath: secondaryAvatarPath
+        }
+      }
+
+      logger.info('Avatares processados com sucesso, iniciando geração de imagens', { bookId });
+      
+      // Usar o método aprimorado para gerar todas as imagens com base nos avatares
+      const imageUrls = await openaiService.generateImagesForStory(pages, characters);
+      
+      // Atualizar as URLs das imagens no modelo
+      for (let i = 0; i < imageUrls.length && i < book.pages.length; i++) {
+        book.pages[i].imageUrl = imageUrls[i];
+      }
+      
+      await book.save();
+      logger.info('Todas as imagens do livro foram geradas com sucesso', {
+        bookId,
+        totalImages: imageUrls.length
+      });
+    } catch (error) {
+      logger.error('Erro ao gerar imagens para o livro', {
+        error: error instanceof Error ? error.message : 'Erro desconhecido',
+        bookId
+      });
+    } finally {
+      // Gera PDF independentemente de erro nas imagens
+      try {
+        logger.info('Iniciando geração do PDF', { bookId });
+        const pdfPath = await generateBookPDF(book);
+        book.pdfUrl = pdfPath;
+        book.status = 'completed';
+        await book.save();
+      } catch (pdfError) {
+        logger.error('Erro ao gerar PDF', {
+          error: pdfError instanceof Error ? pdfError.message : 'Erro desconhecido',
+          bookId
+        });
+        book.status = 'error';
+        await book.save();
       }
     }
-
-    // Gera PDF
-    logger.info('Iniciando geração do PDF', { bookId });
-    const pdfPath = await generateBookPDF(book);
-    book.pdfUrl = pdfPath;
-    book.status = 'completed';
-    await book.save();
   }
 }
 
