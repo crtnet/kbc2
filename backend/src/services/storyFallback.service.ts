@@ -1,5 +1,18 @@
-import { GenerateStoryParams } from './openai.service';
 import { logger } from '../utils/logger';
+
+// Interface para parâmetros de história - movida para cá para evitar importação circular
+export interface GenerateStoryParams {
+  title: string;
+  genre: string;
+  theme: string;
+  mainCharacter: string;
+  mainCharacterAvatar: string;
+  secondaryCharacter?: string;
+  secondaryCharacterAvatar?: string;
+  setting: string;
+  tone: string;
+  ageRange: string;
+}
 
 class StoryFallbackService {
   private templates: Record<string, string[]> = {

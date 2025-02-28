@@ -173,35 +173,70 @@ const bookSchema = new mongoose.Schema(
   }
 );
 
-// Middleware para validar URLs antes de salvar
-bookSchema.pre('save', function(next) {
-  // Função para validar e normalizar URL
-  const normalizeUrl = (url: string) => {
-    // Remove parâmetros de query e hash
-    const baseUrl = url.split('?')[0].split('#')[0];
-    
-    // Verifica se é uma URL válida
-    if (baseUrl.match(/^(http:\/\/|https:\/\/|\/|assets\/|public\/)/)) {
-      return baseUrl;
-    }
-    
-    throw new Error('URL de avatar inválida');
-  };
+import mongoose from 'mongoose';
+import { AgeRange } from '../types/book';
+import { config } from '../config/config';
+import { logger } from '../utils/logger';
 
+// ... resto do código ...
+
+// Função para normalizar URL do avatar
+function normalizeAvatarUrl(url: string): string {
   try {
-    // Validar e normalizar mainCharacterAvatar
-    if (this.mainCharacterAvatar) {
-      this.mainCharacterAvatar = normalizeUrl(this.mainCharacterAvatar);
+    // Se já é uma URL completa com o servidor correto, retorna como está
+    if (url.startsWith(config.avatarServer)) {
+      return url;
     }
 
-    // Validar e normalizar secondaryCharacterAvatar se existir
+    // Extrai o caminho relativo de qualquer URL (incluindo IPs internos)
+    const assetsMatch = url.match(/assets\/(.+?)(\?|$)/);
+    if (!assetsMatch) {
+      throw new Error(`URL inválida: ${url}`);
+    }
+
+    // Remove qualquer parâmetro de query
+    const relativePath = assetsMatch[1].split('?')[0];
+
+    // Combina com a URL do servidor configurada
+    const serverUrl = config.avatarServer.replace(/\/+$/, '');
+    const normalizedUrl = `${serverUrl}/assets/${relativePath}`;
+
+    logger.info('URL do avatar normalizada:', {
+      original: url,
+      normalized: normalizedUrl
+    });
+
+    return normalizedUrl;
+  } catch (error) {
+    logger.error('Erro ao normalizar URL do avatar:', {
+      error: error instanceof Error ? error.message : 'Erro desconhecido',
+      url
+    });
+    throw error;
+  }
+}
+
+// Middleware para normalizar URLs antes de salvar
+bookSchema.pre('save', function(next) {
+  try {
+    // Normalizar mainCharacterAvatar
+    if (this.mainCharacterAvatar) {
+      this.mainCharacterAvatar = normalizeAvatarUrl(this.mainCharacterAvatar);
+    }
+
+    // Normalizar secondaryCharacterAvatar se existir
     if (this.secondaryCharacter && this.secondaryCharacterAvatar) {
-      this.secondaryCharacterAvatar = normalizeUrl(this.secondaryCharacterAvatar);
+      this.secondaryCharacterAvatar = normalizeAvatarUrl(this.secondaryCharacterAvatar);
     }
 
     next();
   } catch (error) {
-    next(error instanceof Error ? error : new Error('Erro de validação de avatar'));
+    logger.error('Erro ao normalizar URLs dos avatares:', {
+      error: error instanceof Error ? error.message : 'Erro desconhecido',
+      mainAvatar: this.mainCharacterAvatar,
+      secondaryAvatar: this.secondaryCharacterAvatar
+    });
+    next(error instanceof Error ? error : new Error('Erro ao normalizar URLs dos avatares'));
   }
 });
 
