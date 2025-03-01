@@ -501,6 +501,30 @@ PERSONAGEM ${characterType.toUpperCase()} "${character.name}":
       logger.error('Erro ao limpar arquivos temporários:', error);
     }
   }
+
+/**
+ * Prepara a descrição da imagem de referência para garantir consistência visual dos personagens.
+ * Essa função utiliza a descrição textual gerada pelo prepareCharacterDescription e acrescenta um
+ * prefixo para reforçar que se trata de uma referência visual que deve ser mantida consistente.
+ */
+async prepareReferenceDescription(avatarPath: string, type: 'main' | 'secondary'): Promise<string> {
+  try {
+    logger.info('Preparando descrição de referência para o avatar', { avatarPath, type });
+    // Reutiliza a função de descrição do personagem para obter informações básicas do avatar.
+    const baseDesc = await this.prepareCharacterDescription({
+      name: path.basename(avatarPath, path.extname(avatarPath)),
+      avatarPath,
+      type
+    });
+    // Retorna uma descrição enfatizando a importância de manter as características consistentes.
+    return `Mantenha as características consistentes: ${baseDesc}`;
+  } catch (error) {
+    logger.warn('Erro ao preparar descrição de referência para o avatar', {
+      error: error instanceof Error ? error.message : 'Erro desconhecido',
+      avatarPath
+    });
+    return `Personagem ${type === 'main' ? 'principal' : 'secundário'} com aparência consistente`;
+  }
 }
 
 export const imageProcessor = new ImageProcessor();
