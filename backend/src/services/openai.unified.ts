@@ -47,7 +47,6 @@ class OpenAIUnifiedService {
 
   async generateStory(params: GenerateStoryParams): Promise<string> {
     try {
-      // Verificar cache primeiro
       const cacheKey = cacheService.generateKey('story', params);
       const cachedStory = await cacheService.get<string>(cacheKey);
       if (cachedStory) {
@@ -55,13 +54,11 @@ class OpenAIUnifiedService {
         return cachedStory;
       }
 
-      // Se o serviço estiver indisponível, usar fallback
       if (!this.isServiceAvailable) {
         logger.warn('Serviço OpenAI indisponível, usando fallback');
         return await storyFallbackService.generateFallbackStory(params);
       }
 
-      // Construir o prompt para a história - OTIMIZADO
       const prompt = `Crie uma história infantil com 5 páginas para crianças de ${params.ageRange} anos.
 
 Elementos: "${params.title}" (${params.genre}); Tema: ${params.theme}; Personagem: ${params.mainCharacter}${params.secondaryCharacter ? `, ${params.secondaryCharacter}` : ''}; Ambiente: ${params.setting}; Tom: ${params.tone}.
@@ -70,7 +67,6 @@ Estrutura: 5 páginas de ~100 palavras cada, linguagem para ${params.ageRange} a
 
 Formate com linha em branco entre páginas.`;
 
-      // Fazer a chamada para a API
       const response = await withRetry(
         async () => {
           const completion = await this.openai.chat.completions.create({
@@ -105,17 +101,13 @@ Formate com linha em branco entre páginas.`;
         throw new Error('Resposta vazia do GPT');
       }
 
-      // Salvar no cache
       await cacheService.set(cacheKey, response, this.CACHE_TTL);
-
       return response;
     } catch (error: any) {
       logger.error('Erro ao gerar história:', {
         error: error.message,
         params
       });
-
-      // Em caso de erro, usar o serviço de fallback
       return await storyFallbackService.generateFallbackStory(params);
     }
   }
@@ -143,39 +135,28 @@ Formate com linha em branco entre páginas.`;
       const weatherWords = /(sol|chuva|nublado|vento|neve|tempestade|noite|dia|manhã|tarde)/i;
       const weatherMatches = pageText.match(weatherWords);
       
-      if (hasAction) {
-        sceneElements += "cena dinâmica com movimento, ";
-      } else {
-        sceneElements += "cena tranquila, ";
-      }
-      
+      sceneElements += hasAction ? "cena dinâmica com movimento, " : "cena tranquila, ";
       if (hasDialogue) {
         sceneElements += "momento de interação entre personagens, ";
       }
-      
       if (settingMatches) {
         sceneElements += `ambiente: ${settingMatches[0]}, `;
       }
-      
       if (emotionMatches) {
         sceneElements += `emoção: ${emotionMatches[0]}, `;
       }
-      
       if (weatherMatches) {
         sceneElements += `clima: ${weatherMatches[0]}, `;
       }
-      
       sceneElements += `mostrando ${mainCharacter}`;
       if (secondaryCharacter) {
         sceneElements += ` e ${secondaryCharacter}`;
       }
-      
       const words = pageText.split(/\s+/);
       const keywords = words.filter(word => 
         word.length > 4 && 
         !word.match(/^(com|para|pelo|pela|sobre|entre|desde|quando|porque|como|mais|menos|muito|pouco|todos)$/i)
       ).slice(0, 5);
-      
       if (keywords.length > 0) {
         sceneElements += ", elementos importantes: " + keywords.join(", ");
       }
@@ -187,6 +168,7 @@ Formate com linha em branco entre páginas.`;
     }
   }
 
+  // Inclui parte do texto da página (truncado) para dar contexto à imagem.
   private optimizePrompt(prompt: string, storyContext?: string, pageIndex?: number, totalPages?: number): string {
     try {
       const cleanedPrompt = prompt
@@ -206,7 +188,7 @@ Formate com linha em branco entre páginas.`;
         .replace(/\s{2,}/g, ' ')
         .trim();
       
-      const artStyle = "Ilustração para livro infantil, estilo cartoon colorido vibrante, traços suaves";
+      const artStyle = "Ilustração para livro infantil, cartoon colorido com traços suaves, poucos detalhes e cores vibrantes";
       
       if (storyContext && pageIndex !== undefined) {
         let narrativePhase = "";
@@ -217,8 +199,8 @@ Formate com linha em branco entre páginas.`;
         } else {
           narrativePhase = "desenvolvimento da história";
         }
-        
-        optimizedPrompt = `${artStyle}. Cena: ${optimizedPrompt}. ${narrativePhase}.`;
+        const truncatedContext = storyContext.length > 300 ? storyContext.substring(0, 300) + "..." : storyContext;
+        optimizedPrompt = `${artStyle}. Cena: ${optimizedPrompt}. Contexto da página: ${truncatedContext}. ${narrativePhase}.`;
       } else {
         optimizedPrompt = `${artStyle}: ${optimizedPrompt}.`;
       }
@@ -344,23 +326,25 @@ Formate com linha em branco entre páginas.`;
   }
 
   /**
-   * Cria uma variação do avatar utilizando o endpoint de variações de imagem da OpenAI.
-   * Em caso de falha, utiliza fallback textual.
+   * Cria uma "edição" do avatar utilizando o endpoint de edições do DALL-E.
+   * Essa abordagem envia a imagem base (convertida para PNG com fundo transparente e dimensões 1024x1024),
+   * uma máscara (totalmente branca) e o prompt de edição (com contexto da página) para gerar uma imagem que mantenha
+   * as características do personagem e adicione elementos do cenário narrativo.
    */
   async createAvatarVariation(avatarPath: string, prompt: string): Promise<string> {
     try {
-      logger.info('Criando variação do avatar (usando endpoint de variações)', { 
+      logger.info('Criando edição do avatar (usando endpoint de edições)', { 
         avatarPath,
         promptLength: prompt.length
       });
 
-      const cacheKey = cacheService.generateKey('avatar_variation', {
+      const cacheKey = cacheService.generateKey('avatar_edit', {
         path: avatarPath,
         prompt: prompt.substring(0, 100)
       });
       const cachedImage = await cacheService.get<string>(cacheKey);
       if (cachedImage) {
-        logger.info('Variação de avatar recuperada do cache');
+        logger.info('Edição de avatar recuperada do cache');
         return cachedImage;
       }
 
@@ -369,13 +353,30 @@ Formate com linha em branco entre páginas.`;
         return await storyFallbackService.generateFallbackImage();
       }
 
+      // Converter a imagem para PNG com fundo transparente e dimensões 1024x1024
+      const sharpModule = await import('sharp');
+      const avatarBuffer = await fs.readFile(avatarPath);
+      const pngBuffer = await sharpModule.default(avatarBuffer)
+        .resize(1024, 1024, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+        .png()
+        .toBuffer();
+
+      // Criar uma máscara totalmente branca (1024x1024)
+      const maskBuffer = await sharpModule.default({
+        create: { width: 1024, height: 1024, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 1 } }
+      })
+        .png()
+        .toBuffer();
+
       const formData = new FormData();
-      formData.append('image', fsSync.createReadStream(avatarPath));
+      formData.append('image', pngBuffer, { filename: 'avatar.png', contentType: 'image/png' });
+      formData.append('mask', maskBuffer, { filename: 'mask.png', contentType: 'image/png' });
+      // Para o endpoint de edições, enviamos o prompt que reflete o contexto
       formData.append('prompt', prompt);
       formData.append('n', '1');
       formData.append('size', '1024x1024');
 
-      const response = await axios.post('https://api.openai.com/v1/images/variations', formData, {
+      const response = await axios.post('https://api.openai.com/v1/images/edits', formData, {
         headers: {
           'Authorization': `Bearer ${openaiConfig.apiKey}`,
           ...formData.getHeaders()
@@ -385,13 +386,13 @@ Formate com linha em branco entre páginas.`;
 
       if (response.data && response.data.data && response.data.data[0]?.url) {
         const url = response.data.data[0].url;
-        logger.info('Variação de avatar gerada com sucesso pelo endpoint de variações', { url });
+        logger.info('Edição de avatar gerada com sucesso pelo endpoint de edições', { url });
         await cacheService.set(cacheKey, url, this.CACHE_TTL);
         return url;
       }
-      throw new Error('Resposta inválida do endpoint de variações.');
+      throw new Error('Resposta inválida do endpoint de edições.');
     } catch (error: any) {
-      logger.warn('Falha ao gerar variação do avatar pelo endpoint de variações, usando fallback textual.', { error: error.message });
+      logger.warn('Falha ao gerar edição do avatar pelo endpoint de edições, usando fallback textual.', { error: error.message });
       return await this.createAvatarVariationFallback(avatarPath, prompt);
     }
   }
@@ -425,14 +426,14 @@ INSTRUÇÕES DE ESTILO:
 - Iluminação adequada e sombras suaves
 - Visual adequado para crianças pequenas
       `.trim();
-      logger.info('Gerando variação de avatar com fallback textual', {
+      logger.info('Gerando edição de avatar com fallback textual', {
         characterName,
         characterType,
         promptLength: detailedPrompt.length
       });
       return await this.generateImageWithRetry(detailedPrompt, [], undefined);
     } catch (fallbackError: any) {
-      logger.error('Erro no fallback textual para variação do avatar', { error: fallbackError.message });
+      logger.error('Erro no fallback textual para edição do avatar', { error: fallbackError.message });
       const genericPrompt = `
 Ilustração infantil colorida com personagem de livro infantil.
 Cena: ${prompt}
@@ -518,26 +519,25 @@ Estilo: desenho para crianças com cores vibrantes e traços simples.
           
           if (mainAvatarPreprocessed || secondaryAvatarPreprocessed) {
             try {
-              logger.info(`Gerando variação de avatar para página ${i+1}/${storyPages.length}`, {
+              logger.info(`Gerando edição do avatar para página ${i+1}/${storyPages.length}`, {
                 pageLength: pageText.length,
                 sceneElements: sceneElements.substring(0, 50) + '...'
               });
               
+              // Inclui parte do texto da página como contexto extra para a edição
+              const truncatedPageText = pageText.length > 300 ? pageText.substring(0, 300) + "..." : pageText;
+              const avatarPrompt = `${sceneElements}. Contexto da página: ${truncatedPageText}`;
               const avatarToVary = mainAvatarPreprocessed 
                 ? processedCharacters.main.avatarPath
                 : processedCharacters.secondary.avatarPath;
               
-              imageUrl = await this.createAvatarVariation(
-                avatarToVary,
-                sceneElements
-              );
+              imageUrl = await this.createAvatarVariation(avatarToVary, avatarPrompt);
               
-              logger.info(`Variação de avatar gerada com sucesso para página ${i+1}`);
+              logger.info(`Edição do avatar gerada com sucesso para página ${i+1}`);
             } catch (variationError) {
-              logger.error(`Erro ao gerar variação de avatar para página ${i+1}`, {
+              logger.error(`Erro ao gerar edição do avatar para página ${i+1}`, {
                 error: variationError instanceof Error ? variationError.message : 'Erro desconhecido'
               });
-              
               imageUrl = await this.generateImage(
                 sceneElements,
                 processedCharacters,
@@ -567,7 +567,6 @@ Estilo: desenho para crianças com cores vibrantes e traços simples.
           logger.error(`Erro ao gerar imagem para página ${i+1}/${storyPages.length}`, {
             error: imageError instanceof Error ? imageError.message : 'Erro desconhecido'
           });
-          
           imageUrls.push(await storyFallbackService.generateFallbackImage());
         }
         
@@ -582,7 +581,6 @@ Estilo: desenho para crianças com cores vibrantes e traços simples.
         error: error instanceof Error ? error.message : 'Erro desconhecido',
         stack: error instanceof Error ? error.stack : undefined
       });
-      
       return Array(storyPages.length).fill(await storyFallbackService.generateFallbackImage());
     }
   }
@@ -604,22 +602,21 @@ Estilo: desenho para crianças com cores vibrantes e traços simples.
         secondaryCharacter: characters?.secondary?.name,
         pageIndex
       });
-
+  
       const cachedImage = await cacheService.get<string>(cacheKey);
       if (cachedImage) {
         logger.info('Imagem recuperada do cache', { pageIndex });
         return cachedImage;
       }
-
+  
       if (!this.isServiceAvailable) {
         logger.warn('Serviço OpenAI indisponível, usando fallback', { pageIndex });
         return await storyFallbackService.generateFallbackImage();
       }
-
+  
       const { imageProcessor } = await import('./imageProcessor');
-
       let characterPrompt = '';
-
+  
       if (characters) {
         if (characters.main) {
           try {
@@ -627,14 +624,12 @@ Estilo: desenho para crianças com cores vibrantes e traços simples.
               name: characters.main.name,
               pageIndex
             });
-            
             const mainDesc = await imageProcessor.prepareCharacterDescription({
               name: characters.main.name,
               avatarPath: characters.main.avatarPath,
               type: 'main'
             });
-
-            characterPrompt += mainDesc.replace(/<reference_image>.*?<\/reference_image>\n\n/, '');
+            characterPrompt += mainDesc;
             logger.info('Descrição do personagem principal adicionada');
           } catch (error) {
             logger.error('Erro ao processar descrição do personagem principal:', {
@@ -644,21 +639,18 @@ Estilo: desenho para crianças com cores vibrantes e traços simples.
             characterPrompt += `PERSONAGEM PRINCIPAL "${characters.main.name}": personagem de livro infantil\n\n`;
           }
         }
-
-        if (characters.secondary && characterPrompt) {
+        if (characters.secondary) {
           try {
             logger.info('Preparando descrição do personagem secundário para DALL-E', { 
               name: characters.secondary.name,
               pageIndex
             });
-            
             const secondaryDesc = await imageProcessor.prepareCharacterDescription({
               name: characters.secondary.name,
               avatarPath: characters.secondary.avatarPath,
               type: 'secondary'
             });
-
-            characterPrompt += '\n' + secondaryDesc.replace(/<reference_image>.*?<\/reference_image>\n\n/, '');
+            characterPrompt += '\n' + secondaryDesc;
             logger.info('Descrição do personagem secundário adicionada');
           } catch (error) {
             logger.error('Erro ao processar descrição do personagem secundário:', {
@@ -669,17 +661,45 @@ Estilo: desenho para crianças com cores vibrantes e traços simples.
           }
         }
       }
-
-      const optimizedScene = this.optimizePrompt(scenePrompt, storyContext, pageIndex, totalPages);
-      const finalPrompt = characterPrompt 
-        ? `${characterPrompt}\n\nCENA:\n${optimizedScene}`
-        : optimizedScene;
-        
+      // Adiciona as descrições de referência para reforçar a consistência visual
+      if (characters?.main) {
+        try {
+          const mainReferenceDesc = await imageProcessor.prepareReferenceDescription(characters.main.avatarPath, 'main');
+          characterPrompt += `\n[Referência Principal: ${mainReferenceDesc}]`;
+          logger.info('Descrição de referência do personagem principal adicionada');
+        } catch (error) {
+          logger.warn('Falha ao adicionar descrição de referência para personagem principal', { 
+            error: error instanceof Error ? error.message : 'Erro desconhecido' 
+          });
+        }
+      }
+      if (characters?.secondary) {
+        try {
+          const secondaryReferenceDesc = await imageProcessor.prepareReferenceDescription(characters.secondary.avatarPath, 'secondary');
+          characterPrompt += `\n[Referência Secundária: ${secondaryReferenceDesc}]`;
+          logger.info('Descrição de referência do personagem secundário adicionada');
+        } catch (error) {
+          logger.warn('Falha ao adicionar descrição de referência para personagem secundário', { 
+            error: error instanceof Error ? error.message : 'Erro desconhecido' 
+          });
+        }
+      }
+  
+      // Se houver contexto completo da página (storyContext), usamos como descrição principal da cena;
+      // caso contrário, usamos o scenePrompt extraído.
+      const sceneDescription = storyContext ? storyContext : scenePrompt;
+      
+      // Novo formato do prompt final:
+      // - A "CENA" vem primeiro, refletindo o que acontece na página.
+      // - Em seguida, a seção "PERSONAGENS" contém as descrições dos personagens e referências.
+      // - Por fim, instruções explícitas pedem para que o cenário e os elementos de ambiente sejam gerados.
+      const finalPrompt = `CENA: ${sceneDescription}\n\nPERSONAGENS: ${characterPrompt}\n\nInstruções: A imagem deve refletir claramente o cenário e a ação descritos na cena, com um fundo e elementos ambientais que demonstrem o contexto narrativo, mantendo os personagens com suas características consistentes. Estilo: Ilustração para livro infantil, cartoon colorido com traços suaves, poucos detalhes e cores vibrantes.`;
+      
       logger.info('Prompt final preparado', { 
         promptLength: finalPrompt.length,
         pageIndex
       });
-
+  
       const imageUrl = await this.generateImageWithRetry(
         finalPrompt, 
         [],
@@ -687,10 +707,10 @@ Estilo: desenho para crianças com cores vibrantes e traços simples.
         pageIndex,
         totalPages
       );
-
+  
       await cacheService.set(cacheKey, imageUrl, this.CACHE_TTL);
       logger.info('Imagem salva no cache', { pageIndex });
-
+  
       return imageUrl;
     } catch (error) {
       logger.error('Erro na geração de imagem:', {
@@ -702,7 +722,6 @@ Estilo: desenho para crianças com cores vibrantes e traços simples.
       try {
         logger.warn('Tentando gerar imagem com prompt simplificado', { pageIndex });
         const simplePrompt = `Ilustração colorida para livro infantil, página ${pageIndex !== undefined ? pageIndex + 1 : 1}`;
-        
         const imageUrl = await this.generateImageWithRetry(
           simplePrompt, 
           [],
@@ -710,7 +729,6 @@ Estilo: desenho para crianças com cores vibrantes e traços simples.
           pageIndex,
           totalPages
         );
-        
         return imageUrl;
       } catch (fallbackError) {
         logger.error('Erro também na abordagem simplificada, usando fallback', {
@@ -727,11 +745,8 @@ Estilo: desenho para crianças com cores vibrantes e traços simples.
   private async generateAvatarDescription(avatarPath: string): Promise<string> {
     try {
       logger.info('Gerando descrição detalhada do avatar', { avatarPath });
-      
       const baseName = path.basename(avatarPath, path.extname(avatarPath));
       const fileSize = (await fs.stat(avatarPath)).size;
-
-      // Importação dinâmica do Sharp e obtenção dos metadados da imagem
       const sharpModule = await import('sharp');
       const imageBuffer = await fs.readFile(avatarPath);
       const metadata = await sharpModule.default(imageBuffer).metadata();
