@@ -509,14 +509,17 @@ Estilo: desenho para crianças com cores vibrantes e traços simples.
         }
         
         try {
+          // Extraímos os elementos da cena (ambiente, ação, etc)
           const sceneElements = this.extractSceneElementsFromPage(
             pageText,
             processedCharacters?.main?.name || "personagem principal",
             processedCharacters?.secondary?.name
           );
           
-          let imageUrl: string;
+          // Combina o texto completo da página com os detalhes extraídos
+          const sceneDescription = `${pageText}\n\nDetalhes da cena: ${sceneElements}`;
           
+          let imageUrl: string;
           if (mainAvatarPreprocessed || secondaryAvatarPreprocessed) {
             try {
               logger.info(`Gerando edição do avatar para página ${i+1}/${storyPages.length}`, {
@@ -524,22 +527,21 @@ Estilo: desenho para crianças com cores vibrantes e traços simples.
                 sceneElements: sceneElements.substring(0, 50) + '...'
               });
               
-              // Inclui parte do texto da página como contexto extra para a edição
+              // Usa o texto completo como contexto para a edição
               const truncatedPageText = pageText.length > 300 ? pageText.substring(0, 300) + "..." : pageText;
-              const avatarPrompt = `${sceneElements}. Contexto da página: ${truncatedPageText}`;
+              const avatarPrompt = `${sceneDescription}\n\nDetalhes adicionais: ${truncatedPageText}`;
               const avatarToVary = mainAvatarPreprocessed 
                 ? processedCharacters.main.avatarPath
                 : processedCharacters.secondary.avatarPath;
               
               imageUrl = await this.createAvatarVariation(avatarToVary, avatarPrompt);
-              
               logger.info(`Edição do avatar gerada com sucesso para página ${i+1}`);
             } catch (variationError) {
               logger.error(`Erro ao gerar edição do avatar para página ${i+1}`, {
                 error: variationError instanceof Error ? variationError.message : 'Erro desconhecido'
               });
               imageUrl = await this.generateImage(
-                sceneElements,
+                sceneDescription,
                 processedCharacters,
                 pageText,
                 i,
@@ -553,7 +555,7 @@ Estilo: desenho para crianças com cores vibrantes e traços simples.
             });
             
             imageUrl = await this.generateImage(
-              sceneElements,
+              sceneDescription,
               processedCharacters,
               pageText,
               i,
@@ -661,16 +663,14 @@ Estilo: desenho para crianças com cores vibrantes e traços simples.
           }
         }
       }
-      // Adiciona as descrições de referência para reforçar a consistência visual
+      // Adiciona referências visuais para reforçar a consistência dos personagens
       if (characters?.main) {
         try {
           const mainReferenceDesc = await imageProcessor.prepareReferenceDescription(characters.main.avatarPath, 'main');
           characterPrompt += `\n[Referência Principal: ${mainReferenceDesc}]`;
           logger.info('Descrição de referência do personagem principal adicionada');
         } catch (error) {
-          logger.warn('Falha ao adicionar descrição de referência para personagem principal', { 
-            error: error instanceof Error ? error.message : 'Erro desconhecido' 
-          });
+          logger.warn('Falha ao adicionar descrição de referência para personagem principal', { error: error instanceof Error ? error.message : 'Erro desconhecido' });
         }
       }
       if (characters?.secondary) {
@@ -679,21 +679,12 @@ Estilo: desenho para crianças com cores vibrantes e traços simples.
           characterPrompt += `\n[Referência Secundária: ${secondaryReferenceDesc}]`;
           logger.info('Descrição de referência do personagem secundário adicionada');
         } catch (error) {
-          logger.warn('Falha ao adicionar descrição de referência para personagem secundário', { 
-            error: error instanceof Error ? error.message : 'Erro desconhecido' 
-          });
+          logger.warn('Falha ao adicionar descrição de referência para personagem secundário', { error: error instanceof Error ? error.message : 'Erro desconhecido' });
         }
       }
   
-      // Se houver contexto completo da página (storyContext), usamos como descrição principal da cena;
-      // caso contrário, usamos o scenePrompt extraído.
-      const sceneDescription = storyContext ? storyContext : scenePrompt;
-      
-      // Novo formato do prompt final:
-      // - A "CENA" vem primeiro, refletindo o que acontece na página.
-      // - Em seguida, a seção "PERSONAGENS" contém as descrições dos personagens e referências.
-      // - Por fim, instruções explícitas pedem para que o cenário e os elementos de ambiente sejam gerados.
-      const finalPrompt = `CENA: ${sceneDescription}\n\nPERSONAGENS: ${characterPrompt}\n\nInstruções: A imagem deve refletir claramente o cenário e a ação descritos na cena, com um fundo e elementos ambientais que demonstrem o contexto narrativo, mantendo os personagens com suas características consistentes. Estilo: Ilustração para livro infantil, cartoon colorido com traços suaves, poucos detalhes e cores vibrantes.`;
+      // Monta o prompt final combinando a descrição completa da cena (texto da página + detalhes extraídos) e os personagens
+      const finalPrompt = `CENA: ${scenePrompt}\n\nPERSONAGENS: ${characterPrompt}\n\nInstruções: A imagem deve representar fielmente o cenário narrativo descrito (fundo, ambiente e ação), sem repetir de forma fixa os personagens, garantindo variedade entre as páginas. Estilo: Ilustração para livro infantil, cartoon colorido com traços suaves, poucos detalhes e cores vibrantes.`;
       
       logger.info('Prompt final preparado', { 
         promptLength: finalPrompt.length,
