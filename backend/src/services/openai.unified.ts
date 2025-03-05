@@ -217,8 +217,7 @@ Formate com linha em branco entre páginas.`;
     referenceImages: string[] = [],
     storyContext?: string,
     pageIndex?: number,
-    totalPages?: number,
-    options?: { temperature?: number }
+    totalPages?: number
   ): Promise<string> {
     return withRetry(
       async () => {
@@ -240,8 +239,7 @@ Formate com linha em branco entre páginas.`;
             size: "1024x1024",
             quality: "standard",
             style: "vivid",
-            response_format: "url",
-            temperature: options?.temperature || 0.7
+            response_format: "url"
           };
   
           logger.info('Enviando requisição para DALL-E', {
@@ -261,7 +259,10 @@ Formate com linha em branco entre páginas.`;
   
           return response.data[0].url;
         } catch (error: any) {
-          // ... tratamento de erros conforme já implementado ...
+          logger.error('Erro na chamada do DALL-E:', {
+            message: error.message,
+            pageIndex
+          });
           throw error;
         }
       },
@@ -411,18 +412,15 @@ Estilo: desenho para crianças com cores vibrantes e traços simples.
         return [];
       }
       
-      let processedCharacters = {};
+      let processedCharacters: { main?: { name: string; avatarPath: string; }, secondary?: { name: string; avatarPath: string; } } = {};
       
       if (characters) {
         if (characters.main) {
           try {
             await fs.access(characters.main.avatarPath);
-            processedCharacters = {
-              ...processedCharacters,
-              main: {
-                name: characters.main.name,
-                avatarPath: characters.main.avatarPath
-              }
+            processedCharacters.main = {
+              name: characters.main.name,
+              avatarPath: characters.main.avatarPath
             };
             logger.info('Personagem principal configurado', { 
               name: characters.main.name,
@@ -436,12 +434,9 @@ Estilo: desenho para crianças com cores vibrantes e traços simples.
         if (characters.secondary) {
           try {
             await fs.access(characters.secondary.avatarPath);
-            processedCharacters = {
-              ...processedCharacters,
-              secondary: {
-                name: characters.secondary.name,
-                avatarPath: characters.secondary.avatarPath
-              }
+            processedCharacters.secondary = {
+              name: characters.secondary.name,
+              avatarPath: characters.secondary.avatarPath
             };
             logger.info('Personagem secundário configurado', { 
               name: characters.secondary.name,
@@ -477,7 +472,7 @@ Estilo: desenho para crianças com cores vibrantes e traços simples.
             sceneElements: sceneElements.substring(0, 100) + (sceneElements.length > 100 ? '...' : '')
           });
           
-          // Gera a imagem usando a função generateImage que agora compõe um prompt completo
+          // Gera a imagem usando a função generateImage que agora compõe o prompt completo
           const imageUrl = await this.generateImage(
             sceneDescription,
             processedCharacters,
@@ -554,7 +549,6 @@ Estilo: desenho para crianças com cores vibrantes e traços simples.
               avatarPath: characters.main.avatarPath,
               type: 'main'
             });
-            // Usa somente a descrição resumida para os personagens
             characterPrompt += mainDesc;
             logger.info('Descrição do personagem principal adicionada');
           } catch (error) {
@@ -587,10 +581,8 @@ Estilo: desenho para crianças com cores vibrantes e traços simples.
           }
         }
       }
-      // Omitimos referências detalhadas para evitar que o prompt seja dominado pelo avatar
-  
-      // Monta o prompt final com foco no cenário
-      const finalPrompt = `Ilustração para livro infantil.\n\nCENA: ${scenePrompt}\n\nPERSONAGENS: ${characterPrompt}\n\nInstruções: A imagem deve representar um cenário completo, com fundo, ambiente e ação detalhados conforme o texto da página, sem se limitar à aparência do avatar. Use um estilo cartoon colorido com traços suaves, poucos detalhes e cores vibrantes.`;
+      // Monta o prompt final, dando ênfase à CENA e mantendo apenas uma breve menção para os personagens.
+      const finalPrompt = `Ilustração para livro infantil.\n\nCENA: ${scenePrompt}\n\nPERSONAGENS: ${characterPrompt}\n\nInstruções: A imagem deve apresentar um cenário completo, com fundo e elementos ambientais que reflitam a narrativa da página, integrando os personagens de forma natural. Use um estilo cartoon colorido com traços suaves, poucos detalhes e cores vibrantes.`;
       
       logger.info('Prompt final preparado', { 
         promptLength: finalPrompt.length,
@@ -603,7 +595,7 @@ Estilo: desenho para crianças com cores vibrantes e traços simples.
         storyContext,
         pageIndex,
         totalPages,
-        { temperature: 0.8 } // Aumenta um pouco a temperatura para incentivar variações
+        { temperature: 0.8 }
       );
   
       await cacheService.set(cacheKey, imageUrl, this.CACHE_TTL);
