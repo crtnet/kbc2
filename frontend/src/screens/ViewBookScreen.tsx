@@ -1,19 +1,16 @@
 // src/screens/ViewBookScreen.tsx
-import React, { useEffect, useState, useCallback, useLayoutEffect } from 'react';
-import {
-  View,
-  StyleSheet,
-  ScrollView,
-  RefreshControl,
-} from 'react-native';
-import { Text, Card, ActivityIndicator, Button } from 'react-native-paper';
-import { getBookById } from '../services/bookService';
-import { useNavigation } from '@react-navigation/native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, StyleSheet, ScrollView, Image, RefreshControl, Dimensions } from 'react-native';
+import { Text, Button, Card, ActivityIndicator, Chip, Divider, IconButton, Portal, Dialog } from 'react-native-paper';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import * as bookService from '../services/bookService';
+import { useAuth } from '../contexts/AuthContext';
+import { API_URL } from '../config/api';
 
-interface Page {
+interface BookPage {
   pageNumber: number;
   text: string;
-  imageUrl?: string; // se "placeholder_image_url", tratamos como undefined
+  imageUrl: string;
 }
 
 interface Book {
@@ -22,78 +19,51 @@ interface Book {
   genre: string;
   theme: string;
   mainCharacter: string;
+  secondaryCharacter?: string;
   setting: string;
   tone: string;
-  pages: Page[];
-  status?: string;
+  ageRange: string;
+  authorName: string;
+  pages: BookPage[];
   pdfUrl?: string;
-  // outros campos, se necessário
-}
-
-interface ViewBookScreenProps {
-  route: {
-    params: {
-      bookId: string;
-    };
+  status: 'processing' | 'generating' | 'completed' | 'error';
+  createdAt: string;
+  metadata: {
+    wordCount: number;
+    pageCount: number;
   };
-  // se quiser tipar a navigation, use:
-  // navigation: StackNavigationProp<RootStackParamList, 'ViewBook'>;
-  navigation: any;
 }
 
-const ViewBookScreen: React.FC<ViewBookScreenProps> = ({ route, navigation }) => {
-  const { bookId } = route.params;
+function ViewBookScreen() {
+  const navigation = useNavigation();
+  const route = useRoute();
+  const { user } = useAuth();
+  const { bookId } = route.params as { bookId: string };
 
   const [book, setBook] = useState<Book | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState('');
+  const [loading, setLoading] = useState<boolean>(true);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState<number>(0);
+  const [showDeleteDialog, setShowDeleteDialog] = useState<boolean>(false);
+  const [deleting, setDeleting] = useState<boolean>(false);
 
-  /**
-   * Customiza o header:
-   * - Remove botão de voltar
-   * - Exibe "Concluído" que leva para HomeScreen
-   */
-  useLayoutEffect(() => {
-    navigation.setOptions({
-      headerLeft: () => null, // remove o botão de voltar
-      headerBackVisible: false, // em versões mais recentes do RN Navigation
-      headerRight: () => (
-        <Button
-          onPress={() => navigation.navigate('Home')}
-          mode="text"
-        >
-          Concluído
-        </Button>
-      ),
-    });
-  }, [navigation]);
+  const screenWidth = Dimensions.get('window').width;
+  const isTablet = screenWidth > 768;
 
-  const loadBook = useCallback(async () => {
+  const fetchBook = useCallback(async () => {
     try {
-      console.log(`Buscando livro com ID: ${bookId}`);
-      setRefreshing(true);
-      setError('');
-      const bookData = await getBookById(bookId);
-      console.log('Livro obtido:', bookData);
-      setBook(bookData);
-    } catch (err: any) {
-      console.error('Erro ao carregar livro:', err);
-
-      // Tratamento de erros específicos
-      if (err.response) {
-        // Se o backend retornou status code
-        const { status, data } = err.response;
-        if (status === 400) {
-          setError('O ID do livro é inválido.');
-        } else if (status === 404) {
-          setError('Livro não encontrado ou excluído.');
-        } else {
-          setError(data?.error || 'Erro ao carregar o livro.');
-        }
+      setError(null);
+      const response = await bookService.getBook(bookId);
+      
+      if (response && response.data) {
+        setBook(response.data);
       } else {
-        setError('Erro ao carregar o livro. Verifique sua conexão ou tente novamente.');
+        setError('Não foi possível carregar os dados do livro.');
       }
+    } catch (err: any) {
+      console.error('Erro ao buscar livro:', err);
+      setError(err.response?.data?.error || 'Erro ao carregar o livro.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -101,239 +71,523 @@ const ViewBookScreen: React.FC<ViewBookScreenProps> = ({ route, navigation }) =>
   }, [bookId]);
 
   useEffect(() => {
-    loadBook();
-  }, [loadBook]);
+    fetchBook();
 
-  // Se o livro estiver em geração, podemos revalidar periodicamente
-  useEffect(() => {
-    let interval: NodeJS.Timeout | undefined;
+    // Polling para atualizar o status do livro enquanto estiver processando
+    let interval: NodeJS.Timeout;
+    
     if (book && (book.status === 'processing' || book.status === 'generating')) {
       interval = setInterval(() => {
-        console.log('Revalidando status do livro...');
-        loadBook();
-      }, 5000);
+        fetchBook();
+      }, 5000); // Atualiza a cada 5 segundos
     }
+
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [book, loadBook]);
+  }, [fetchBook, book?.status]);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchBook();
+  }, [fetchBook]);
+
+  const handleViewPDF = () => {
+    if (book && book.pdfUrl) {
+      navigation.navigate('ViewBookPDF', { 
+        bookId: book._id,
+        title: book.title
+      });
+    }
+  };
+
+  const handleDeleteBook = async () => {
+    try {
+      setDeleting(true);
+      await bookService.deleteBook(bookId);
+      setShowDeleteDialog(false);
+      navigation.goBack();
+    } catch (err: any) {
+      console.error('Erro ao excluir livro:', err);
+      setError(err.response?.data?.error || 'Erro ao excluir o livro.');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleFlipBook = () => {
+    if (book) {
+      navigation.navigate('FlipBook', { 
+        bookId: book._id,
+        title: book.title,
+        pages: book.pages
+      });
+    }
+  };
+
+  const renderStatusChip = () => {
+    if (!book) return null;
+
+    let color = '';
+    let icon = '';
+    let label = '';
+
+    switch (book.status) {
+      case 'processing':
+        color = 'blue';
+        icon = 'clock-outline';
+        label = 'Processando';
+        break;
+      case 'generating':
+        color = 'orange';
+        icon = 'image-outline';
+        label = 'Gerando imagens';
+        break;
+      case 'completed':
+        color = 'green';
+        icon = 'check-circle-outline';
+        label = 'Concluído';
+        break;
+      case 'error':
+        color = 'red';
+        icon = 'alert-circle-outline';
+        label = 'Erro';
+        break;
+      default:
+        color = 'gray';
+        icon = 'help-circle-outline';
+        label = 'Desconhecido';
+    }
+
+    return (
+      <Chip 
+        icon={icon} 
+        mode="outlined" 
+        style={[styles.statusChip, { borderColor: color }]}
+        textStyle={{ color }}
+      >
+        {label}
+      </Chip>
+    );
+  };
+
+  const renderProgressIndicator = () => {
+    if (!book || book.status === 'completed' || book.status === 'error') return null;
+
+    const totalPages = book.metadata.pageCount;
+    const pagesWithImages = book.pages.filter(page => page.imageUrl).length;
+    const progress = totalPages > 0 ? (pagesWithImages / totalPages) * 100 : 0;
+
+    return (
+      <Card style={styles.progressCard}>
+        <Card.Content>
+          <Text style={styles.progressTitle}>Progresso da geração</Text>
+          <View style={styles.progressBarContainer}>
+            <View style={[styles.progressBar, { width: `${progress}%` }]} />
+          </View>
+          <Text style={styles.progressText}>
+            {pagesWithImages} de {totalPages} páginas processadas ({Math.round(progress)}%)
+          </Text>
+          <Text style={styles.progressInfo}>
+            {book.status === 'processing' 
+              ? 'Gerando história e imagens...' 
+              : 'Finalizando a criação do PDF...'}
+          </Text>
+        </Card.Content>
+      </Card>
+    );
+  };
+
+  const renderPageNavigation = () => {
+    if (!book || !book.pages || book.pages.length === 0) return null;
+
+    return (
+      <View style={styles.pageNavigation}>
+        <Button
+          mode="outlined"
+          onPress={() => setCurrentPage(prev => Math.max(0, prev - 1))}
+          disabled={currentPage === 0}
+          icon="chevron-left"
+        >
+          Anterior
+        </Button>
+        <Text style={styles.pageIndicator}>
+          Página {currentPage + 1} de {book.pages.length}
+        </Text>
+        <Button
+          mode="outlined"
+          onPress={() => setCurrentPage(prev => Math.min(book.pages.length - 1, prev + 1))}
+          disabled={currentPage === book.pages.length - 1}
+          icon="chevron-right"
+          contentStyle={{ flexDirection: 'row-reverse' }}
+        >
+          Próxima
+        </Button>
+      </View>
+    );
+  };
 
   if (loading) {
     return (
-      <View style={styles.centerContainer}>
+      <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" />
-        <Text style={styles.statusText}>Carregando livro...</Text>
+        <Text style={styles.loadingText}>Carregando livro...</Text>
       </View>
     );
   }
 
   if (error) {
     return (
-      <View style={styles.centerContainer}>
+      <View style={styles.errorContainer}>
         <Text style={styles.errorText}>{error}</Text>
-        <Button mode="contained" onPress={loadBook}>
-          Tentar novamente
+        <Button mode="contained" onPress={fetchBook}>
+          Tentar Novamente
         </Button>
       </View>
     );
   }
 
-  // Se não houver erro nem loading, mas também não tiver 'book'
   if (!book) {
     return (
-      <View style={styles.centerContainer}>
-        <Text style={styles.errorText}>Não foi possível carregar o livro.</Text>
-        <Button mode="contained" onPress={loadBook}>
-          Tentar novamente
+      <View style={styles.errorContainer}>
+        <Text style={styles.errorText}>Livro não encontrado.</Text>
+        <Button mode="contained" onPress={() => navigation.goBack()}>
+          Voltar
         </Button>
       </View>
     );
   }
 
-  const renderStatus = () => {
-    const status = book.status || 'completed';
-
-    switch (status) {
-      case 'processing':
-      case 'generating':
-        return (
-          <Card style={styles.statusCard}>
-            <Card.Content>
-              <ActivityIndicator style={styles.loader} />
-              <Text style={styles.statusText}>
-                Sua história está sendo gerada... Por favor, aguarde.
-              </Text>
-            </Card.Content>
-          </Card>
-        );
-      case 'completed':
-        if (!book.pages || book.pages.length === 0) {
-          return (
-            <Card style={styles.statusCard}>
-              <Card.Content>
-                <Text style={styles.statusText}>
-                  O livro foi gerado, mas não possui páginas para exibir.
-                </Text>
-              </Card.Content>
-            </Card>
-          );
-        }
-        return book.pages.map((page) => {
-          // Se page.imageUrl for 'placeholder_image_url' ou falsy, exibe placeholder local
-          const imageSource =
-            page.imageUrl && page.imageUrl !== 'placeholder_image_url'
-              ? { uri: page.imageUrl }
-              : require('../assets/placeholder-image.png');
-
-          return (
-            <Card key={page.pageNumber} style={styles.pageCard}>
-              <Card.Cover source={imageSource} style={styles.pageImage} />
-              <Card.Content>
-                <Text style={styles.pageNumber}>
-                  Página {page.pageNumber}
-                </Text>
-                <Text style={styles.pageText}>{page.text}</Text>
-              </Card.Content>
-            </Card>
-          );
-        });
-      case 'error':
-        return (
-          <Card style={[styles.statusCard, styles.errorCard]}>
-            <Card.Content>
-              <Text style={styles.errorText}>
-                Ocorreu um erro ao gerar sua história.
-              </Text>
-              <Button mode="contained" onPress={loadBook} style={styles.retryButton}>
-                Tentar novamente
-              </Button>
-            </Card.Content>
-          </Card>
-        );
-      default:
-        return (
-          <Card style={styles.statusCard}>
-            <Card.Content>
-              <Text style={styles.statusText}>
-                Status desconhecido: {book.status}
-              </Text>
-            </Card.Content>
-          </Card>
-        );
-    }
-  };
-
-  const handleOpenPDF = () => {
-    if (book.pdfUrl) {
-      // Navega para FlipBookScreen
-      navigation.navigate('FlipBook', { bookId: book._id });
-    } else {
-      console.log('PDF não disponível.');
-    }
-  };
+  const currentPageData = book.pages[currentPage];
 
   return (
-    <ScrollView
+    <ScrollView 
       style={styles.container}
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={loadBook} />
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
     >
-      <Card style={styles.infoCard}>
+      <Card style={styles.headerCard}>
         <Card.Content>
-          <Text style={styles.title}>{book.title}</Text>
-          <Text style={styles.detail}>Personagem: {book.mainCharacter}</Text>
-          <Text style={styles.detail}>Cenário: {book.setting}</Text>
-          <Text style={styles.detail}>Gênero: {book.genre}</Text>
-          <Text style={styles.detail}>Tema: {book.theme}</Text>
-          <Text style={styles.detail}>Tom: {book.tone}</Text>
+          <View style={styles.headerRow}>
+            <View style={styles.titleContainer}>
+              <Text style={styles.title}>{book.title}</Text>
+              <Text style={styles.author}>por {book.authorName}</Text>
+            </View>
+            <View style={styles.actionsContainer}>
+              {renderStatusChip()}
+              <IconButton
+                icon="delete"
+                size={24}
+                onPress={() => setShowDeleteDialog(true)}
+              />
+            </View>
+          </View>
 
-          {book.pdfUrl && (
-            <Button
-              mode="contained"
-              onPress={handleOpenPDF}
-              style={styles.pdfButton}
-            >
-              Ver PDF
-            </Button>
-          )}
+          <View style={styles.metadataContainer}>
+            <Chip icon="book-outline" style={styles.metadataChip}>
+              {book.genre}
+            </Chip>
+            <Chip icon="theme-light-dark" style={styles.metadataChip}>
+              {book.theme}
+            </Chip>
+            <Chip icon="account-outline" style={styles.metadataChip}>
+              {book.ageRange} anos
+            </Chip>
+          </View>
         </Card.Content>
       </Card>
-      {renderStatus()}
+
+      {renderProgressIndicator()}
+
+      {book.status === 'completed' && (
+        <View style={styles.actionButtonsContainer}>
+          <Button 
+            mode="contained" 
+            icon="book-open-variant" 
+            onPress={handleFlipBook}
+            style={styles.actionButton}
+          >
+            Folhear Livro
+          </Button>
+          <Button 
+            mode="contained" 
+            icon="file-pdf-box" 
+            onPress={handleViewPDF}
+            style={styles.actionButton}
+            disabled={!book.pdfUrl}
+          >
+            Ver PDF
+          </Button>
+        </View>
+      )}
+
+      <Card style={styles.detailsCard}>
+        <Card.Content>
+          <Text style={styles.sectionTitle}>Detalhes da História</Text>
+          <Divider style={styles.divider} />
+          
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>Personagem Principal:</Text>
+            <Text style={styles.detailValue}>{book.mainCharacter}</Text>
+          </View>
+          
+          {book.secondaryCharacter && (
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Personagem Secundário:</Text>
+              <Text style={styles.detailValue}>{book.secondaryCharacter}</Text>
+            </View>
+          )}
+          
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>Cenário:</Text>
+            <Text style={styles.detailValue}>{book.setting}</Text>
+          </View>
+          
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>Tom:</Text>
+            <Text style={styles.detailValue}>{book.tone}</Text>
+          </View>
+          
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>Palavras:</Text>
+            <Text style={styles.detailValue}>{book.metadata.wordCount}</Text>
+          </View>
+          
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>Páginas:</Text>
+            <Text style={styles.detailValue}>{book.metadata.pageCount}</Text>
+          </View>
+          
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>Criado em:</Text>
+            <Text style={styles.detailValue}>
+              {new Date(book.createdAt).toLocaleDateString('pt-BR')}
+            </Text>
+          </View>
+        </Card.Content>
+      </Card>
+
+      {book.status === 'completed' && (
+        <Card style={styles.previewCard}>
+          <Card.Content>
+            <Text style={styles.sectionTitle}>Prévia do Livro</Text>
+            <Divider style={styles.divider} />
+            
+            {renderPageNavigation()}
+            
+            <View style={[styles.pageContainer, isTablet && styles.tabletPageContainer]}>
+              {currentPageData.imageUrl && (
+                <Image
+                  source={{ uri: currentPageData.imageUrl }}
+                  style={styles.pageImage}
+                  resizeMode="contain"
+                />
+              )}
+              
+              <View style={styles.pageTextContainer}>
+                <Text style={styles.pageNumber}>Página {currentPageData.pageNumber}</Text>
+                <Text style={styles.pageText}>{currentPageData.text}</Text>
+              </View>
+            </View>
+            
+            {renderPageNavigation()}
+          </Card.Content>
+        </Card>
+      )}
+
+      <Portal>
+        <Dialog visible={showDeleteDialog} onDismiss={() => setShowDeleteDialog(false)}>
+          <Dialog.Title>Excluir Livro</Dialog.Title>
+          <Dialog.Content>
+            <Text>Tem certeza que deseja excluir "{book.title}"? Esta ação não pode ser desfeita.</Text>
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setShowDeleteDialog(false)}>Cancelar</Button>
+            <Button 
+              mode="contained" 
+              onPress={handleDeleteBook} 
+              loading={deleting}
+              disabled={deleting}
+              style={{ backgroundColor: 'red' }}
+            >
+              Excluir
+            </Button>
+          </Dialog.Actions>
+        </Dialog>
+      </Portal>
     </ScrollView>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5'
   },
-  centerContainer: {
+  loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20
   },
-  infoCard: {
-    margin: 10,
-    elevation: 2
-  },
-  statusCard: {
-    margin: 10,
-    elevation: 2,
-    backgroundColor: '#e3f2fd'
-  },
-  errorCard: {
-    backgroundColor: '#ffebee'
-  },
-  pageCard: {
-    margin: 10,
-    elevation: 2
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 10
-  },
-  detail: {
-    fontSize: 16,
-    marginBottom: 5,
-    color: '#666'
-  },
-  statusText: {
-    textAlign: 'center',
+  loadingText: {
     marginTop: 10,
     fontSize: 16
   },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20
+  },
   errorText: {
-    color: '#d32f2f',
-    textAlign: 'center',
-    fontSize: 16
-  },
-  loader: {
-    marginVertical: 10
-  },
-  pageText: {
+    marginBottom: 20,
     fontSize: 16,
-    lineHeight: 24,
+    color: 'red',
+    textAlign: 'center'
+  },
+  headerCard: {
+    margin: 10,
+    elevation: 2
+  },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start'
+  },
+  titleContainer: {
+    flex: 1
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold'
+  },
+  author: {
+    fontSize: 16,
+    color: '#666',
+    marginTop: 4
+  },
+  actionsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center'
+  },
+  statusChip: {
+    marginRight: 8
+  },
+  metadataContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 10
+  },
+  metadataChip: {
+    margin: 4
+  },
+  progressCard: {
+    margin: 10,
+    elevation: 2,
+    backgroundColor: '#f0f8ff'
+  },
+  progressTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 10
+  },
+  progressBarContainer: {
+    height: 10,
+    backgroundColor: '#e0e0e0',
+    borderRadius: 5,
+    overflow: 'hidden',
+    marginBottom: 5
+  },
+  progressBar: {
+    height: '100%',
+    backgroundColor: '#2196F3'
+  },
+  progressText: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 5
+  },
+  progressInfo: {
+    fontSize: 14,
+    fontStyle: 'italic',
+    color: '#666'
+  },
+  actionButtonsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    margin: 10
+  },
+  actionButton: {
+    flex: 1,
+    margin: 5
+  },
+  detailsCard: {
+    margin: 10,
+    elevation: 2
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 10
+  },
+  divider: {
+    marginBottom: 15
+  },
+  detailRow: {
+    flexDirection: 'row',
+    marginBottom: 10
+  },
+  detailLabel: {
+    flex: 1,
+    fontWeight: 'bold',
+    color: '#666'
+  },
+  detailValue: {
+    flex: 2
+  },
+  previewCard: {
+    margin: 10,
+    elevation: 2,
+    marginBottom: 20
+  },
+  pageNavigation: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginVertical: 10
+  },
+  pageIndicator: {
+    fontSize: 14,
+    color: '#666'
+  },
+  pageContainer: {
+    marginVertical: 15
+  },
+  tabletPageContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start'
+  },
+  pageImage: {
+    width: '100%',
+    height: 300,
+    marginBottom: 15,
+    borderRadius: 8
+  },
+  pageTextContainer: {
+    flex: 1,
+    padding: 10
   },
   pageNumber: {
     fontSize: 14,
+    fontWeight: 'bold',
     color: '#666',
-    marginBottom: 5,
-    fontWeight: 'bold'
+    marginBottom: 5
   },
-  pageImage: {
-    height: 200,
-    resizeMode: 'cover'
-  },
-  retryButton: {
-    marginTop: 10
-  },
-  pdfButton: {
-    marginTop: 20
+  pageText: {
+    fontSize: 16,
+    lineHeight: 24
   }
 });
 

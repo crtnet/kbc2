@@ -3,6 +3,7 @@
 import { Request, Response } from 'express';
 import { logger } from '../utils/logger';
 import BookController from './BookController';
+import { bookFixController } from './bookFix.controller';
 
 /**
  * BooksController: um "wrapper" que mapeia os métodos de BookController,
@@ -24,11 +25,12 @@ export class BooksController {
 
   /**
    * POST /books
-   * Chama BookController.createBook
+   * Usa a versão corrigida do controlador de livros
    */
   static async create(req: Request, res: Response) {
     try {
-      return await BookController.createBook(req, res);
+      // Usa a versão corrigida que resolve os problemas de avatar
+      return await bookFixController.createBook(req, res);
     } catch (error) {
       logger.error('Erro no BooksController.create:', error);
       return res.status(500).json({ error: 'Erro interno ao criar livro' });

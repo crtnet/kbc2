@@ -41,10 +41,19 @@ export class PDFService {
 
   private async validateImageUrl(url: string): Promise<boolean> {
     try {
+      // Aceita explicitamente URLs do Flaticon
+      if (url.includes('cdn-icons-png.flaticon.com')) {
+        logger.info(`URL do Flaticon aceita automaticamente: ${url}`);
+        return true;
+      }
+      
       const response = await fetch(url);
       const contentType = response.headers.get('content-type');
       return contentType?.startsWith('image/') || false;
-    } catch {
+    } catch (error) {
+      logger.error(`Erro ao validar URL de imagem: ${url}`, { 
+        error: error instanceof Error ? error.message : 'Erro desconhecido' 
+      });
       return false;
     }
   }

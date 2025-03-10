@@ -2,12 +2,9 @@
 
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { API_URL } from '../config';
-import {
-  STORAGE_KEYS,
-  API_ENDPOINTS,
-  TOKEN_REFRESH_INTERVAL,
-} from '../config/constants';
+import { API_URL, API_ENDPOINTS } from '../config/api';
+import { STORAGE_KEYS } from '../config';
+import { TOKEN_REFRESH_INTERVAL } from '../config/constants';
 import { logger } from '../utils/logger';
 
 export interface User {

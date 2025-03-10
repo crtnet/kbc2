@@ -39,6 +39,12 @@ const coverStyleSchema = new mongoose.Schema({
   }
 });
 
+const styleGuideSchema = new mongoose.Schema({
+  character: { type: String, default: '' },
+  environment: { type: String, default: '' },
+  artisticStyle: { type: String, default: 'ilustração cartoon, cores vibrantes, traços suaves' }
+});
+
 const bookSchema = new mongoose.Schema(
   {
     title: { 
@@ -151,6 +157,11 @@ const bookSchema = new mongoose.Schema(
     },
     coverStyle: { 
       type: coverStyleSchema, 
+      default: () => ({})
+    },
+    // **NOVO**: Campo para armazenar o estilo visual
+    styleGuide: {
+      type: styleGuideSchema,
       default: () => ({})
     },
     status: { 
@@ -278,6 +289,12 @@ export interface IBook extends mongoose.Document {
       height?: number;
       opacity?: number;
     };
+  };
+  // **NOVO**: Interface para o guia de estilo
+  styleGuide?: {
+    character?: string;
+    environment?: string;
+    artisticStyle?: string;
   };
   status?: 'processing' | 'generating' | 'completed' | 'error';
   userId: mongoose.Types.ObjectId;

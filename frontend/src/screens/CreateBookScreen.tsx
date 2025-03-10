@@ -4,9 +4,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useState } from 'react';
 import { View, StyleSheet, ScrollView, Image, TouchableOpacity } from 'react-native';
 import { TextInput, Button, Text, SegmentedButtons, Card, Snackbar, Portal } from 'react-native-paper';
-import AvatarSelector from '../components/character/AvatarSelector';
+import AvatarSelector from '../screens/AvatarSelector';
 import { useAuth } from '../contexts/AuthContext';
 import * as bookService from '../services/bookService';
+import * as avatarService from '../services/avatarService';
 
 interface BookData {
   title: string;
@@ -22,6 +23,9 @@ interface BookData {
   prompt?: string;
   authorName?: string;
   language?: string;
+  // **NOVO**: Campos para descrição de personagem e ambiente
+  characterDescription?: string;
+  environmentDescription?: string;
 }
 
 function CreateBookScreen({ navigation }) {
@@ -45,7 +49,10 @@ function CreateBookScreen({ navigation }) {
     secondaryCharacterAvatar: '',
     setting: '',
     tone: 'fun',
-    ageRange: '5-6'
+    ageRange: '5-6',
+    // **NOVO**: Valores iniciais para descrições
+    characterDescription: '',
+    environmentDescription: ''
   });
 
   const handleNext = () => {
@@ -55,8 +62,8 @@ function CreateBookScreen({ navigation }) {
       return;
     }
 
-    if (step === 2 && (!bookData.mainCharacter || !bookData.setting)) {
-      setError('Por favor, preencha todos os campos');
+    if (step === 2 && (!bookData.mainCharacter || !bookData.setting || !bookData.characterDescription || !bookData.environmentDescription)) {
+      setError('Por favor, preencha todos os campos, incluindo as descrições detalhadas');
       setVisible(true);
       return;
     }
@@ -76,10 +83,74 @@ function CreateBookScreen({ navigation }) {
     }
   };
 
+  // Função para selecionar um avatar diretamente (bypass do modal)
+  const selectDefaultAvatar = async (isMainCharacter: boolean) => {
+    try {
+      // Determina a categoria com base no tipo de personagem
+      const category = isMainCharacter ? 'children' : 'adults';
+      
+      // Obter avatares padrão
+      const avatars = await avatarService.getAvatars(category, 'cartoon');
+      
+      if (avatars && avatars.length > 0) {
+        // Seleciona o primeiro avatar da lista
+        const selectedAvatar = avatars[0];
+        
+        if (isMainCharacter) {
+          setBookData({ ...bookData, mainCharacterAvatar: selectedAvatar });
+        } else {
+          setBookData({ ...bookData, secondaryCharacterAvatar: selectedAvatar });
+        }
+        
+        console.log(`Avatar ${isMainCharacter ? 'principal' : 'secundário'} selecionado:`, selectedAvatar);
+      } else {
+        console.error('Nenhum avatar disponível');
+        setError('Nenhum avatar disponível. Tente novamente.');
+        setVisible(true);
+      }
+    } catch (err) {
+      console.error('Erro ao selecionar avatar padrão:', err);
+      setError('Erro ao selecionar avatar. Tente novamente.');
+      setVisible(true);
+    }
+  };
+
   const handleCreateBook = async () => {
     try {
       if (!user) {
         setError('Usuário não autenticado');
+        setVisible(true);
+        return;
+      }
+
+      // Validação final antes de enviar
+      if (!bookData.title || !bookData.authorName) {
+        setError('Título do livro e nome do autor são obrigatórios');
+        setVisible(true);
+        return;
+      }
+
+      if (!bookData.mainCharacter || !bookData.mainCharacterAvatar) {
+        setError('Nome e avatar do personagem principal são obrigatórios');
+        setVisible(true);
+        return;
+      }
+
+      if (!bookData.setting) {
+        setError('Cenário da história é obrigatório');
+        setVisible(true);
+        return;
+      }
+
+      if (!bookData.characterDescription || !bookData.environmentDescription) {
+        setError('Descrições do personagem e do ambiente são obrigatórias');
+        setVisible(true);
+        return;
+      }
+
+      // Se tem personagem secundário, deve ter avatar
+      if (bookData.secondaryCharacter && !bookData.secondaryCharacterAvatar) {
+        setError('Se você adicionar um personagem secundário, deve selecionar um avatar para ele');
         setVisible(true);
         return;
       }
@@ -131,22 +202,46 @@ function CreateBookScreen({ navigation }) {
         - Cada cena deve ser memorável e cativante para o público infantil
       `;
 
+      // Garantir que as descrições não estejam vazias
+      const characterDesc = bookData.characterDescription || 
+        `${bookData.mainCharacter} é um personagem de livro infantil com aparência amigável e expressiva`;
+      
+      const environmentDesc = bookData.environmentDescription || 
+        `${bookData.setting} é um ambiente colorido e acolhedor para crianças`;
+
       // Preparar os dados do livro para envio
       const bookDataToSend = {
         title: bookData.title,
         genre: bookData.genre,
         theme: bookData.theme,
         mainCharacter: bookData.mainCharacter,
-        mainCharacterAvatar: bookData.mainCharacterAvatar,
-        secondaryCharacter: bookData.secondaryCharacter,
-        secondaryCharacterAvatar: bookData.secondaryCharacterAvatar,
+        // Extrair apenas a URL da face para enviar ao servidor
+        mainCharacterAvatar: bookData.mainCharacterAvatar.startsWith('CUSTOM||') 
+          ? bookData.mainCharacterAvatar.split('||CUSTOM_AVATAR_DATA||')[0].replace('CUSTOM||', '')
+          : bookData.mainCharacterAvatar,
+        secondaryCharacter: bookData.secondaryCharacter || '',
+        // Extrair apenas a URL da face para enviar ao servidor
+        secondaryCharacterAvatar: bookData.secondaryCharacterAvatar 
+          ? (bookData.secondaryCharacterAvatar.startsWith('CUSTOM||')
+              ? bookData.secondaryCharacterAvatar.split('||CUSTOM_AVATAR_DATA||')[0].replace('CUSTOM||', '')
+              : bookData.secondaryCharacterAvatar)
+          : '',
         setting: bookData.setting,
         tone: bookData.tone,
         ageRange: bookData.ageRange,
         prompt: finalPrompt.trim(),
         authorName: bookData.authorName,
-        userId: user.id,
-        language: 'pt-BR'
+        language: 'pt-BR',
+        // Garantir que as descrições estejam presentes
+        characterDescription: characterDesc,
+        environmentDescription: environmentDesc,
+        // Dados adicionais para avatar personalizado
+        mainCharacterAvatarData: bookData.mainCharacterAvatar.startsWith('CUSTOM||') 
+          ? bookData.mainCharacterAvatar
+          : null,
+        secondaryCharacterAvatarData: bookData.secondaryCharacterAvatar && bookData.secondaryCharacterAvatar.startsWith('CUSTOM||')
+          ? bookData.secondaryCharacterAvatar
+          : null
       };
 
       console.log('Criando livro com dados:', bookDataToSend);
@@ -220,12 +315,45 @@ function CreateBookScreen({ navigation }) {
           />
           <TouchableOpacity
             style={styles.avatarButton}
-            onPress={() => setMainAvatarModalVisible(true)}
+            onPress={() => {
+              // Preparar os dados do avatar para restauração
+              if (bookData.mainCharacterAvatar && bookData.mainCharacterAvatar.startsWith('CUSTOM||')) {
+                // Usar window como uma forma de passar dados para o componente
+                window.mainCharacterAvatarData = bookData.mainCharacterAvatar;
+                console.log('Dados do avatar principal preparados para restauração:', 
+                  bookData.mainCharacterAvatar.substring(0, 50) + '...');
+              } else {
+                window.mainCharacterAvatarData = null;
+                console.log('Nenhum avatar personalizado para restaurar (principal)');
+              }
+              
+              // Abre o modal de seleção de avatar com suporte para personalização
+              setMainAvatarModalVisible(true);
+            }}
           >
             {bookData.mainCharacterAvatar ? (
               <Image
-                source={{ uri: bookData.mainCharacterAvatar }}
+                source={{ 
+                  uri: bookData.mainCharacterAvatar.startsWith('CUSTOM||') 
+                    ? bookData.mainCharacterAvatar.split('||CUSTOM_AVATAR_DATA||')[0].replace('CUSTOM||', '')
+                    : bookData.mainCharacterAvatar 
+                }}
                 style={styles.avatarPreview}
+                accessibilityLabel={`Avatar de ${bookData.mainCharacter}`}
+                defaultSource={require('../assets/placeholder-image.png')}
+                onError={(e) => {
+                  console.error('Erro ao carregar imagem do avatar principal. URL:', 
+                    bookData.mainCharacterAvatar.startsWith('CUSTOM||') 
+                      ? bookData.mainCharacterAvatar.split('||CUSTOM_AVATAR_DATA||')[0].replace('CUSTOM||', '')
+                      : bookData.mainCharacterAvatar,
+                    e.nativeEvent.error
+                  );
+                  // Se houver erro, usar uma imagem padrão
+                  setBookData(prev => ({
+                    ...prev,
+                    mainCharacterAvatar: 'https://cdn-icons-png.flaticon.com/512/4140/4140048.png'
+                  }));
+                }}
               />
             ) : (
               <View style={styles.avatarPlaceholder}>
@@ -234,6 +362,17 @@ function CreateBookScreen({ navigation }) {
             )}
           </TouchableOpacity>
         </View>
+
+        {/* **NOVO**: Campo para descrição do personagem */}
+        <TextInput
+          label="Descrição do Personagem Principal"
+          value={bookData.characterDescription}
+          onChangeText={(text) => setBookData({ ...bookData, characterDescription: text })}
+          mode="outlined"
+          style={styles.input}
+          placeholder="Ex: menina de 8 anos, cabelos cacheados vermelhos, vestido amarelo..."
+          multiline
+        />
 
         <View style={styles.characterInputContainer}>
           <TextInput
@@ -246,12 +385,45 @@ function CreateBookScreen({ navigation }) {
           {bookData.secondaryCharacter && (
             <TouchableOpacity
               style={styles.avatarButton}
-              onPress={() => setSecondaryAvatarModalVisible(true)}
+              onPress={() => {
+                // Preparar os dados do avatar para restauração
+                if (bookData.secondaryCharacterAvatar && bookData.secondaryCharacterAvatar.startsWith('CUSTOM||')) {
+                  // Usar window como uma forma de passar dados para o componente
+                  window.secondaryCharacterAvatarData = bookData.secondaryCharacterAvatar;
+                  console.log('Dados do avatar secundário preparados para restauração:', 
+                    bookData.secondaryCharacterAvatar.substring(0, 50) + '...');
+                } else {
+                  window.secondaryCharacterAvatarData = null;
+                  console.log('Nenhum avatar personalizado para restaurar (secundário)');
+                }
+                
+                // Abre o modal de seleção de avatar com suporte para personalização
+                setSecondaryAvatarModalVisible(true);
+              }}
             >
               {bookData.secondaryCharacterAvatar ? (
                 <Image
-                  source={{ uri: bookData.secondaryCharacterAvatar }}
+                  source={{ 
+                    uri: bookData.secondaryCharacterAvatar.startsWith('CUSTOM||') 
+                      ? bookData.secondaryCharacterAvatar.split('||CUSTOM_AVATAR_DATA||')[0].replace('CUSTOM||', '')
+                      : bookData.secondaryCharacterAvatar 
+                  }}
                   style={styles.avatarPreview}
+                  accessibilityLabel={`Avatar de ${bookData.secondaryCharacter}`}
+                  defaultSource={require('../assets/placeholder-image.png')}
+                  onError={(e) => {
+                    console.error('Erro ao carregar imagem do avatar secundário. URL:', 
+                      bookData.secondaryCharacterAvatar.startsWith('CUSTOM||') 
+                        ? bookData.secondaryCharacterAvatar.split('||CUSTOM_AVATAR_DATA||')[0].replace('CUSTOM||', '')
+                        : bookData.secondaryCharacterAvatar,
+                      e.nativeEvent.error
+                    );
+                    // Se houver erro, usar uma imagem padrão
+                    setBookData(prev => ({
+                      ...prev,
+                      secondaryCharacterAvatar: 'https://cdn-icons-png.flaticon.com/512/4140/4140061.png'
+                    }));
+                  }}
                 />
               ) : (
                 <View style={styles.avatarPlaceholder}>
@@ -272,19 +444,174 @@ function CreateBookScreen({ navigation }) {
         placeholder="Ex: floresta encantada, cidade mágica..."
       />
 
+      {/* **NOVO**: Campo para descrição do ambiente */}
+      <TextInput
+        label="Descrição Detalhada do Ambiente"
+        value={bookData.environmentDescription}
+        onChangeText={(text) => setBookData({ ...bookData, environmentDescription: text })}
+        mode="outlined"
+        style={styles.input}
+        placeholder="Ex: floresta mágica com cogumelos coloridos e fadas pequenas..."
+        multiline
+      />
+
       <AvatarSelector
         visible={mainAvatarModalVisible}
         onDismiss={() => setMainAvatarModalVisible(false)}
-        onSelectAvatar={(avatar) => setBookData({ ...bookData, mainCharacterAvatar: avatar })}
+        onSelectAvatar={(avatar) => {
+          console.log('Avatar principal selecionado:', typeof avatar === 'string' ? avatar.substring(0, 50) + '...' : avatar);
+          
+          // Verificar se é um avatar personalizado (novo formato)
+          if (typeof avatar === 'string' && avatar.startsWith('CUSTOM||')) {
+            try {
+              console.log('Avatar personalizado detectado, processando...');
+              
+              // Extrair partes do identificador usando os delimitadores
+              const parts = avatar.split('||CUSTOM_AVATAR_DATA||');
+              if (parts.length !== 2) {
+                throw new Error('Formato de avatar personalizado inválido');
+              }
+              
+              const faceUrl = parts[0].replace('CUSTOM||', '');
+              
+              console.log('URL da face extraída:', faceUrl);
+              
+              // Validar URL da face
+              if (faceUrl && faceUrl.startsWith('http')) {
+                // Armazenar o avatar completo (incluindo os dados serializados) no estado
+                setBookData((prevData) => ({
+                  ...prevData,
+                  mainCharacterAvatar: avatar
+                }));
+                
+                // Atualizar também a variável global para persistência
+                window.mainCharacterAvatarData = avatar;
+                
+                console.log('Avatar personalizado armazenado com sucesso');
+              } else {
+                throw new Error('URL da face inválida no avatar personalizado');
+              }
+            } catch (error) {
+              console.error('Erro ao processar avatar personalizado:', error);
+              const defaultAvatar = 'https://cdn-icons-png.flaticon.com/512/4140/4140048.png';
+              setBookData((prevData) => ({
+                ...prevData,
+                mainCharacterAvatar: defaultAvatar
+              }));
+              
+              // Limpar dados inválidos
+              window.mainCharacterAvatarData = null;
+            }
+          }
+          // Verificar se é uma URL simples (avatar padrão)
+          else if (typeof avatar === 'string' && avatar.startsWith('http')) {
+            // URL válida, atualizar o estado
+            setBookData((prevData) => ({
+              ...prevData,
+              mainCharacterAvatar: avatar
+            }));
+            
+            // Limpar dados de avatar personalizado
+            window.mainCharacterAvatarData = null;
+          } else {
+            // Formato inválido, usar um avatar padrão
+            console.log('Avatar inválido recebido, usando padrão');
+            const defaultAvatar = 'https://cdn-icons-png.flaticon.com/512/4140/4140048.png';
+            setBookData((prevData) => ({
+              ...prevData,
+              mainCharacterAvatar: defaultAvatar
+            }));
+            
+            // Limpar dados de avatar personalizado
+            window.mainCharacterAvatarData = null;
+          }
+          
+          setMainAvatarModalVisible(false);
+        }}
         title="Selecione o Avatar do Personagem Principal"
+        characterType="child"
+        enableCustomization={true}
       />
 
       <AvatarSelector
         visible={secondaryAvatarModalVisible}
         onDismiss={() => setSecondaryAvatarModalVisible(false)}
-        onSelectAvatar={(avatar) => setBookData({ ...bookData, secondaryCharacterAvatar: avatar })}
+        onSelectAvatar={(avatar) => {
+          console.log('Avatar secundário selecionado:', typeof avatar === 'string' ? avatar.substring(0, 50) + '...' : avatar);
+          
+          // Verificar se é um avatar personalizado (novo formato)
+          if (typeof avatar === 'string' && avatar.startsWith('CUSTOM||')) {
+            try {
+              console.log('Avatar personalizado detectado, processando...');
+              
+              // Extrair partes do identificador usando os delimitadores
+              const parts = avatar.split('||CUSTOM_AVATAR_DATA||');
+              if (parts.length !== 2) {
+                throw new Error('Formato de avatar personalizado inválido');
+              }
+              
+              const faceUrl = parts[0].replace('CUSTOM||', '');
+              
+              console.log('URL da face extraída:', faceUrl);
+              
+              // Validar URL da face
+              if (faceUrl && faceUrl.startsWith('http')) {
+                // Armazenar o avatar completo (incluindo os dados serializados) no estado
+                setBookData((prevData) => ({
+                  ...prevData,
+                  secondaryCharacterAvatar: avatar
+                }));
+                
+                // Atualizar também a variável global para persistência
+                window.secondaryCharacterAvatarData = avatar;
+                
+                console.log('Avatar personalizado armazenado com sucesso');
+              } else {
+                throw new Error('URL da face inválida no avatar personalizado');
+              }
+            } catch (error) {
+              console.error('Erro ao processar avatar personalizado:', error);
+              const defaultAvatar = 'https://cdn-icons-png.flaticon.com/512/4140/4140061.png';
+              setBookData((prevData) => ({
+                ...prevData,
+                secondaryCharacterAvatar: defaultAvatar
+              }));
+              
+              // Limpar dados inválidos
+              window.secondaryCharacterAvatarData = null;
+            }
+          }
+          // Verificar se é uma URL simples (avatar padrão)
+          else if (typeof avatar === 'string' && avatar.startsWith('http')) {
+            // URL válida, atualizar o estado
+            setBookData((prevData) => ({
+              ...prevData,
+              secondaryCharacterAvatar: avatar
+            }));
+            
+            // Limpar dados de avatar personalizado
+            window.secondaryCharacterAvatarData = null;
+          } else {
+            // Formato inválido, usar um avatar padrão
+            console.log('Avatar inválido recebido, usando padrão');
+            const defaultAvatar = 'https://cdn-icons-png.flaticon.com/512/4140/4140061.png';
+            setBookData((prevData) => ({
+              ...prevData,
+              secondaryCharacterAvatar: defaultAvatar
+            }));
+            
+            // Limpar dados de avatar personalizado
+            window.secondaryCharacterAvatarData = null;
+          }
+          
+          setSecondaryAvatarModalVisible(false);
+        }}
         title="Selecione o Avatar do Personagem Secundário"
+        characterType="adult"
+        enableCustomization={true}
       />
+
+      {/* Removemos os botões de fallback pois agora temos o sistema de personalização */}
     </View>
   );
 
@@ -403,7 +730,8 @@ const styles = StyleSheet.create({
   progressContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 20
+    marginBottom: 20,
+    backgroundColor: 'transparent'
   },
   progressItem: {
     flex: 1,
@@ -430,19 +758,22 @@ const styles = StyleSheet.create({
   buttonContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 20
+    marginTop: 20,
+    backgroundColor: 'transparent'
   },
   button: {
     flex: 1,
     marginHorizontal: 5
   },
   characterContainer: {
-    marginBottom: 15
+    marginBottom: 15,
+    backgroundColor: 'transparent'
   },
   characterInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 15
+    marginBottom: 15,
+    backgroundColor: 'transparent'
   },
   characterInput: {
     flex: 1,
@@ -455,16 +786,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: 30,
     backgroundColor: '#f0f0f0',
-    overflow: 'hidden'
+    // Add shadow properties with background color
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 3
   },
   avatarPreview: {
     width: '100%',
     height: '100%',
-    resizeMode: 'cover'
+    resizeMode: 'cover',
+    borderRadius: 30,
+    backgroundColor: '#ffffff' // Adding white background
   },
   avatarPlaceholder: {
     alignItems: 'center',
-    justifyContent: 'center'
+    justifyContent: 'center',
+    backgroundColor: '#f0f0f0' // Adding background color
+  },
+  fallbackButton: {
+    marginTop: 10,
+    marginBottom: 15,
+    backgroundColor: '#4caf50'
   }
 });
 
