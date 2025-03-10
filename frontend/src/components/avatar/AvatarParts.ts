@@ -1,6 +1,7 @@
 // src/components/avatar/AvatarParts.ts
 // Definições e tipos para as partes do avatar personalizável
 
+// Tipos básicos
 export interface AvatarColor {
   id: string;
   name: string;
@@ -31,6 +32,32 @@ export interface CustomizationSlider {
   defaultValue: number;
 }
 
+// Tipos para o estado do avatar customizado
+export interface CustomAvatarPart {
+  option: string;
+  color?: string;
+  size?: number;
+  position?: { x: number; y: number };
+  spacing?: number;
+  width?: number;
+  height?: number;
+  rotation?: number;
+  density?: number;
+}
+
+export interface CustomAvatar {
+  face: CustomAvatarPart;
+  eyes: CustomAvatarPart;
+  eyebrows: CustomAvatarPart;
+  nose: CustomAvatarPart;
+  mouth: CustomAvatarPart;
+  hair: CustomAvatarPart;
+  beard: CustomAvatarPart;
+  glasses: CustomAvatarPart;
+  accessories: CustomAvatarPart;
+  outfit: CustomAvatarPart;
+}
+
 // Cores padrão disponíveis
 export const DEFAULT_COLORS: AvatarColor[] = [
   { id: 'red', name: 'Vermelho', value: '#FF4D4D' },
@@ -54,8 +81,8 @@ export const DEFAULT_COLORS: AvatarColor[] = [
   { id: 'grey_hair', name: 'Grisalho', value: '#B0BEC5' }
 ];
 
-// Estado inicial para o avatar personalizado
-export const INITIAL_CUSTOM_AVATAR = {
+// Estado inicial para o avatar personalizado com base no tipo CustomAvatar
+export const INITIAL_CUSTOM_AVATAR: CustomAvatar = {
   face: {
     option: '',
     color: '#FFE0B2',
@@ -273,7 +300,7 @@ export const AVATAR_PARTS: AvatarPart[] = [
   }
 ];
 
-// Definições de sliders de customização para cada parte
+// Definição de sliders de customização para cada parte
 export const AVATAR_SLIDERS: { [key: string]: CustomizationSlider[] } = {
   face: [
     { id: 'size', name: 'Tamanho', min: 0.8, max: 1.2, step: 0.01, defaultValue: 1 },

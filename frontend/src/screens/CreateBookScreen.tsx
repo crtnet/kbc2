@@ -403,12 +403,16 @@ function CreateBookScreen({ navigation }) {
             >
               {bookData.secondaryCharacterAvatar ? (
                 <Image
-                  source={{ 
-                    uri: bookData.secondaryCharacterAvatar.startsWith('CUSTOM||') 
-                      ? bookData.secondaryCharacterAvatar.split('||CUSTOM_AVATAR_DATA||')[0].replace('CUSTOM||', '')
-                      : bookData.secondaryCharacterAvatar 
-                  }}
-                  style={styles.avatarPreview}
+                source={{
+                  uri:
+                    bookData.secondaryCharacterAvatar &&
+                    bookData.secondaryCharacterAvatar.startsWith('CUSTOM||')
+                      ? bookData.secondaryCharacterAvatar
+                          .split('||CUSTOM_AVATAR_DATA||')[0]
+                          .replace('CUSTOM||', '')
+                      : bookData.secondaryCharacterAvatar
+                }}
+                style={styles.avatarPreview}
                   accessibilityLabel={`Avatar de ${bookData.secondaryCharacter}`}
                   defaultSource={require('../assets/placeholder-image.png')}
                   onError={(e) => {
