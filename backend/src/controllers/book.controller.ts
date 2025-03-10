@@ -3,8 +3,9 @@
 import { Request, Response } from 'express';
 import mongoose from 'mongoose';
 import { Book } from '../models/book.model';
-import { openAIUnifiedService } from '../services/openai.unified';
+import { openaiUnifiedService } from '../services/openai.unified';
 import { logger } from '../utils/logger';
+import { storyFallbackService } from '../services/storyFallback.service';
 
 /**
  * Gera conteúdo (história) para o livro em background.
@@ -21,13 +22,18 @@ async function generateBookContent(bookId: string, params: {
   setting: string;
   tone: string;
   ageRange: string;
+  prompt?: string;
+  authorName?: string;
 }) {
   try {
     logger.info(`Iniciando geração de conteúdo para o livro ${bookId}`);
     const startTime = Date.now();
 
-    // Construir o prompt
-    const prompt = `
+    // Atualiza o status do livro para processamento
+    await Book.findByIdAndUpdate(bookId, { status: 'processing' });
+
+    // Construir o prompt se não foi fornecido
+    const prompt = params.prompt || `
       Crie uma história infantil divertida e envolvente com:
       - Título: ${params.title}
       - Gênero: ${params.genre}
@@ -39,41 +45,134 @@ async function generateBookContent(bookId: string, params: {
       A história deve ser adequada para crianças de ${params.ageRange} anos.
     `;
 
-    logger.info('Chamando openAIUnifiedService.generateStory com:', { prompt, ageRange: params.ageRange });
-    const { story, wordCount } = await openAIUnifiedService.generateStory(prompt, params.ageRange as AgeRange);
+    logger.info('Gerando história com prompt:', { 
+      promptLength: prompt.length, 
+      ageRange: params.ageRange 
+    });
+
+    // Gera a história
+    let story = '';
+    let wordCount = 0;
+    
+    try {
+      const result = await openaiUnifiedService.generateStory({
+        title: params.title,
+        genre: params.genre,
+        theme: params.theme,
+        mainCharacter: params.mainCharacter,
+        secondaryCharacter: params.secondaryCharacter,
+        setting: params.setting,
+        tone: params.tone,
+        ageRange: params.ageRange,
+        authorName: params.authorName || params.mainCharacter
+      });
+      
+      story = result;
+      wordCount = story.split(/\s+/).length;
+      
+      logger.info('História gerada com sucesso', { wordCount });
+    } catch (storyError) {
+      logger.error('Erro ao gerar história, usando fallback', {
+        error: storyError instanceof Error ? storyError.message : 'Erro desconhecido'
+      });
+      
+      // Usa o serviço de fallback para gerar uma história básica
+      story = await storyFallbackService.generateFallbackStory({
+        title: params.title,
+        genre: params.genre,
+        theme: params.theme,
+        mainCharacter: params.mainCharacter,
+        secondaryCharacter: params.secondaryCharacter,
+        setting: params.setting,
+        tone: params.tone,
+        ageRange: params.ageRange
+      });
+      
+      wordCount = story.split(/\s+/).length;
+    }
 
     // Divide a história em ~5 páginas
-    const words = story.split(/\s+/);
-    const totalWords = words.length;
+    const storyPages = story.split('\n\n').filter(page => page.trim().length > 0);
     const pages = [];
-    const pagesCount = 5;
-    const wordsPerPage = Math.ceil(totalWords / pagesCount);
+    
+    // Se não houver quebras de parágrafo claras, divide por palavras
+    if (storyPages.length < 3) {
+      const words = story.split(/\s+/);
+      const totalWords = words.length;
+      const pagesCount = 5;
+      const wordsPerPage = Math.ceil(totalWords / pagesCount);
+      
+      for (let i = 0; i < totalWords; i += wordsPerPage) {
+        const pageText = words.slice(i, i + wordsPerPage).join(' ');
+        pages.push({
+          text: pageText,
+          pageNumber: pages.length + 1,
+          imageUrl: ''
+        });
+      }
+    } else {
+      // Usa as quebras de parágrafo naturais
+      for (let i = 0; i < storyPages.length; i++) {
+        pages.push({
+          text: storyPages[i],
+          pageNumber: i + 1,
+          imageUrl: ''
+        });
+      }
+    }
 
     // Preparar informações dos personagens para geração de imagens
-    const characters = {
-      main: {
-        name: params.mainCharacter,
-        avatarPath: params.mainCharacterAvatar
-      }
+    const characters: any = {};
+    
+    // Verifica se o avatar principal é uma URL externa
+    const isMainAvatarExternal = params.mainCharacterAvatar.startsWith('http://') || 
+                                params.mainCharacterAvatar.startsWith('https://');
+    
+    if (isMainAvatarExternal) {
+      logger.info('Avatar principal é uma URL externa', { 
+        avatarUrl: params.mainCharacterAvatar 
+      });
+    }
+    
+    characters.main = {
+      name: params.mainCharacter,
+      avatarPath: params.mainCharacterAvatar
     };
 
+    // Verifica se o avatar secundário é uma URL externa
     if (params.secondaryCharacter && params.secondaryCharacterAvatar) {
+      const isSecondaryAvatarExternal = params.secondaryCharacterAvatar.startsWith('http://') || 
+                                      params.secondaryCharacterAvatar.startsWith('https://');
+      
+      if (isSecondaryAvatarExternal) {
+        logger.info('Avatar secundário é uma URL externa', { 
+          avatarUrl: params.secondaryCharacterAvatar 
+        });
+      }
+      
       characters.secondary = {
         name: params.secondaryCharacter,
         avatarPath: params.secondaryCharacterAvatar
       };
     }
 
-    // Gerar páginas com imagens
-    for (let i = 0; i < totalWords; i += wordsPerPage) {
-      const pageText = words.slice(i, i + wordsPerPage).join(' ');
-      const pageNumber = pages.length + 1;
-
+    // Gerar imagens para cada página
+    const updatedPages = [...pages];
+    
+    for (let i = 0; i < updatedPages.length; i++) {
+      const page = updatedPages[i];
+      
       try {
+        // Atualiza o status do livro para mostrar progresso
+        await Book.findByIdAndUpdate(bookId, { 
+          status: 'processing',
+          'metadata.progress': Math.floor((i / updatedPages.length) * 100)
+        });
+        
         // Gerar prompt específico para a imagem da página
         const imagePrompt = `
           Crie uma ilustração para um livro infantil que represente a seguinte cena:
-          ${pageText}
+          ${page.text}
           
           Estilo da ilustração:
           - Colorida e vibrante
@@ -83,36 +182,58 @@ async function generateBookContent(bookId: string, params: {
           - Tom: ${params.tone}
         `;
 
-        // Gerar imagem com referências dos avatares
-        const imageUrl = await openAIUnifiedService.generateImage(imagePrompt, characters);
-
-        pages.push({
-          text: pageText,
-          pageNumber,
-          imageUrl
+        // Tenta gerar imagem com referências dos avatares
+        try {
+          const imageUrl = await openaiUnifiedService.generateImage(
+            imagePrompt, 
+            characters,
+            page.text,
+            i,
+            updatedPages.length
+          );
+          
+          updatedPages[i].imageUrl = imageUrl;
+          logger.info(`Imagem gerada com sucesso para página ${i + 1}`);
+          
+          // Atualiza o livro com a página atual
+          await Book.findByIdAndUpdate(bookId, {
+            [`pages.${i}`]: updatedPages[i]
+          });
+        } catch (imageError) {
+          logger.error(`Erro ao gerar imagem para página ${i + 1}:`, {
+            error: imageError instanceof Error ? imageError.message : 'Erro desconhecido'
+          });
+          
+          // Usa uma imagem de fallback
+          updatedPages[i].imageUrl = await storyFallbackService.generateFallbackImage();
+          
+          // Atualiza o livro com a página atual usando imagem de fallback
+          await Book.findByIdAndUpdate(bookId, {
+            [`pages.${i}`]: updatedPages[i]
+          });
+        }
+      } catch (pageError) {
+        logger.error(`Erro ao processar página ${i + 1}:`, {
+          error: pageError instanceof Error ? pageError.message : 'Erro desconhecido'
         });
-
-        logger.info(`Imagem gerada com sucesso para página ${pageNumber}`);
-      } catch (error) {
-        logger.error(`Erro ao gerar imagem para página ${pageNumber}:`, error);
+        
         // Continua com a próxima página mesmo se houver erro
-        pages.push({
-          text: pageText,
-          pageNumber,
-          imageUrl: 'placeholder_image_url'
-        });
+        updatedPages[i].imageUrl = 'https://placehold.co/600x400/orange/white?text=Imagem+Indisponível';
       }
     }
 
-    // Atualiza o livro no banco
+    // Atualiza o livro no banco com todas as informações
     const updatedBook = await Book.findByIdAndUpdate(
       bookId,
       {
         content: story,
         wordCount,
-        pages,
+        pages: updatedPages,
         status: 'completed',
-        generationTime: Date.now() - startTime
+        generationTime: Date.now() - startTime,
+        'metadata.wordCount': wordCount,
+        'metadata.pageCount': updatedPages.length,
+        'metadata.progress': 100
       },
       { new: true }
     );
@@ -122,11 +243,14 @@ async function generateBookContent(bookId: string, params: {
     }
 
     logger.info(`Conteúdo do livro ${bookId} gerado com sucesso em ${(Date.now() - startTime) / 1000}s`);
-    logger.info(`Estatísticas do livro ${bookId}: ${wordCount} palavras, ${pages.length} páginas`);
+    logger.info(`Estatísticas do livro ${bookId}: ${wordCount} palavras, ${updatedPages.length} páginas`);
 
     return updatedBook;
   } catch (error) {
-    logger.error(`Erro ao gerar conteúdo para livro ${bookId}:`, error);
+    logger.error(`Erro ao gerar conteúdo para livro ${bookId}:`, {
+      error: error instanceof Error ? error.message : 'Erro desconhecido',
+      stack: error instanceof Error ? error.stack : undefined
+    });
 
     // Marca o livro como erro
     await Book.findByIdAndUpdate(bookId, {
@@ -155,7 +279,10 @@ export const bookController = {
         secondaryCharacterAvatar,
         setting, 
         tone, 
-        ageRange 
+        ageRange,
+        prompt,
+        authorName,
+        language
       } = req.body;
       
       // Usuário autenticado
@@ -176,7 +303,8 @@ export const bookController = {
         setting,
         tone,
         ageRange,
-        userId
+        userId,
+        promptLength: prompt?.length
       });
 
       // Validação de campos obrigatórios
@@ -200,11 +328,14 @@ export const bookController = {
         tone,
         ageRange,
         userId,
-        authorName: req.body.authorName || mainCharacter,
+        authorName: authorName || mainCharacter,
+        language: language || 'pt-BR',
+        prompt: prompt || '',
         status: 'processing',
         metadata: {
           wordCount: 0,
-          pageCount: 0
+          pageCount: 0,
+          progress: 0
         },
         pages: [{
           pageNumber: 1,
@@ -228,8 +359,13 @@ export const bookController = {
         setting,
         tone,
         ageRange,
+        prompt,
+        authorName
       }).catch(error => {
-        logger.error(`Erro ao gerar conteúdo em background para livro ${book._id}:`, error);
+        logger.error(`Erro ao gerar conteúdo em background para livro ${book._id}:`, {
+          error: error instanceof Error ? error.message : 'Erro desconhecido',
+          stack: error instanceof Error ? error.stack : undefined
+        });
       });
 
       return res.status(201).json({
@@ -237,89 +373,11 @@ export const bookController = {
         bookId: book._id,
       });
     } catch (error) {
-      logger.error('Erro ao criar livro:', error);
-      return res.status(500).json({ message: 'Erro ao criar livro' });
-    }
-  },
-
-  /**
-   * Gera conteúdo (história) para o livro em background.
-   * Atualiza o documento do livro com páginas, status etc.
-   */
-  async generateBookContent(bookId: string, params: {
-    title: string;
-    genre: string;
-    theme: string;
-    mainCharacter: string;
-    setting: string;
-    tone: string;
-    ageRange: string;
-  }) {
-    try {
-      logger.info(`Iniciando geração de conteúdo para o livro ${bookId}`);
-      const startTime = Date.now();
-
-      // Construir o prompt
-      const prompt = `
-        Crie uma história infantil divertida e envolvente com:
-        - Título: ${params.title}
-        - Gênero: ${params.genre}
-        - Tema: ${params.theme}
-        - Personagem Principal: ${params.mainCharacter}
-        - Cenário: ${params.setting}
-        - Tom: ${params.tone}
-        A história deve ser adequada para crianças de ${params.ageRange} anos.
-      `;
-
-      const { story, wordCount } = await openAIUnifiedService.generateStory(prompt, params.ageRange);
-
-      // Divide a história em ~5 páginas
-      const words = story.split(/\s+/);
-      const totalWords = words.length;
-      const pages = [];
-      const pagesCount = 5; // quantas páginas fixas você quer
-      const wordsPerPage = Math.ceil(totalWords / pagesCount);
-
-      for (let i = 0; i < totalWords; i += wordsPerPage) {
-        const pageText = words.slice(i, i + wordsPerPage).join(' ');
-        pages.push({
-          text: pageText,
-          pageNumber: pages.length + 1,
-          imageUrl: 'placeholder_image_url'
-        });
-      }
-
-      // Atualiza o livro no banco
-      const updatedBook = await Book.findByIdAndUpdate(
-        bookId,
-        {
-          content: story,
-          wordCount,
-          pages,
-          status: 'completed', // finaliza
-          generationTime: Date.now() - startTime
-        },
-        { new: true }
-      );
-
-      if (!updatedBook) {
-        throw new Error('Livro não encontrado após atualização');
-      }
-
-      logger.info(`Conteúdo do livro ${bookId} gerado com sucesso em ${(Date.now() - startTime) / 1000}s`);
-      logger.info(`Estatísticas do livro ${bookId}: ${wordCount} palavras, ${pages.length} páginas`);
-
-      return updatedBook;
-    } catch (error) {
-      logger.error(`Erro ao gerar conteúdo para livro ${bookId}:`, error);
-
-      // Marca o livro como erro
-      await Book.findByIdAndUpdate(bookId, {
-        status: 'error',
-        error: error instanceof Error ? error.message : 'Erro desconhecido'
+      logger.error('Erro ao criar livro:', {
+        error: error instanceof Error ? error.message : 'Erro desconhecido',
+        stack: error instanceof Error ? error.stack : undefined
       });
-
-      throw error;
+      return res.status(500).json({ message: 'Erro ao criar livro' });
     }
   },
 
@@ -351,10 +409,11 @@ export const bookController = {
       }
 
       // Se estiver gerando
-      if (book.status === 'generating') {
+      if (book.status === 'processing') {
         return res.json({
           ...book.toObject(),
-          message: 'O livro ainda está sendo gerado'
+          message: 'O livro ainda está sendo gerado',
+          progress: book.metadata?.progress || 0
         });
       }
 
@@ -407,7 +466,7 @@ export const bookController = {
           ? 100
           : book.status === 'error'
           ? 0
-          : 50,
+          : book.metadata?.progress || 50,
         error: book.error,
         generationTime: book.generationTime
       });
@@ -427,7 +486,7 @@ export const bookController = {
         return res.status(401).json({ message: 'Usuário não autenticado' });
       }
 
-      const books = await Book.find({ userId });
+      const books = await Book.find({ userId }).sort({ createdAt: -1 });
       return res.json(books);
     } catch (error) {
       logger.error('Erro ao listar livros:', error);

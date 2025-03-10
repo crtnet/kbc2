@@ -17,19 +17,27 @@ const bookSchema = new mongoose.Schema(
     genre: { type: String, required: true },
     theme: { type: String, required: true },
     mainCharacter: { type: String, required: true },
+    mainCharacterAvatar: { type: String, required: true },
+    secondaryCharacter: { type: String, default: '' },
+    secondaryCharacterAvatar: { type: String, default: '' },
     setting: { type: String, required: true },
     tone: { type: String, required: true },
     prompt: { type: String, default: '' },
+    content: { type: String, default: '' },
+    wordCount: { type: Number, default: 0 },
     pages: { type: [pageSchema], default: [] },
     pdfUrl: { type: String, default: '' },
     status: { 
       type: String, 
-      enum: ['generating', 'completed', 'error'], 
+      enum: ['generating', 'processing', 'completed', 'error'], 
       default: 'generating' 
     },
+    error: { type: String, default: '' },
+    generationTime: { type: Number, default: 0 },
     metadata: {
       wordCount: { type: Number, default: 0 },
       pageCount: { type: Number, default: 0 },
+      progress: { type: Number, default: 0 },
       error: { type: String, default: '' },
     },
     // Campos extras enviados pelo controller
@@ -40,7 +48,7 @@ const bookSchema = new mongoose.Schema(
   },
   {
     timestamps: true, // Cria automaticamente os campos createdAt e updatedAt
-    strict: true    // Garante que somente os campos definidos no schema sejam salvos
+    strict: false    // Permite campos adicionais não definidos no schema
   }
 );
 

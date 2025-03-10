@@ -1,13 +1,16 @@
 // src/controllers/bookController.ts
-
 import { Request, Response } from 'express';
 import mongoose from 'mongoose';
 import path from 'path';
 import { logger } from '../utils/logger';
 import { Book } from '../models/Book';
 import { generateBookPDF } from '../services/pdfGenerator';
-import { openaiService } from '../services/openai.service';
+import { openaiUnifiedService } from '../services/openai.unified'; // <--- Usei a versão revisada
 import { avatarService } from '../services/avatarService';
+import { avatarFixService } from '../services/avatarFixService';
+import { GenerateStoryParams } from '../services/storyFallback.service';
+import { config } from '../config/config';
+import { imageProcessor } from '../services/imageProcessor';
 
 interface AuthRequest extends Request {
   user?: {
@@ -91,6 +94,7 @@ class BookController {
         return res.status(401).json({ error: 'Usuário não autenticado' });
       }
 
+      // Extrai parâmetros obrigatórios
       const {
         title,
         genre,
@@ -103,65 +107,117 @@ class BookController {
         tone,
         ageRange,
         authorName,
-        language = 'pt-BR'
+        language = 'pt-BR',
+        // **NOVO**: Características do personagem e ambiente
+        characterDescription, // Ex: "menina de 8 anos, cabelos cacheados vermelhos..."
+        environmentDescription // Ex: "floresta mágica com cogumelos coloridos..."
       } = req.body;
 
-      // Validação básica
-      if (!title || !genre || !theme || !mainCharacter || !setting || !tone || !mainCharacterAvatar) {
+      // Validação de campos críticos
+      if (!title || !genre || !theme || !mainCharacter || !setting || !tone) {
         return res.status(400).json({
           error: 'Dados inválidos',
           details: 'Campos obrigatórios ausentes'
         });
       }
 
-      // Validação específica para avatares
-      if (!mainCharacterAvatar) {
-        return res.status(400).json({
-          error: 'Dados inválidos',
-          details: 'Avatar do personagem principal é obrigatório'
-        });
-      }
+      // Validação mais branda para avatar - se não tiver, usaremos um padrão
+      let normalizedMainAvatar = mainCharacterAvatar;
+      let normalizedSecondaryAvatar = secondaryCharacterAvatar;
 
-      // Se tem personagem secundário, deve ter avatar
-      if (secondaryCharacter && !secondaryCharacterAvatar) {
-        return res.status(400).json({
-          error: 'Dados inválidos',
-          details: 'Avatar do personagem secundário é obrigatório quando há personagem secundário'
-        });
-      }
-
-      // Monta prompt (opcional) - ou receba do frontend
       logger.info('Iniciando criação de novo livro', { title });
 
-      // Gera a história usando openAIService
-      const story = await openaiService.generateStory({
+      // Validar e normalizar URLs dos avatares
+      try {
+        // Normaliza a URL do avatar principal (ou usa padrão)
+        if (!mainCharacterAvatar) {
+          logger.warn('Avatar principal não fornecido, usando padrão', { title });
+          normalizedMainAvatar = avatarService.getDefaultAvatar(true);
+        } else {
+          try {
+            normalizedMainAvatar = avatarService.normalizeAvatarUrl(mainCharacterAvatar, true);
+            logger.info('URL do avatar principal normalizada com sucesso', { 
+              original: mainCharacterAvatar,
+              normalized: normalizedMainAvatar
+            });
+          } catch (e) {
+            logger.error('Erro ao normalizar URL do avatar principal, usando padrão', { 
+              error: e instanceof Error ? e.message : 'Erro desconhecido',
+              url: mainCharacterAvatar
+            });
+            normalizedMainAvatar = avatarService.getDefaultAvatar(true);
+          }
+        }
+
+        // Normaliza a URL do avatar secundário (se existir)
+        if (secondaryCharacter && secondaryCharacterAvatar) {
+          try {
+            normalizedSecondaryAvatar = avatarService.normalizeAvatarUrl(secondaryCharacterAvatar, false);
+            logger.info('URL do avatar secundário normalizada com sucesso', { 
+              original: secondaryCharacterAvatar,
+              normalized: normalizedSecondaryAvatar
+            });
+          } catch (e) {
+            logger.error('Erro ao normalizar URL do avatar secundário, usando padrão', { 
+              error: e instanceof Error ? e.message : 'Erro desconhecido',
+              url: secondaryCharacterAvatar
+            });
+            normalizedSecondaryAvatar = avatarService.getDefaultAvatar(false);
+          }
+        } else if (secondaryCharacter) {
+          // Se tem personagem secundário mas não tem avatar, usa padrão
+          normalizedSecondaryAvatar = avatarService.getDefaultAvatar(false);
+        }
+        
+        logger.info('URLs dos avatares processadas com sucesso', { 
+          mainCharacterAvatar: normalizedMainAvatar,
+          secondaryCharacterAvatar: normalizedSecondaryAvatar
+        });
+      } catch (avatarError) {
+        logger.error('Erro ao normalizar URLs dos avatares, usando avatares padrão', { 
+          error: avatarError instanceof Error ? avatarError.message : 'Erro desconhecido'
+        });
+        normalizedMainAvatar = avatarService.getDefaultAvatar(true);
+        if (secondaryCharacter) {
+          normalizedSecondaryAvatar = avatarService.getDefaultAvatar(false);
+        }
+      }
+
+      // Monta parâmetros para geração da história com estilo fixo
+      const storyParams: GenerateStoryParams = {
         title,
         genre,
         theme,
         mainCharacter,
-        mainCharacterAvatar,
+        mainCharacterAvatar: normalizedMainAvatar,
         secondaryCharacter,
-        secondaryCharacterAvatar,
+        secondaryCharacterAvatar: normalizedSecondaryAvatar,
         setting,
         tone,
-        ageRange
-      });
+        ageRange,
+        // Parâmetros de estilo com descrições detalhadas
+        styleGuide: {
+          character: characterDescription || `${mainCharacter} é um personagem de livro infantil`,
+          environment: environmentDescription || `${setting} é um ambiente colorido e acolhedor para crianças`,
+          artisticStyle: "ilustração cartoon, cores vibrantes, traços suaves, estilo livro infantil"
+        }
+      };
 
+      // Gera a história usando o serviço revisado
+      const story = await openaiUnifiedService.generateStory(storyParams);
       const wordCount = story.split(/\s+/).length;
-
-      // Divide a história em páginas
       const pages = this.splitStoryIntoPages(story);
 
-      // Monta objeto
+      // Salva o livro no banco de dados
       const userId = new mongoose.Types.ObjectId(authReq.user.id);
       const newBook = new Book({
         title,
         genre,
         theme,
         mainCharacter,
-        mainCharacterAvatar,
+        mainCharacterAvatar: normalizedMainAvatar,
         secondaryCharacter,
-        secondaryCharacterAvatar,
+        secondaryCharacterAvatar: normalizedSecondaryAvatar,
         setting,
         tone,
         ageRange,
@@ -169,7 +225,7 @@ class BookController {
         language,
         userId,
         prompt: req.body.prompt, // Usa o prompt fornecido pelo frontend
-        pages: pages.map((text: string, index: number) => ({
+        pages: pages.map((text, index) => ({
           pageNumber: index + 1,
           text,
           imageUrl: ''
@@ -178,7 +234,12 @@ class BookController {
           wordCount,
           pageCount: pages.length,
         },
-        status: 'processing'
+        status: 'processing',
+        // **NOVO**: Armazena o estilo no modelo
+        styleGuide: storyParams.styleGuide,
+        // Armazena as descrições para uso futuro
+        characterDescription: characterDescription || `${mainCharacter} é um personagem de livro infantil`,
+        environmentDescription: environmentDescription || `${setting} é um ambiente colorido e acolhedor para crianças`
       });
 
       await newBook.save();
@@ -192,7 +253,7 @@ class BookController {
       return res.status(201).json({
         message: 'Livro criado com sucesso, gerando imagens...',
         bookId: newBook._id,
-        pages: newBook.pages.length
+        pageCount: pages.length
       });
     } catch (error: any) {
       logger.error('Erro ao criar livro', { error: error.message });
@@ -352,35 +413,159 @@ class BookController {
     if (!book) throw new Error('Livro não encontrado');
 
     try {
-      // Preparar os personagens com seus avatares usando avatarService
+      // Processa avatares e prepara personagens
       logger.info('Iniciando processamento dos avatares para geração de imagens', { bookId });
       
-      // Processando personagem principal
-      const mainAvatarPath = await avatarService.processAvatar(book.mainCharacterAvatar, `main_${bookId}`);
-      
-      const characters = {
+      let characters = {
         main: {
           name: book.mainCharacter,
-          avatarPath: mainAvatarPath
+          avatarPath: book.mainCharacterAvatar, // Usa a URL original como fallback
+          type: 'main' as 'main' | 'secondary'
         }
       };
 
       if (book.secondaryCharacter && book.secondaryCharacterAvatar) {
-        // Processando personagem secundário
-        const secondaryAvatarPath = await avatarService.processAvatar(book.secondaryCharacterAvatar, `secondary_${bookId}`);
-        
         characters.secondary = {
           name: book.secondaryCharacter,
-          avatarPath: secondaryAvatarPath
+          avatarPath: book.secondaryCharacterAvatar, // Usa a URL original como fallback
+          type: 'secondary' as 'main' | 'secondary'
+        };
+      }
+
+      try {
+        // Verifica se os avatares são de CDNs confiáveis
+        const isMainAvatarTrustedCDN = avatarService.isTrustedCDN(book.mainCharacterAvatar);
+        const isSecondaryAvatarTrustedCDN = book.secondaryCharacterAvatar ? 
+          avatarService.isTrustedCDN(book.secondaryCharacterAvatar) : false;
+        
+        logger.info('Verificação de CDNs confiáveis', { 
+          mainIsTrustedCDN: isMainAvatarTrustedCDN,
+          secondaryIsTrustedCDN: isSecondaryAvatarTrustedCDN
+        });
+        
+        // Para o avatar principal
+        if (isMainAvatarTrustedCDN) {
+          logger.info('Avatar principal é de CDN confiável, usando diretamente', { 
+            url: book.mainCharacterAvatar 
+          });
+          characters.main.avatarPath = book.mainCharacterAvatar;
+        } else {
+          try {
+            // Tenta processar o avatar
+            const mainAvatarPath = await avatarService.processAvatar(book.mainCharacterAvatar, `main_${bookId}`);
+            characters.main.avatarPath = mainAvatarPath;
+            logger.info('Avatar do personagem principal processado com sucesso', { 
+              originalPath: book.mainCharacterAvatar,
+              processedPath: mainAvatarPath
+            });
+          } catch (mainAvatarError) {
+            logger.error('Erro ao processar avatar principal, usando padrão', {
+              error: mainAvatarError instanceof Error ? mainAvatarError.message : 'Erro desconhecido'
+            });
+            // Usa um avatar padrão em caso de erro
+            characters.main.avatarPath = `${config.avatarServer}/assets/avatars/default.png`;
+          }
+        }
+        
+        // Para o avatar secundário (se existir)
+        if (book.secondaryCharacter && book.secondaryCharacterAvatar) {
+          if (isSecondaryAvatarTrustedCDN) {
+            logger.info('Avatar secundário é de CDN confiável, usando diretamente', { 
+              url: book.secondaryCharacterAvatar 
+            });
+            characters.secondary.avatarPath = book.secondaryCharacterAvatar;
+          } else {
+            try {
+              // Tenta processar o avatar
+              const secondaryAvatarPath = await avatarService.processAvatar(book.secondaryCharacterAvatar, `secondary_${bookId}`);
+              characters.secondary.avatarPath = secondaryAvatarPath;
+              logger.info('Avatar do personagem secundário processado com sucesso', { 
+                originalPath: book.secondaryCharacterAvatar,
+                processedPath: secondaryAvatarPath
+              });
+            } catch (secondaryAvatarError) {
+              logger.error('Erro ao processar avatar secundário, usando padrão', {
+                error: secondaryAvatarError instanceof Error ? secondaryAvatarError.message : 'Erro desconhecido'
+              });
+              // Usa um avatar padrão em caso de erro
+              characters.secondary.avatarPath = `${config.avatarServer}/assets/avatars/default_secondary.png`;
+            }
+          }
+        }
+        
+        // Prepara descrições de personagens para uso na geração de imagens
+        logger.info('Preparando descrições detalhadas dos personagens', { 
+          mainCharacter: book.mainCharacter,
+          hasSecondaryCharacter: !!book.secondaryCharacter
+        });
+        
+        try {
+          const mainCharacterDescription = await imageProcessor.prepareCharacterDescription({
+            name: book.mainCharacter,
+            avatarPath: characters.main.avatarPath,
+            type: 'main'
+          });
+          
+          let secondaryCharacterDescription = '';
+          if (characters.secondary) {
+            secondaryCharacterDescription = await imageProcessor.prepareCharacterDescription({
+              name: book.secondaryCharacter,
+              avatarPath: characters.secondary.avatarPath,
+              type: 'secondary'
+            });
+          }
+          
+          // Adiciona as descrições ao styleGuide para uso na geração de imagens
+          if (!book.styleGuide) {
+            book.styleGuide = {
+              character: book.characterDescription || mainCharacterDescription,
+              environment: book.environmentDescription || `cenário de ${book.setting}`,
+              artisticStyle: "ilustração cartoon, cores vibrantes, traços suaves, estilo livro infantil"
+            };
+          } else {
+            // Aprimora a descrição existente com as informações processadas
+            book.styleGuide.character = book.styleGuide.character || mainCharacterDescription;
+            if (secondaryCharacterDescription) {
+              book.styleGuide.character += '\n\n' + secondaryCharacterDescription;
+            }
+            // Garante que o estilo artístico está definido
+            book.styleGuide.artisticStyle = book.styleGuide.artisticStyle || 
+              "ilustração cartoon, cores vibrantes, traços suaves, estilo livro infantil";
+          }
+          
+          logger.info('Descrições de personagens preparadas com sucesso', {
+            mainDescriptionLength: mainCharacterDescription.length,
+            hasSecondaryDescription: !!secondaryCharacterDescription
+          });
+        } catch (descriptionError) {
+          logger.error('Erro ao preparar descrições dos personagens', {
+            error: descriptionError instanceof Error ? descriptionError.message : 'Erro desconhecido',
+            bookId
+          });
+          // Continua com as descrições básicas fornecidas pelo usuário
+        }
+      } catch (avatarError) {
+        logger.error('Erro ao processar avatares, usando avatares padrão', {
+          error: avatarError instanceof Error ? avatarError.message : 'Erro desconhecido',
+          bookId
+        });
+        // Usa avatares padrão em caso de erro geral
+        characters.main.avatarPath = `${config.avatarServer}/assets/avatars/default.png`;
+        if (characters.secondary) {
+          characters.secondary.avatarPath = `${config.avatarServer}/assets/avatars/default_secondary.png`;
         }
       }
 
-      logger.info('Avatares processados com sucesso, iniciando geração de imagens', { bookId });
+      logger.info('Iniciando geração de imagens', { 
+        bookId,
+        mainAvatarPath: characters.main.avatarPath,
+        hasSecondaryAvatar: !!characters.secondary
+      });
       
-      // Usar o método aprimorado para gerar todas as imagens com base nos avatares
-      const imageUrls = await openaiService.generateImagesForStory(pages, characters);
+      // Passa o styleGuide do livro para o serviço
+      const imageUrls = await openaiUnifiedService.generateImagesForStory(pages, characters, book.styleGuide);
       
-      // Atualizar as URLs das imagens no modelo
+      // Atualiza as URLs das imagens no modelo
       for (let i = 0; i < imageUrls.length && i < book.pages.length; i++) {
         book.pages[i].imageUrl = imageUrls[i];
       }
@@ -395,6 +580,14 @@ class BookController {
         error: error instanceof Error ? error.message : 'Erro desconhecido',
         bookId
       });
+      
+      // Marca as páginas sem imagens
+      for (let i = 0; i < book.pages.length; i++) {
+        if (!book.pages[i].imageUrl) {
+          book.pages[i].imageUrl = '/assets/images/fallback-page.jpg';
+        }
+      }
+      await book.save();
     } finally {
       // Gera PDF independentemente de erro nas imagens
       try {

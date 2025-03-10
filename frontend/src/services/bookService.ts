@@ -1,171 +1,257 @@
 // src/services/bookService.ts
-import { api } from './api';
-import { Book } from '../types/book';
-import { logger } from '../utils/logger';
-import { API_ENDPOINTS } from '../config/constants';
+import axios from 'axios';
+import { API_URL } from '../config/api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { normalizeAvatarUrl, isValidCdnUrl } from '../utils/avatarUtils';
 
-const generateStoryPrompt = (bookData: Partial<Book>) => {
-  let prompt = `Create a children's story about ${bookData.mainCharacter}`;
-  
-  if (bookData.secondaryCharacter) {
-    prompt += ` and their friend ${bookData.secondaryCharacter}`;
-  }
-  
-  prompt += ` in ${bookData.setting}. Theme: ${bookData.theme}, Genre: ${bookData.genre}.`;
+/**
+ * Interface para os dados de criação de um livro
+ */
+export interface CreateBookData {
+  title: string;
+  genre: 'adventure' | 'fantasy' | 'mystery';
+  theme: 'friendship' | 'courage' | 'kindness';
+  mainCharacter: string;
+  mainCharacterAvatar: string;
+  secondaryCharacter?: string;
+  secondaryCharacterAvatar?: string;
+  setting: string;
+  tone: 'fun' | 'adventurous' | 'calm';
+  ageRange: '1-2' | '3-4' | '5-6' | '7-8' | '9-10' | '11-12';
+  authorName: string;
+  language?: string;
+  characterDescription?: string;
+  environmentDescription?: string;
+  styleGuide?: {
+    character?: string;
+    environment?: string;
+    artisticStyle?: string;
+  };
+  coverStyle?: {
+    backgroundColor?: string;
+    titleColor?: string;
+    authorColor?: string;
+    titleFontSize?: number;
+    authorFontSize?: number;
+    theme?: 'light' | 'dark' | 'colorful';
+  };
+}
 
-  // Instruções específicas para o DALL-E sobre os avatares
-  if (bookData.mainCharacterAvatar) {
-    prompt += `\n\nFor the main character ${bookData.mainCharacter}, use the provided avatar image as a reference for their appearance in all illustrations. The character should maintain consistent visual features across all images, including their clothing style, color scheme, and distinctive characteristics shown in the avatar.`;
-  }
-
-  if (bookData.secondaryCharacter && bookData.secondaryCharacterAvatar) {
-    prompt += `\n\nFor the secondary character ${bookData.secondaryCharacter}, use the provided avatar image as a reference for their appearance in all illustrations. The character should maintain consistent visual features across all images, including their clothing style, color scheme, and distinctive characteristics shown in the avatar.`;
-  }
-
-  prompt += `\n\nImportant visual guidelines:
-  - Maintain consistent character designs throughout all illustrations
-  - Keep the art style child-friendly and appropriate for ${bookData.ageRange} year olds
-  - Ensure characters are easily recognizable in each scene
-  - Use vibrant colors and clear compositions suitable for children's books
-  - Make sure both characters have significant presence in the illustrations when they appear together`;
-
-  return prompt;
-};
-
-export const createBook = async (bookData: Partial<Book>) => {
+/**
+ * Cria um novo livro
+ * @param bookData Dados do livro a ser criado
+ * @returns Resposta da API com o ID do livro criado
+ */
+export const createBook = async (bookData: CreateBookData) => {
   try {
-    // Formata os dados conforme esperado pelo backend
-    const formattedData = {
-      title: bookData.title,
-      genre: bookData.genre,
-      theme: bookData.theme,
-      mainCharacter: bookData.mainCharacter,
-      mainCharacterAvatar: bookData.mainCharacterAvatar,
-      secondaryCharacter: bookData.secondaryCharacter,
-      secondaryCharacterAvatar: bookData.secondaryCharacterAvatar,
-      setting: bookData.setting,
-      tone: bookData.tone || 'fun',
-      ageRange: bookData.ageRange || '5-6',
-      authorName: bookData.authorName || 'Anonymous',
-      userId: bookData.userId,
-      language: bookData.language || 'pt-BR',
-      prompt: bookData.prompt || generateStoryPrompt(bookData)
-    };
-
-    logger.info('Enviando dados para criação de livro', { 
-      ...formattedData,
-      prompt: formattedData.prompt.substring(0, 50) + '...' // Log parcial do prompt
-    });
-
-    const response = await api.post(API_ENDPOINTS.BOOKS.BASE, formattedData);
+    const token = await AsyncStorage.getItem('token');
     
-    logger.info('Resposta da API de criação de livro', {
-      status: response.status,
-      data: response.data
-    });
-
-    // Suporta estruturas de resposta encapsuladas ou não
-    const createdBook = response.data.data || response.data;
+    // Criar uma cópia profunda dos dados para não modificar o objeto original
+    const normalizedBookData = { ...bookData };
     
-    if (!createdBook?.bookId) {
-      throw new Error('ID do livro não retornado pelo servidor');
+    try {
+      // Normalizar a URL do avatar principal
+      if (!normalizedBookData.mainCharacterAvatar) {
+        console.warn('Avatar do personagem principal não fornecido, usando avatar padrão');
+        normalizedBookData.mainCharacterAvatar = 'https://cdn-icons-png.flaticon.com/512/4140/4140048.png';
+      }
+      
+      // Verificar e normalizar a URL do avatar principal usando nossa função utilitária
+      if (normalizedBookData.mainCharacterAvatar) {
+        const originalUrl = normalizedBookData.mainCharacterAvatar;
+        normalizedBookData.mainCharacterAvatar = normalizeAvatarUrl(originalUrl);
+        console.log(`Avatar principal normalizado: ${originalUrl} -> ${normalizedBookData.mainCharacterAvatar}`);
+      }
+      
+      // Normalizar a URL do avatar secundário (se existir)
+      if (normalizedBookData.secondaryCharacter && !normalizedBookData.secondaryCharacterAvatar) {
+        console.warn('Avatar do personagem secundário não fornecido, usando avatar padrão');
+        normalizedBookData.secondaryCharacterAvatar = 'https://cdn-icons-png.flaticon.com/512/4140/4140051.png';
+      }
+      
+      if (normalizedBookData.secondaryCharacterAvatar) {
+        const originalUrl = normalizedBookData.secondaryCharacterAvatar;
+        normalizedBookData.secondaryCharacterAvatar = normalizeAvatarUrl(originalUrl);
+        console.log(`Avatar secundário normalizado: ${originalUrl} -> ${normalizedBookData.secondaryCharacterAvatar}`);
+      }
+    } catch (normalizationError) {
+      console.error('Erro durante a normalização de URLs de avatar:', normalizationError);
+      // Em caso de erro na normalização, usar avatares padrão seguros
+      normalizedBookData.mainCharacterAvatar = 'https://cdn-icons-png.flaticon.com/512/4140/4140048.png';
+      if (normalizedBookData.secondaryCharacter) {
+        normalizedBookData.secondaryCharacterAvatar = 'https://cdn-icons-png.flaticon.com/512/4140/4140051.png';
+      }
     }
     
-    logger.info('Livro criado com sucesso', { 
-      bookId: createdBook.bookId,
-      status: createdBook.status 
-    });
-    
-    return createdBook;
-  } catch (error: any) {
-    logger.error('Erro ao criar livro', {
-      error: error.message,
-      status: error.response?.status,
-      data: error.response?.data,
-      requestData: bookData
-    });
-    
-    if (error.response?.status === 401) {
-      throw new Error('Sessão expirada. Por favor, faça login novamente.');
-    } else if (error.response?.status === 400) {
-      throw new Error(error.response.data.details || 'Dados inválidos para criação do livro');
-    } else if (error.response?.status === 500) {
-      throw new Error('Erro no servidor ao criar o livro. Tente novamente mais tarde.');
-    } else if (!error.response) {
-      throw new Error('Erro de conexão. Verifique sua internet e tente novamente.');
+    // Verificação final para garantir que as URLs são válidas
+    if (!isValidCdnUrl(normalizedBookData.mainCharacterAvatar)) {
+      console.warn('A URL do avatar principal não é de um CDN confiável, usando avatar padrão');
+      normalizedBookData.mainCharacterAvatar = 'https://cdn-icons-png.flaticon.com/512/4140/4140048.png';
     }
     
-    throw error;
-  }
-};
-
-export const getBooks = async (): Promise<Book[]> => {
-  try {
-    const response = await api.get(API_ENDPOINTS.BOOKS.BASE);
-    logger.info('Livros obtidos com sucesso', { count: response.data.length });
+    if (normalizedBookData.secondaryCharacterAvatar && !isValidCdnUrl(normalizedBookData.secondaryCharacterAvatar)) {
+      console.warn('A URL do avatar secundário não é de um CDN confiável, usando avatar padrão');
+      normalizedBookData.secondaryCharacterAvatar = 'https://cdn-icons-png.flaticon.com/512/4140/4140051.png';
+    }
+    
+    // Log dos dados após normalização para depuração
+    console.log('Enviando requisição para criar livro com dados normalizados:', {
+      title: normalizedBookData.title,
+      mainCharacter: normalizedBookData.mainCharacter,
+      mainCharacterAvatar: normalizedBookData.mainCharacterAvatar,
+      secondaryCharacter: normalizedBookData.secondaryCharacter,
+      secondaryCharacterAvatar: normalizedBookData.secondaryCharacterAvatar
+    });
+    
+    const response = await axios.post(`${API_URL}/books`, normalizedBookData, {
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
+      timeout: 30000 // 30 segundos de timeout
+    });
+    
+    console.log('Resposta da criação do livro:', response.data);
     return response.data;
-  } catch (error: any) {
-    logger.error('Erro ao obter livros', error);
+  } catch (error) {
+    console.error('Erro ao criar livro:', error);
     throw error;
   }
 };
 
-export const getBookById = async (bookId: string): Promise<Book> => {
+/**
+ * Busca todos os livros do usuário
+ * @returns Lista de livros do usuário
+ */
+export const getBooks = async () => {
   try {
-    const response = await api.get(`${API_ENDPOINTS.BOOKS.BASE}/${bookId}`);
-    logger.info('Livro obtido com sucesso', { bookId });
-    // Suporta resposta encapsulada ou direta
-    return response.data.data || response.data;
-  } catch (error: any) {
-    logger.error(`Erro ao obter livro ${bookId}`, error);
-    throw error;
-  }
-};
-
-export const updateBook = async (bookId: string, bookData: Partial<Book>) => {
-  try {
-    const response = await api.patch(`${API_ENDPOINTS.BOOKS.BASE}/${bookId}`, bookData);
-    logger.info('Livro atualizado com sucesso', { bookId });
+    const token = await AsyncStorage.getItem('token');
+    
+    const response = await axios.get(`${API_URL}/books`, {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+    
     return response.data;
-  } catch (error: any) {
-    logger.error(`Erro ao atualizar livro ${bookId}`, error);
+  } catch (error) {
+    console.error('Erro ao buscar livros:', error);
     throw error;
   }
 };
 
+/**
+ * Busca um livro específico pelo ID
+ * @param bookId ID do livro
+ * @returns Dados do livro
+ */
+export const getBook = async (bookId: string) => {
+  try {
+    const token = await AsyncStorage.getItem('token');
+    
+    const response = await axios.get(`${API_URL}/books/${bookId}`, {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error(`Erro ao buscar livro ${bookId}:`, error);
+    throw error;
+  }
+};
+
+/**
+ * Exclui um livro
+ * @param bookId ID do livro a ser excluído
+ * @returns Resposta da API
+ */
 export const deleteBook = async (bookId: string) => {
   try {
-    await api.delete(`${API_ENDPOINTS.BOOKS.BASE}/${bookId}`);
-    logger.info('Livro excluído com sucesso', { bookId });
-  } catch (error: any) {
-    logger.error(`Erro ao excluir livro ${bookId}`, error);
+    const token = await AsyncStorage.getItem('token');
+    
+    const response = await axios.delete(`${API_URL}/books/${bookId}`, {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error(`Erro ao excluir livro ${bookId}:`, error);
     throw error;
   }
 };
 
-export const getBookPdfUrl = async (bookId: string): Promise<string> => {
+/**
+ * Obtém a URL do PDF de um livro
+ * @param bookId ID do livro
+ * @returns URL do PDF
+ */
+export const getBookPdfUrl = async (bookId: string) => {
   try {
-    logger.info('Obtendo URL do PDF', { bookId });
+    const token = await AsyncStorage.getItem('token');
     
-    const response = await api.get(API_ENDPOINTS.BOOKS.PDF_URL(bookId));
+    // Primeiro, verifica se o livro tem um PDF gerado
+    const bookResponse = await axios.get(`${API_URL}/books/${bookId}`, {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
     
-    if (!response.data?.url) {
-      throw new Error('URL do PDF não encontrada na resposta');
+    if (bookResponse.data?.data?.pdfUrl) {
+      return `${API_URL}${bookResponse.data.data.pdfUrl}`;
     }
+    
+    throw new Error('PDF não disponível para este livro');
+  } catch (error) {
+    console.error(`Erro ao obter URL do PDF do livro ${bookId}:`, error);
+    throw error;
+  }
+};
 
-    logger.info('URL do PDF obtida com sucesso', { 
-      bookId,
-      url: response.data.url 
+/**
+ * Atualiza o estilo da capa de um livro
+ * @param bookId ID do livro
+ * @param coverStyle Estilo da capa
+ * @returns Resposta da API
+ */
+export const updateBookCoverStyle = async (bookId: string, coverStyle: any) => {
+  try {
+    const token = await AsyncStorage.getItem('token');
+    
+    const response = await axios.patch(`${API_URL}/books/${bookId}/cover-style`, { coverStyle }, {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
     });
     
-    return response.data.url;
-  } catch (error: any) {
-    logger.error('Erro ao obter URL do PDF', { 
-      bookId, 
-      error: error.message,
-      status: error.response?.status,
-      statusText: error.response?.statusText 
+    return response.data;
+  } catch (error) {
+    console.error(`Erro ao atualizar estilo da capa do livro ${bookId}:`, error);
+    throw error;
+  }
+};
+
+/**
+ * Regenera uma imagem específica de um livro
+ * @param bookId ID do livro
+ * @param pageNumber Número da página
+ * @returns Resposta da API com a nova URL da imagem
+ */
+export const regenerateBookImage = async (bookId: string, pageNumber: number) => {
+  try {
+    const token = await AsyncStorage.getItem('token');
+    
+    const response = await axios.post(`${API_URL}/books/${bookId}/regenerate-image`, { pageNumber }, {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
     });
+    
+    return response.data;
+  } catch (error) {
+    console.error(`Erro ao regenerar imagem da página ${pageNumber} do livro ${bookId}:`, error);
     throw error;
   }
 };

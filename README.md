@@ -1,139 +1,82 @@
-# Kids Book Creator
+# Aplicativo de Criação de Livros Infantis Personalizados
 
-## Sobre o Projeto
-Kids Book Creator é uma aplicação para criar livros infantis personalizados usando tecnologias modernas como geração de texto e imagens por IA. O projeto permite que usuários criem histórias únicas e personalizadas, com ilustrações geradas por IA e um layout profissional em PDF.
+Este aplicativo permite que usuários criem histórias infantis personalizadas com personagens customizados, gerando automaticamente o conteúdo textual e as ilustrações.
 
-## Estado Atual do Projeto
-O projeto está em desenvolvimento ativo com as seguintes funcionalidades já implementadas:
-- ✅ Sistema de geração de PDF com layout profissional
-- ✅ Visualização de livros na HomeScreen
-- ✅ Sistema de temas visuais (claro/escuro)
-- ✅ Cache de imagens e otimização de performance
-- ⏳ Geração de imagens via DALL-E (em desenvolvimento)
-- ⏳ Sistema de avatar personalizado (em desenvolvimento)
-- ⏳ Compartilhamento de livros (planejado)
-- ⏳ Suporte a múltiplos idiomas (planejado)
+## Principais Funcionalidades
 
-## Tecnologias Utilizadas
-- Frontend: 
-  - React Native/Expo com TypeScript
-  - Expo Router para navegação
-  - Context API para gerenciamento de estado
-  - Styled Components para estilização
-- Backend: 
-  - Node.js com TypeScript
-  - Express para API REST
-  - Winston para logging
-  - Jest para testes
-- Banco de Dados: MongoDB com Mongoose
-- Geração de Imagens: DALL-E (OpenAI)
-- Geração de PDF: PDFKit com suporte a fontes personalizadas
+### Criação de Livros Personalizados
+- Interface de usuário com processo em etapas para definir título, personagens, cenário, tema e faixa etária
+- Seleção de avatares para personagens principais e secundários
+- Personalização de gênero, tom narrativo e tema da história
+- Descrições detalhadas de personagens e ambientes para melhor consistência visual
 
-## Funcionalidades
-- Geração de histórias personalizadas
-- Geração de imagens via DALL-E
-- Geração de PDF com layout profissional
-- Suporte a múltiplos idiomas
-- Sistema de compartilhamento de livros
-- Temas visuais personalizáveis
-- Avatar do personagem personalizado
+### Geração de Conteúdo com IA
+- Geração de texto da história usando OpenAI GPT
+- Geração de ilustrações para cada página usando DALL-E
+- Manutenção da consistência visual dos personagens nas ilustrações
+- Guia de estilo personalizado para cada livro
 
-## Configuração do Ambiente
+### Produção de PDF
+- Geração automática de PDF com layout profissional
+- Capa personalizada com título e autor
+- Páginas com texto e ilustrações correspondentes
+- Múltiplos layouts disponíveis (padrão, livro ilustrado, quadrinhos)
+- Temas de cores personalizáveis
 
-### Pré-requisitos
-- Node.js 14+
-- MongoDB
-- Yarn ou NPM
-- Expo CLI (para o frontend)
+### Gerenciamento de Livros
+- Listagem de livros criados pelo usuário
+- Visualização de livros em formato PDF
+- Visualização interativa em formato de flipbook
+- Acompanhamento do status de processamento em tempo real
 
-### Backend
-1. Instale as dependências:
-```bash
-cd backend
-npm install
-```
+## Arquitetura Técnica
 
-2. Configure as variáveis de ambiente:
-```bash
-cp .env.example .env
-```
+### Frontend (React Native)
+- Interface de usuário responsiva com React Native e React Native Paper
+- Navegação entre telas com React Navigation
+- Gerenciamento de estado com Context API
+- Suporte a múltiplos idiomas (i18n)
+- Comunicação com o backend via API REST
 
-3. Inicie o servidor:
-```bash
-npm run dev
-```
+### Backend (Node.js/Express)
+- API RESTful com Express
+- Banco de dados MongoDB com Mongoose
+- Integração com OpenAI para geração de texto e imagens
+- Geração de PDFs com PDFKit
+- Sistema de cache para otimização de desempenho
+- Tratamento de erros e logging robusto
 
-### Frontend
-1. Instale as dependências:
-```bash
-cd frontend
-npm install
-```
+## Fluxo de Criação de Livro
+1. O usuário preenche um formulário em etapas com informações sobre o livro
+2. O frontend envia os dados para o backend
+3. O backend gera a história usando OpenAI GPT
+4. O texto é dividido em páginas (aproximadamente 5 páginas)
+5. Para cada página, o sistema gera uma ilustração usando DALL-E
+6. As ilustrações mantêm consistência visual com os avatares dos personagens
+7. Um PDF é gerado combinando texto e ilustrações
+8. O usuário pode visualizar e baixar o PDF final
 
-2. Configure as variáveis de ambiente:
-```bash
-cp .env.example .env
-```
+## Melhorias Implementadas
 
-3. Inicie o aplicativo:
-```bash
-npm start
-```
+### Consistência Visual
+- Processamento de avatares para manter características consistentes
+- Guia de estilo personalizado para cada livro
+- Descrições detalhadas de personagens e ambientes
 
-## Estrutura do Projeto
+### Layout do PDF
+- Múltiplos layouts disponíveis (padrão, livro ilustrado, quadrinhos)
+- Temas de cores personalizáveis
+- Elementos decorativos baseados no gênero e faixa etária
+- Tipografia adaptada à faixa etária do público-alvo
 
-### Backend
-```
-backend/
-├── src/
-│   ├── controllers/    # Controladores da aplicação
-│   ├── models/         # Modelos do MongoDB
-│   ├── routes/         # Rotas da API
-│   ├── services/       # Serviços (PDF, OpenAI, etc)
-│   ├── utils/          # Utilitários
-│   └── config/         # Configurações
-├── assets/
-│   └── fonts/         # Fontes personalizadas
-├── public/
-│   └── pdfs/         # PDFs gerados
-└── temp/             # Arquivos temporários
-```
-
-### Frontend
-```
-frontend/
-├── src/
-│   ├── components/    # Componentes React
-│   ├── screens/       # Telas do aplicativo
-│   ├── services/      # Serviços e API
-│   ├── utils/         # Utilitários
-│   └── themes/        # Temas visuais
-```
-
-## Geração de PDF
-O sistema de geração de PDF inclui:
-- Capa personalizada com informações do livro
-- Suporte a fontes personalizadas
-- Layout otimizado para texto e imagens
-- Metadados do PDF
-- Suporte a diferentes formatos de página
-- Sistema de cache de imagens
+### Experiência do Usuário
+- Seleção avançada de avatares com categorias e estilos
+- Visualização interativa em formato de flipbook
+- Acompanhamento do status de processamento em tempo real
+- Upload de avatares personalizados
 
 ## Próximos Passos
-1. ✅ Implementação da geração de PDF
-2. ✅ Visualização de livros na HomeScreen
-3. ✅ Suporte a diferentes temas visuais
-4. ⏳ Implementação da geração de imagens via DALL-E
-5. ⏳ Implementação do avatar do personagem
-6. ⏳ Sistema de compartilhamento de livros
-7. ⏳ Suporte a múltiplos idiomas
-
-## Contribuindo
-1. Faça um fork do projeto
-2. Crie uma branch para sua feature (`git checkout -b feature/AmazingFeature`)
-3. Commit suas mudanças (`git commit -m 'Add some AmazingFeature'`)
-4. Push para a branch (`git push origin feature/AmazingFeature`)
-5. Abra um Pull Request
-
-## Licença
-Este projeto está licenciado sob a licença MIT - veja o arquivo [LICENSE.md](LICENSE.md) para detalhes.
+- Implementação de recursos de compartilhamento social
+- Opções de impressão e entrega física
+- Suporte a mais idiomas
+- Recursos de edição avançada para personalização adicional

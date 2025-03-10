@@ -29,4 +29,13 @@ export interface Book {
   metadata: BookMetadata;
   createdAt: Date;
   updatedAt: Date;
+  // **NOVO**: Campos para descrição detalhada
+  characterDescription?: string;
+  environmentDescription?: string;
+  // **NOVO**: Campo para estilo visual
+  styleGuide?: {
+    character?: string;
+    environment?: string;
+    artisticStyle?: string;
+  };
 }

@@ -4,6 +4,7 @@ import path from 'path';
 import { config } from './config';
 import bookRoutes from './routes/books.routes';
 import authRoutes from './routes/auth.routes';
+import avatarRoutes from './routes/avatarRoutes';
 import { logger } from './utils/logger';
 import { databaseMiddleware } from './middleware/databaseMiddleware';
 import { connectDatabase } from './config/database';
@@ -56,6 +57,7 @@ class App {
   private routes(): void {
     this.express.use('/api/books', bookRoutes);
     this.express.use('/api/auth', authRoutes);
+    this.express.use('/api/avatars', avatarRoutes);
   }
 
   private errorHandling(): void {

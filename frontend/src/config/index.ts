@@ -1,5 +1,8 @@
-// Configurações de ambiente
-export const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000/api';
+// Exporta configurações de ambiente
+export * from './env';
+
+// Exporta configurações da API
+export * from './api';
 
 // Chaves de armazenamento
 export const STORAGE_KEYS = {
