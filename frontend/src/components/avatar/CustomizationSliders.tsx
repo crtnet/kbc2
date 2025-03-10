@@ -8,9 +8,9 @@ import {
   Platform,
   ActivityIndicator
 } from 'react-native';
-import { CustomizationSlider } from './AvatarParts';
+import { CustomizationSlider, CustomAvatar } from './AvatarParts';
 
-// Fallback slider for environments where @react-native-community/slider isn't available
+// Fallback slider para ambientes onde @react-native-community/slider não estiver disponível
 const FallbackSlider = ({ 
   value, 
   minimumValue, 
@@ -18,6 +18,13 @@ const FallbackSlider = ({
   step, 
   onValueChange, 
   style 
+}: { 
+  value: number, 
+  minimumValue: number, 
+  maximumValue: number, 
+  step: number, 
+  onValueChange: (value: number) => void, 
+  style?: any 
 }) => {
   return (
     <View style={[style, { height: 40, backgroundColor: '#f0f0f0', borderRadius: 4 }]}>
@@ -28,7 +35,7 @@ const FallbackSlider = ({
   );
 };
 
-// Try to import Slider with fallback for environments without the module
+// Tenta importar o Slider; caso contrário, utiliza o fallback
 let Slider;
 try {
   Slider = require('@react-native-community/slider').default;
@@ -39,7 +46,7 @@ try {
 
 interface CustomizationSlidersProps {
   currentPartCategory: string;
-  customAvatar: any;
+  customAvatar: CustomAvatar;
   sliders: { [key: string]: CustomizationSlider[] };
   onSliderChange: (sliderId: string, value: number) => void;
 }
@@ -50,25 +57,25 @@ const CustomizationSliders: React.FC<CustomizationSlidersProps> = ({
   sliders,
   onSliderChange
 }) => {
-  // Estado para rastrear carregamento
+  // Estado para controlar o indicador de carregamento
   const [isLoading, setIsLoading] = useState(true);
   
-  // Use useEffect para atualizar o estado de carregamento quando a categoria muda
+  // Atualiza o estado de carregamento quando a categoria muda
   useEffect(() => {
     console.log(`CustomizationSliders: Categoria alterada para ${currentPartCategory}`);
     setIsLoading(true);
-    
-    // Pequeno delay para mostrar um indicador de carregamento e garantir que o componente será atualizado
+    // Pequeno delay para transição e atualização do componente
     setTimeout(() => {
       setIsLoading(false);
     }, 100);
   }, [currentPartCategory]);
   
-  // Use useMemo para evitar recálculos desnecessários
+  // Obtém os sliders disponíveis para a categoria atual, evitando recálculos desnecessários
   const currentPartSliders = useMemo(() => {
     return sliders[currentPartCategory] || [];
   }, [sliders, currentPartCategory]);
   
+  // Retorna um indicador se não houver sliders configurados para a categoria
   if (isLoading) {
     return (
       <View style={[styles.slidersContainer, styles.loadingContainer]}>
@@ -88,7 +95,7 @@ const CustomizationSliders: React.FC<CustomizationSlidersProps> = ({
     );
   }
   
-  // Função para obter o valor atual de um slider
+  // Função para obter o valor atual de um slider baseado na categoria atual
   const getSliderValue = (sliderId: string): number => {
     const part = customAvatar[currentPartCategory];
     if (!part) return 1;
@@ -115,7 +122,7 @@ const CustomizationSliders: React.FC<CustomizationSlidersProps> = ({
     }
   };
   
-  // Gerar uma chave única para ScrollView para forçar recriação quando a categoria muda
+  // Gera uma chave única para o ScrollView para forçar sua recriação quando a categoria mudar
   const slidersKey = `sliders-${currentPartCategory}`;
   
   return (
@@ -157,7 +164,7 @@ const CustomizationSliders: React.FC<CustomizationSlidersProps> = ({
         <Text 
           style={styles.resetButton}
           onPress={() => {
-            // Reset all sliders for this part to default values
+            // Restaura os valores padrão para todos os sliders da categoria atual
             currentPartSliders.forEach(slider => {
               onSliderChange(slider.id, slider.defaultValue);
             });

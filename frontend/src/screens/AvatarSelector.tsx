@@ -1,24 +1,24 @@
 // src/screens/AvatarSelector.tsx
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Modal, 
-  Portal, 
-  Button, 
-  Text, 
-  Card, 
-  Searchbar, 
-  ActivityIndicator, 
+import {
+  Modal,
+  Portal,
+  Button,
+  Text,
+  Card,
+  Searchbar,
+  ActivityIndicator,
   Chip,
   IconButton,
   Divider,
   SegmentedButtons
 } from 'react-native-paper';
-import { 
-  View, 
-  StyleSheet, 
-  FlatList, 
-  Image, 
-  TouchableOpacity, 
+import {
+  View,
+  StyleSheet,
+  FlatList,
+  Image,
+  TouchableOpacity,
   Dimensions,
   ScrollView,
   Animated,
@@ -29,19 +29,20 @@ import {
 } from 'react-native';
 import * as avatarService from '../services/avatarService';
 
-// Importar componentes personalizados
+// Componentes personalizados
 import AvatarPreview from '../components/avatar/AvatarPreview';
 import ColorSelector from '../components/avatar/ColorSelector';
 import CustomizationSliders from '../components/avatar/CustomizationSliders';
 import PartOptions from '../components/avatar/PartOptions';
 
-// Importar dados de partes do avatar
-import { 
-  AVATAR_PARTS, 
-  AVATAR_SLIDERS, 
-  DEFAULT_COLORS, 
+// Dados e tipos das partes do avatar
+import {
+  AVATAR_PARTS,
+  AVATAR_SLIDERS,
+  DEFAULT_COLORS,
   INITIAL_CUSTOM_AVATAR,
-  AvatarColor
+  AvatarColor,
+  CustomAvatar
 } from '../components/avatar/AvatarParts';
 
 interface AvatarSelectorProps {
@@ -61,7 +62,7 @@ const AvatarSelector: React.FC<AvatarSelectorProps> = ({
   characterType = 'child',
   enableCustomization = false
 }) => {
-  // Estados para o modo de seleção e lista de avatares
+  // Estados para seleção de avatares em modo lista
   const [avatars, setAvatars] = useState<string[]>([]);
   const [filteredAvatars, setFilteredAvatars] = useState<string[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -70,38 +71,35 @@ const AvatarSelector: React.FC<AvatarSelectorProps> = ({
   const [selectedGender, setSelectedGender] = useState<string>('all');
   const [selectedStyle, setSelectedStyle] = useState<string>('cartoon');
   const [error, setError] = useState<string | null>(null);
-  
-  // Estados para o modo de personalização de avatar estilo Mii
-  // Definimos o modo inicial com base em enableCustomization
+
+  // Estado para modo de customização: 'list' ou 'mii'
   const [selectorMode, setSelectorMode] = useState<'list' | 'mii'>(enableCustomization ? 'mii' : 'list');
-  
-  // Estados para o menu de personalização
+
+  // Estados para o menu de customização
   const [showColorMenu, setShowColorMenu] = useState<boolean>(false);
   const [colorMenuAnchor, setColorMenuAnchor] = useState({ x: 0, y: 0 });
-  
-  // Estados para o avatar personalizado
-  const [customAvatar, setCustomAvatar] = useState<{ [key: string]: any }>(INITIAL_CUSTOM_AVATAR);
+
+  // Estado para o avatar personalizado
+  const [customAvatar, setCustomAvatar] = useState<CustomAvatar>(INITIAL_CUSTOM_AVATAR);
   const [currentPartCategory, setCurrentPartCategory] = useState<string>('face');
   const [currentCustomization, setCurrentCustomization] = useState<'option' | 'color' | 'sliders'>('option');
-  
+
   // Estado para as cores salvas pelo usuário
   const [savedColors, setSavedColors] = useState<AvatarColor[]>(DEFAULT_COLORS);
-  
-  // Referências para animações
+
+  // Valores animados
   const rotateAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
-  
-  // Configuração para rotação do avatar 3D
+
+  // Configuração do PanResponder para rotação 3D do avatar
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onPanResponderMove: (evt, gestureState) => {
-        // Rotacionar avatar com base no movimento horizontal
         rotateAnim.setValue(gestureState.dx / 30);
       },
       onPanResponderRelease: () => {
-        // Voltar à posição normal com animação suave
         Animated.spring(rotateAnim, {
           toValue: 0,
           friction: 5,
@@ -111,54 +109,35 @@ const AvatarSelector: React.FC<AvatarSelectorProps> = ({
     })
   ).current;
 
-  // Dimensões da tela
+  // Dimensões e número de colunas para o modo lista
   const screenWidth = Dimensions.get('window').width;
   const numColumns = screenWidth > 600 ? 4 : 3;
 
-  // Efeito para inicializar estado e pré-carregar imagens
+  // Efeito para inicializar avatar personalizado quando o modal é aberto
   useEffect(() => {
     if (visible && enableCustomization) {
       console.log("Inicializando avatar personalizado...");
-      
-      // Verificar se AvatarParts foi carregado corretamente
       if (AVATAR_PARTS && AVATAR_PARTS.length > 0) {
-        console.log(`AVATAR_PARTS carregado: ${AVATAR_PARTS.length} partes`);
-        
-        // Indicador de carregamento
         setLoading(true);
-        
-        // Inicializar o avatar personalizado com opções e cores
         const initialCustomAvatar = { ...INITIAL_CUSTOM_AVATAR };
-        
-        // Garantir que cada parte do avatar tenha uma opção definida inicialmente
         AVATAR_PARTS.forEach(part => {
           if (part.options && part.options.length > 0) {
-            // Definir a primeira opção como padrão
             initialCustomAvatar[part.id] = {
               ...initialCustomAvatar[part.id] || {},
               option: part.options[0].imageUrl
             };
-            
-            // Definir a cor padrão para partes coloríveis
             if (part.colorizeOptions && part.defaultColor) {
               initialCustomAvatar[part.id] = {
                 ...initialCustomAvatar[part.id],
                 color: part.defaultColor
               };
             }
-            
-            // Log para debug
-            console.log(`Inicializando parte ${part.id} com opção: ${part.options[0].imageUrl}`);
-            
-            // Pré-carregar imagens (em React Native, isso pode ser apenas um log)
+            console.log(`Inicializando ${part.id} com ${part.options[0].imageUrl}`);
             part.options.forEach(option => {
               console.log(`Pré-carregando imagem: ${option.imageUrl}`);
-              
-              // Em uma implementação real, você poderia usar Image.prefetch 
-              // ou outra técnica específica da plataforma
               if (Platform.OS !== 'web') {
                 try {
-                  Image.prefetch(option.imageUrl).catch(err => 
+                  Image.prefetch(option.imageUrl).catch(err =>
                     console.log(`Erro ao pré-carregar ${option.imageUrl}:`, err)
                   );
                 } catch (e) {
@@ -168,61 +147,31 @@ const AvatarSelector: React.FC<AvatarSelectorProps> = ({
             });
           }
         });
-        
-        console.log("Avatar inicializado com opções padrão:", JSON.stringify(initialCustomAvatar));
-        
-        // Aplicar os valores iniciais
+        console.log("Avatar inicializado:", JSON.stringify(initialCustomAvatar));
         setCustomAvatar(initialCustomAvatar);
-        
-        // Definir categoria e modo padrão
-        const defaultCategory = AVATAR_PARTS[0]?.id || 'face';
-        setCurrentPartCategory(defaultCategory);
+        setCurrentPartCategory(AVATAR_PARTS[0]?.id || 'face');
         setCurrentCustomization('option');
-        
-        // Selecionar a categoria "face" por padrão
         const facePart = AVATAR_PARTS.find(part => part.id === 'face');
-        if (facePart) {
-          console.log(`Categoria face encontrada com ${facePart.options.length} opções`);
-          
-          // Log para debug: imprimir todas as opções de rosto
-          facePart.options.forEach(option => {
-            console.log(`Opção de rosto: ${option.name}, URL: ${option.imageUrl}`);
-          });
-          
-          // Forçar a atualização para a primeira opção do rosto
-          if (facePart.options.length > 0) {
-            const firstFaceOption = facePart.options[0].imageUrl;
-            console.log(`Definindo opção padrão para face: ${firstFaceOption}`);
-            
-            // Garante que customAvatar.face.option está definido corretamente
-            setCustomAvatar(prev => ({
-              ...prev,
-              face: {
-                ...prev.face,
-                option: firstFaceOption
-              }
-            }));
-          }
+        if (facePart && facePart.options.length > 0) {
+          const firstFaceOption = facePart.options[0].imageUrl;
+          console.log(`Definindo rosto padrão: ${firstFaceOption}`);
+          setCustomAvatar(prev => ({
+            ...prev,
+            face: { ...prev.face, option: firstFaceOption }
+          }));
         }
-        
-        // Desativar indicador de carregamento após um pequeno atraso
-        setTimeout(() => {
-          setLoading(false);
-        }, 1000);
+        setTimeout(() => setLoading(false), 1000);
       } else {
-        console.error("AVATAR_PARTS não está disponível ou está vazio!");
+        console.error("AVATAR_PARTS não disponível!");
         setLoading(false);
       }
     }
   }, [visible, enableCustomization]);
 
-  // Efeito para filtrar avatares com base nas seleções do usuário
+  // Efeito para filtrar avatares no modo lista
   useEffect(() => {
     if (selectorMode === 'list') {
-      // Filtra avatares com base na pesquisa e filtros
       let filtered = [...avatars];
-      
-      // Filtra por termo de pesquisa
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
         filtered = filtered.filter(avatar => {
@@ -230,91 +179,63 @@ const AvatarSelector: React.FC<AvatarSelectorProps> = ({
           return filename.includes(query);
         });
       }
-      
-      // Filtra por categoria
       if (selectedCategory !== 'all') {
         filtered = filtered.filter(avatar => {
           const filename = avatar.split('/').pop()?.toLowerCase() || '';
           return filename.includes(selectedCategory.toLowerCase());
         });
       }
-      
-      // Filtra por gênero
       if (selectedGender !== 'all') {
         filtered = filtered.filter(avatar => {
           const filename = avatar.split('/').pop()?.toLowerCase() || '';
           return filename.includes(selectedGender.toLowerCase());
         });
       }
-      
       setFilteredAvatars(filtered);
     }
   }, [searchQuery, selectedCategory, selectedGender, avatars, selectorMode]);
 
-  // FUNÇÃO MELHORADA: Restaurar um avatar personalizado a partir de um identificador
-  const restoreCustomAvatarFromIdentifier = (avatarIdentifier: string) => {
+  // Função para restaurar avatar personalizado a partir de um identificador
+  const restoreCustomAvatarFromIdentifier = (avatarIdentifier: string): boolean => {
     try {
       if (!avatarIdentifier || typeof avatarIdentifier !== 'string') {
-        console.log('Identificador de avatar inválido ou ausente');
+        console.log('Identificador inválido');
         return false;
       }
-      
       if (!avatarIdentifier.startsWith('CUSTOM||')) {
-        console.log('Não é um identificador de avatar personalizado válido');
+        console.log('Identificador não é de avatar personalizado');
         return false;
       }
-      
-      console.log('Tentando restaurar avatar personalizado a partir do identificador');
-      
-      // Dividir a string pelos delimitadores únicos
+      console.log('Restaurando avatar personalizado...');
       const parts = avatarIdentifier.split('||CUSTOM_AVATAR_DATA||');
-      
       if (parts.length !== 2) {
-        console.error('Formato de identificador inválido: não foi possível dividir corretamente');
+        console.error('Formato inválido do identificador');
         return false;
       }
-      
-      // Extrair a URL da face (removendo o prefixo "CUSTOM||")
       const faceUrl = parts[0].replace('CUSTOM||', '');
-      // Extrair os dados JSON
       const avatarJsonStr = parts[1];
-      
-      console.log('URL da face extraída:', faceUrl);
-      console.log('JSON extraído de tamanho:', avatarJsonStr.length);
-      
+      console.log('Face URL:', faceUrl, '| Tamanho JSON:', avatarJsonStr.length);
       if (!avatarJsonStr) {
-        console.error('Dados JSON ausentes no identificador do avatar');
+        console.error('JSON ausente no identificador');
         return false;
       }
-      
       try {
-        // Analisar o JSON
         const avatarData = JSON.parse(avatarJsonStr);
-        console.log('Dados do avatar recuperados - tipo:', avatarData.type);
-        
+        console.log('Avatar recuperado - tipo:', avatarData.type);
         if (!avatarData.parts || !Array.isArray(avatarData.parts)) {
-          console.error('Formato inválido: partes do avatar não encontradas');
+          console.error('Formato inválido: partes não encontradas');
           return false;
         }
-        
-        // Construir objeto customAvatar a partir dos dados salvos
         const restoredAvatar = { ...INITIAL_CUSTOM_AVATAR };
-        
-        // Verificar se temos as partes essenciais
-        const hasFace = avatarData.parts.some(part => part.partId === 'face' && part.option);
-        const hasEyes = avatarData.parts.some(part => part.partId === 'eyes' && part.option);
-        const hasMouth = avatarData.parts.some(part => part.partId === 'mouth' && part.option);
-        
+        const hasFace = avatarData.parts.some((part: any) => part.partId === 'face' && part.option);
+        const hasEyes = avatarData.parts.some((part: any) => part.partId === 'eyes' && part.option);
+        const hasMouth = avatarData.parts.some((part: any) => part.partId === 'mouth' && part.option);
         if (!hasFace || !hasEyes || !hasMouth) {
           console.error('Avatar incompleto: faltam partes essenciais');
-          console.log(`Face: ${hasFace}, Olhos: ${hasEyes}, Boca: ${hasMouth}`);
           return false;
         }
-        
-        // Processar cada parte do avatar
-        avatarData.parts.forEach(part => {
+        avatarData.parts.forEach((part: any) => {
           if (part.partId) {
-            // Verificar se a opção é uma URL válida
             if (part.option && typeof part.option === 'string' && part.option.startsWith('http')) {
               restoredAvatar[part.partId] = {
                 option: part.option,
@@ -328,8 +249,7 @@ const AvatarSelector: React.FC<AvatarSelectorProps> = ({
                 density: part.density
               };
             } else {
-              console.warn(`Opção inválida para parte ${part.partId}: ${part.option}`);
-              // Tentar encontrar uma opção padrão para esta parte
+              console.warn(`Opção inválida para ${part.partId}: ${part.option}`);
               const partDef = AVATAR_PARTS.find(p => p.id === part.partId);
               if (partDef && partDef.options && partDef.options.length > 0) {
                 restoredAvatar[part.partId] = {
@@ -341,57 +261,38 @@ const AvatarSelector: React.FC<AvatarSelectorProps> = ({
             }
           }
         });
-        
-        // Verificar novamente se temos as partes essenciais após a restauração
         if (!restoredAvatar.face?.option || !restoredAvatar.eyes?.option || !restoredAvatar.mouth?.option) {
-          console.error('Falha ao restaurar partes essenciais do avatar');
+          console.error('Falha ao restaurar partes essenciais');
           return false;
         }
-        
         console.log('Avatar restaurado com sucesso');
-        
-        // Atualizar o estado
         setCustomAvatar(restoredAvatar);
-        
-        // Se o avatar foi restaurado com sucesso, ativar o modo de customização
         setSelectorMode('mii');
-        
         return true;
       } catch (jsonError) {
-        console.error('Erro ao analisar JSON do avatar:', jsonError);
+        console.error('Erro ao analisar JSON:', jsonError);
         return false;
       }
     } catch (error) {
-      console.error('Erro ao restaurar avatar personalizado:', error);
+      console.error('Erro na restauração do avatar:', error);
       return false;
     }
   };
 
-  // EFEITO MELHORADO: Tentar restaurar um avatar personalizado
+  // Efeito para restaurar avatar personalizado, se disponível em dados globais
   useEffect(() => {
     if (visible && enableCustomization) {
-      // Extrair o tipo de personagem do título (principal ou secundário)
       const isMainCharacter = title.toLowerCase().includes('principal');
-      
-      // Identificador que poderia ser passado como propriedade
-      const avatarIdentifier = isMainCharacter 
+      const avatarIdentifier = isMainCharacter
         ? window.mainCharacterAvatarData
         : window.secondaryCharacterAvatarData;
-      
-      console.log(`Verificando dados do avatar ${isMainCharacter ? 'principal' : 'secundário'}`);
-      
+      console.log(`Verificando avatar ${isMainCharacter ? 'principal' : 'secundário'}`);
       if (avatarIdentifier && typeof avatarIdentifier === 'string') {
         if (avatarIdentifier.startsWith('CUSTOM||')) {
           console.log(`Tentando restaurar avatar ${isMainCharacter ? 'principal' : 'secundário'}`);
-          
-          // Limpar o estado atual antes de restaurar
           setCustomAvatar({ ...INITIAL_CUSTOM_AVATAR });
-          
-          // Tentar restaurar o avatar
           const success = restoreCustomAvatarFromIdentifier(avatarIdentifier);
-          console.log(`Restauração do avatar ${success ? 'bem-sucedida' : 'falhou'}`);
-          
-          // Se a restauração falhar, limpar os dados do avatar
+          console.log(`Restauração ${success ? 'bem-sucedida' : 'falhou'}`);
           if (!success) {
             if (isMainCharacter) {
               window.mainCharacterAvatarData = null;
@@ -403,39 +304,31 @@ const AvatarSelector: React.FC<AvatarSelectorProps> = ({
           console.log(`Avatar ${isMainCharacter ? 'principal' : 'secundário'} não é personalizado`);
         }
       } else {
-        console.log(`Nenhum avatar encontrado para restaurar (${isMainCharacter ? 'principal' : 'secundário'})`);
+        console.log(`Nenhum avatar para restaurar (${isMainCharacter ? 'principal' : 'secundário'})`);
       }
     }
   }, [visible, enableCustomization, title]);
 
-  // Efeito para carregar avatares para o modo de lista
+  // Efeito para carregar avatares no modo lista
   useEffect(() => {
     const fetchAvatars = async () => {
       if (!visible || selectorMode !== 'list') return;
-      
       try {
         setLoading(true);
         setError(null);
-        
-        // Determina a categoria com base no tipo de personagem
         let category = 'children';
         if (characterType === 'adult') category = 'adults';
         else if (characterType === 'animal') category = 'animals';
         else if (characterType === 'fantasy') category = 'fantasy';
-        
-        console.log(`Buscando avatares para categoria ${category} e estilo ${selectedStyle}`);
-        
-        // Get avatars from service (which now includes fallback to default avatars)
+        console.log(`Buscando avatares para ${category} / ${selectedStyle}`);
         const response = await avatarService.getAvatars(category, selectedStyle);
-        
         if (response && response.length > 0) {
           console.log(`Carregados ${response.length} avatares para ${category}/${selectedStyle}`);
           setAvatars(response);
           setFilteredAvatars(response);
           setError(null);
         } else {
-          console.warn('Nenhum avatar retornado do serviço');
-          // Usar avatares padrão em vez de mostrar erro
+          console.warn('Nenhum avatar retornado; usando padrão');
           const defaultAvatars = [
             'https://cdn-icons-png.flaticon.com/512/4140/4140048.png',
             'https://cdn-icons-png.flaticon.com/512/4140/4140051.png',
@@ -448,7 +341,6 @@ const AvatarSelector: React.FC<AvatarSelectorProps> = ({
         }
       } catch (err) {
         console.error('Erro ao buscar avatares:', err);
-        // Usar avatares padrão em vez de mostrar erro
         const defaultAvatars = [
           'https://cdn-icons-png.flaticon.com/512/4140/4140048.png',
           'https://cdn-icons-png.flaticon.com/512/4140/4140051.png',
@@ -463,18 +355,11 @@ const AvatarSelector: React.FC<AvatarSelectorProps> = ({
       }
     };
 
-    // Definir o modo inicial com base no enableCustomization
     if (visible) {
       const newMode = enableCustomization ? 'mii' : 'list';
-      console.log(`Definindo modo inicial: ${newMode}`);
+      console.log(`Definindo modo: ${newMode}`);
       setSelectorMode(newMode);
-      
-      // Se estiver no modo de lista, buscar avatares
-      if (newMode === 'list') {
-        fetchAvatars();
-      }
-      
-      // Animar entrada do modal
+      if (newMode === 'list') fetchAvatars();
       slideAnim.setValue(0);
       Animated.timing(slideAnim, {
         toValue: 1,
@@ -484,29 +369,18 @@ const AvatarSelector: React.FC<AvatarSelectorProps> = ({
     }
   }, [visible, characterType, selectedStyle, enableCustomization, selectorMode]);
 
-  const handleSearch = (query: string) => {
-    setSearchQuery(query);
-  };
-
+  const handleSearch = (query: string) => setSearchQuery(query);
   const handleSelectAvatar = (avatarUrl: string) => {
     console.log('Avatar selecionado:', avatarUrl);
-    // Notificar o componente pai imediatamente, sem fechar o modal ainda
     onSelectAvatar(avatarUrl);
-    // Fechar o modal após a seleção
     onDismiss();
   };
-  
-  // Função para mostrar menu de cores
+
   const handleOpenColorMenu = (event: any) => {
-    // Obter a posição do toque
-    setColorMenuAnchor({
-      x: event.nativeEvent.pageX,
-      y: event.nativeEvent.pageY
-    });
+    setColorMenuAnchor({ x: event.nativeEvent.pageX, y: event.nativeEvent.pageY });
     setShowColorMenu(true);
   };
-  
-  // Função para selecionar cor
+
   const handleSelectColor = (color: string) => {
     setCustomAvatar({
       ...customAvatar,
@@ -516,163 +390,122 @@ const AvatarSelector: React.FC<AvatarSelectorProps> = ({
       }
     });
     setShowColorMenu(false);
-    
-    // Animar seleção de cor
     Animated.sequence([
-      Animated.timing(scaleAnim, {
-        toValue: 1.1,
-        duration: 100,
-        useNativeDriver: true
-      }),
-      Animated.timing(scaleAnim, {
-        toValue: 1,
-        duration: 100,
-        useNativeDriver: true
-      })
+      Animated.timing(scaleAnim, { toValue: 1.1, duration: 100, useNativeDriver: true }),
+      Animated.timing(scaleAnim, { toValue: 1, duration: 100, useNativeDriver: true })
     ]).start();
   };
-  
-  // Função para salvar uma cor personalizada
+
   const handleSaveCustomColor = (color: string, name: string) => {
-    const newColor = {
-      id: `custom_${Date.now()}`,
-      name,
-      value: color
-    };
-    
+    const newColor = { id: `custom_${Date.now()}`, name, value: color };
     setSavedColors([...savedColors, newColor]);
     setShowColorMenu(false);
   };
 
-  // FUNÇÃO MELHORADA: Confirmar o avatar personalizado
+  // Função para selecionar avatar personalizado
+  // Cria um identificador customizado que contém a URL da face e os dados completos do avatar
   const handleSelectCustomAvatar = async () => {
     try {
-      // Mostrar indicador de carregamento
       setLoading(true);
-      
-      // Verificar se o avatar está completo
-      const requiredParts = ['face', 'eyes', 'mouth']; // partes que são obrigatórias
-      const missingParts = requiredParts.filter(part => 
-        !customAvatar[part] || !customAvatar[part].option
-      );
-      
+      const requiredParts = ['face', 'eyes', 'mouth'];
+      const missingParts = requiredParts.filter(part => !customAvatar[part] || !customAvatar[part].option);
       if (missingParts.length > 0) {
-        // Traduzir os nomes das partes para o português para a mensagem de erro
-        const partTranslations = {
+        const partTranslations: { [key: string]: string } = {
           face: 'Rosto',
           eyes: 'Olhos',
           mouth: 'Boca'
         };
-        
-        const translatedMissingParts = missingParts.map(part => 
-          partTranslations[part] || part
-        );
-        
+        const translatedMissing = missingParts.map(part => partTranslations[part] || part);
         Alert.alert(
           "Avatar Incompleto",
-          `Algumas partes obrigatórias estão faltando: ${translatedMissingParts.join(', ')}.\n\nPor favor, selecione opções para todas as partes obrigatórias.`,
+          `Faltam partes obrigatórias: ${translatedMissing.join(', ')}. Selecione todas as partes.`,
           [{ text: "OK" }]
         );
-        
         setLoading(false);
         return;
       }
       
-      // Verificar se todas as URLs são válidas
+      // Validação e correção de URLs
       for (const partId in customAvatar) {
         const part = customAvatar[partId];
         if (part && part.option && typeof part.option === 'string') {
           if (!part.option.startsWith('http')) {
-            console.error(`URL inválida para parte ${partId}: ${part.option}`);
-            
-            // Tentar corrigir a URL
+            console.error(`URL inválida para ${partId}: ${part.option}`);
             const partDef = AVATAR_PARTS.find(p => p.id === partId);
             if (partDef && partDef.options && partDef.options.length > 0) {
               customAvatar[partId].option = partDef.options[0].imageUrl;
-              console.log(`Corrigida URL para ${partId}: ${partDef.options[0].imageUrl}`);
-            } else {
-              // Se não puder corrigir e for uma parte obrigatória, mostrar erro
-              if (requiredParts.includes(partId)) {
-                Alert.alert(
-                  "Erro no Avatar",
-                  `Erro na imagem da parte: ${partId}. Por favor, selecione outra opção.`,
-                  [{ text: "OK" }]
-                );
-                setLoading(false);
-                return;
-              }
+              console.log(`Corrigindo URL para ${partId}: ${partDef.options[0].imageUrl}`);
+            } else if (requiredParts.includes(partId)) {
+              Alert.alert(
+                "Erro no Avatar",
+                `Erro na imagem da parte: ${partId}. Selecione outra opção.`,
+                [{ text: "OK" }]
+              );
+              setLoading(false);
+              return;
             }
           }
         }
       }
       
-      // Criar uma representação persistente de todas as partes do avatar
-      const serializedAvatar = {
-        type: 'custom_avatar',
-        parts: Object.entries(customAvatar)
-          .filter(([_, partData]) => partData && partData.option) // Filtrar partes sem opção
-          .map(([partId, partData]) => {
-            return {
-              partId,
-              option: partData.option,
-              color: partData.color,
-              size: partData.size,
-              position: partData.position,
-              // Incluir todas as outras propriedades relevantes
-              width: partData.width,
-              height: partData.height,
-              spacing: partData.spacing,
-              rotation: partData.rotation,
-              density: partData.density
-            };
-          }),
-        // Incluir URL da face como representação visual principal (para compatibilidade)
-        previewUrl: customAvatar.face?.option,
-        // Adicionar timestamp para evitar problemas de cache
-        timestamp: Date.now()
-      };
-      
-      // Serializar o objeto para JSON
-      const avatarJson = JSON.stringify(serializedAvatar);
-      console.log('Avatar serializado para persistência:', avatarJson.substring(0, 100) + '...');
-      
       // Verificar se temos uma URL de face válida
       const faceUrl = customAvatar.face?.option;
-      
       if (!faceUrl || typeof faceUrl !== 'string' || !faceUrl.startsWith('http')) {
         console.error('URL de face inválida:', faceUrl);
         Alert.alert(
           "Erro no Avatar",
-          "A imagem do rosto é inválida. Por favor, selecione outro rosto.",
+          "A imagem do rosto é inválida. Selecione outro rosto.",
           [{ text: "OK" }]
         );
         setLoading(false);
         return;
       }
       
-      // Criar um identificador especial para o avatar customizado
-      // Usando um delimitador único "||CUSTOM_AVATAR_DATA||" que é improvável de aparecer em URLs ou JSON
-      const customAvatarIdentifier = `CUSTOM||${faceUrl}||CUSTOM_AVATAR_DATA||${avatarJson}`;
+      // Preparar os dados do avatar para serialização
+      const avatarPartsData = Object.keys(customAvatar).map(partId => {
+        const part = customAvatar[partId];
+        return {
+          partId,
+          option: part.option,
+          color: part.color,
+          size: part.size,
+          position: part.position,
+          width: part.width,
+          height: part.height,
+          spacing: part.spacing,
+          rotation: part.rotation,
+          density: part.density
+        };
+      });
       
-      console.log('Avatar customizado criado com sucesso, retornando identificador');
+      // Criar o objeto de dados completo do avatar
+      const avatarData = {
+        type: 'custom',
+        parts: avatarPartsData,
+        createdAt: new Date().toISOString()
+      };
       
-      // Passar o identificador completo para o componente pai
+      // Serializar os dados para JSON
+      const avatarDataJson = JSON.stringify(avatarData);
+      
+      // Criar o identificador customizado no formato: CUSTOM||URL_DA_FACE||CUSTOM_AVATAR_DATA||JSON_DATA
+      const customAvatarIdentifier = `CUSTOM||${faceUrl}||CUSTOM_AVATAR_DATA||${avatarDataJson}`;
+      
+      console.log('Avatar customizado criado com sucesso');
+      console.log('URL da face:', faceUrl);
+      console.log('Tamanho dos dados serializados:', avatarDataJson.length);
+      
+      // Retornar o identificador completo
       onSelectAvatar(customAvatarIdentifier);
       onDismiss();
     } catch (error) {
       console.error('Erro ao criar avatar personalizado:', error);
-      
-      // Em caso de erro, usar um avatar padrão
       const defaultUrl = 'https://cdn-icons-png.flaticon.com/512/4140/4140048.png';
-      console.log('Erro ao processar avatar, usando padrão:', defaultUrl);
-      
       Alert.alert(
         "Erro ao Criar Avatar",
-        "Ocorreu um erro ao criar seu avatar personalizado. Um avatar padrão será usado.",
+        "Ocorreu um erro ao criar seu avatar. Um avatar padrão será usado.",
         [{ text: "OK" }]
       );
-      
-      // Certificar-se de que a URL padrão é uma string válida
       onSelectAvatar(defaultUrl);
       onDismiss();
     } finally {
@@ -680,117 +513,52 @@ const AvatarSelector: React.FC<AvatarSelectorProps> = ({
     }
   };
 
-  // Função para alterar a categoria de personalização
   const handleSelectPartCategory = (partId: string) => {
     console.log(`Alterando categoria para: ${partId}`);
-    
-    // Primeiro, verificar se a categoria existe e tem opções
     const targetPart = AVATAR_PARTS.find(part => part.id === partId);
     if (!targetPart) {
-      console.error(`Categoria ${partId} não encontrada!`);
+      console.error(`Categoria ${partId} não encontrada`);
       return;
     }
-    
-    console.log(`Categoria ${partId} encontrada com ${targetPart.options.length} opções`);
-    
-    // Atualizar estado de categoria
     setCurrentPartCategory(partId);
-    
-    // Resetar para o modo de opções ao trocar de categoria
     setCurrentCustomization('option');
-    
-    // Garantir que o avatar tenha uma opção inicial para esta categoria
     const updatedAvatar = { ...customAvatar };
-    
-    // Se não houver uma opção definida para esta categoria, configure a primeira opção disponível
     if (!updatedAvatar[partId] || !updatedAvatar[partId].option) {
       if (targetPart.options && targetPart.options.length > 0) {
         updatedAvatar[partId] = {
           ...updatedAvatar[partId] || {},
           option: targetPart.options[0].imageUrl
         };
-        
         if (targetPart.colorizeOptions && targetPart.defaultColor) {
           updatedAvatar[partId].color = targetPart.defaultColor;
         }
-        
-        console.log(`Definida opção padrão para ${partId}: ${targetPart.options[0].imageUrl}`);
+        console.log(`Opção padrão para ${partId}: ${targetPart.options[0].imageUrl}`);
       }
     }
-    
-    // Debug: imprimir opções da categoria selecionada
-    if (targetPart.options && targetPart.options.length > 0) {
-      console.log("Opções disponíveis para esta categoria:");
-      targetPart.options.forEach(option => {
-        console.log(`- ${option.name}: ${option.imageUrl}`);
-      });
-    }
-    
-    // Forçar uma atualização no estado do avatar
     setCustomAvatar(updatedAvatar);
-    
-    // Animar transição entre categorias
     Animated.sequence([
-      Animated.timing(scaleAnim, {
-        toValue: 0.9,
-        duration: 100,
-        useNativeDriver: true
-      }),
-      Animated.timing(scaleAnim, {
-        toValue: 1,
-        duration: 200,
-        useNativeDriver: true
-      })
+      Animated.timing(scaleAnim, { toValue: 0.9, duration: 100, useNativeDriver: true }),
+      Animated.timing(scaleAnim, { toValue: 1, duration: 200, useNativeDriver: true })
     ]).start();
   };
 
-  // Função para selecionar uma opção dentro de uma categoria
   const handleSelectPartOption = (partId: string, optionUrl: string) => {
-    console.log(`Selecionando opção para parte ${partId}: ${optionUrl}`);
-    
-    // Atualizar objeto customAvatar
-    setCustomAvatar(prevAvatar => {
-      // Criar uma cópia do objeto atual
-      const newAvatar = { ...prevAvatar };
-      
-      // Verificar se já existe uma entrada para esta categoria
-      if (!newAvatar[partId]) {
-        newAvatar[partId] = {};
-      }
-      
-      // Atualizar a opção selecionada
-      newAvatar[partId] = {
-        ...newAvatar[partId],
-        option: optionUrl
-      };
-      
-      // Para debug
-      console.log(`Avatar atualizado para parte ${partId}:`, JSON.stringify(newAvatar[partId]));
-      
+    console.log(`Selecionando opção para ${partId}: ${optionUrl}`);
+    setCustomAvatar(prev => {
+      const newAvatar = { ...prev };
+      newAvatar[partId] = { ...newAvatar[partId], option: optionUrl };
+      console.log(`Avatar atualizado para ${partId}:`, JSON.stringify(newAvatar[partId]));
       return newAvatar;
     });
-    
-    // Animar seleção
     Animated.sequence([
-      Animated.timing(scaleAnim, {
-        toValue: 1.1,
-        duration: 100,
-        useNativeDriver: true
-      }),
-      Animated.timing(scaleAnim, {
-        toValue: 1,
-        duration: 100,
-        useNativeDriver: true
-      })
+      Animated.timing(scaleAnim, { toValue: 1.1, duration: 100, useNativeDriver: true }),
+      Animated.timing(scaleAnim, { toValue: 1, duration: 100, useNativeDriver: true })
     ]).start();
   };
-  
-  // Função para atualizar o valor de um slider
+
   const handleSliderChange = (sliderId: string, value: number) => {
     const updatedAvatar = { ...customAvatar };
     const part = { ...updatedAvatar[currentPartCategory] };
-    
-    // Atualizar o valor apropriado com base no ID do slider
     switch (sliderId) {
       case 'size':
         part.size = value;
@@ -817,23 +585,13 @@ const AvatarSelector: React.FC<AvatarSelectorProps> = ({
         part.position = { ...part.position, x: value };
         break;
     }
-    
     updatedAvatar[currentPartCategory] = part;
     setCustomAvatar(updatedAvatar);
-    
-    // Feedback sutil de animação
-    Animated.timing(scaleAnim, {
-      toValue: 1 + (value - 1) * 0.05,
-      duration: 10,
-      useNativeDriver: true
-    }).start();
+    Animated.timing(scaleAnim, { toValue: 1 + (value - 1) * 0.05, duration: 10, useNativeDriver: true }).start();
   };
-  
-  // Função para aleatorizar o avatar
+
   const handleRandomizeAvatar = () => {
     const randomizedAvatar = { ...customAvatar };
-    
-    // Para cada parte do avatar, escolher uma opção aleatória
     AVATAR_PARTS.forEach(part => {
       if (part.options.length > 0) {
         const randomIndex = Math.floor(Math.random() * part.options.length);
@@ -841,18 +599,13 @@ const AvatarSelector: React.FC<AvatarSelectorProps> = ({
           ...randomizedAvatar[part.id],
           option: part.options[randomIndex].imageUrl
         };
-        
-        // Se a parte pode ser colorizada, escolher uma cor aleatória
         if (part.colorizeOptions) {
           const randomColorIndex = Math.floor(Math.random() * savedColors.length);
           randomizedAvatar[part.id].color = savedColors[randomColorIndex].value;
         }
-        
-        // Randomizar alguns sliders para mais variedade
         if (AVATAR_SLIDERS[part.id]) {
           AVATAR_SLIDERS[part.id].forEach(slider => {
             const randomValue = slider.min + Math.random() * (slider.max - slider.min);
-            
             switch (slider.id) {
               case 'size':
                 randomizedAvatar[part.id].size = randomValue;
@@ -889,89 +642,66 @@ const AvatarSelector: React.FC<AvatarSelectorProps> = ({
         }
       }
     });
-    
     setCustomAvatar(randomizedAvatar);
-    
-    // Animar aleatorização
     Animated.sequence([
-      Animated.timing(scaleAnim, {
-        toValue: 0.8,
-        duration: 150,
-        useNativeDriver: true
-      }),
-      Animated.timing(scaleAnim, {
-        toValue: 1.1,
-        duration: 150,
-        useNativeDriver: true
-      }),
-      Animated.timing(scaleAnim, {
-        toValue: 1,
-        duration: 150,
-        useNativeDriver: true
-      })
+      Animated.timing(scaleAnim, { toValue: 0.8, duration: 150, useNativeDriver: true }),
+      Animated.timing(scaleAnim, { toValue: 1.1, duration: 150, useNativeDriver: true }),
+      Animated.timing(scaleAnim, { toValue: 1, duration: 150, useNativeDriver: true })
     ]).start();
   };
 
-  // Componente para renderizar o avatar da lista
-  const renderAvatar = React.useCallback(({ item }: { item: string }) => {
-    return (
-      <TouchableOpacity
-        style={styles.avatarContainer}
-        onPress={() => handleSelectAvatar(item)}
-        testID={`avatar-item-${item.split('/').pop()}`}
-        activeOpacity={0.7}
-        accessibilityLabel="Selecionar este avatar"
-      >
-        <View style={styles.avatarWrapper}>
-          <Image 
-            source={{ uri: item }} 
-            style={styles.avatar} 
-            onError={(e) => {
-              console.error('Erro ao carregar imagem:', e.nativeEvent.error, 'URL:', item);
-            }}
-            resizeMode="cover"
-          />
-        </View>
-      </TouchableOpacity>
-    );
-  }, []);
+  const renderAvatar = React.useCallback(({ item }: { item: string }) => (
+    <TouchableOpacity
+      style={styles.avatarContainer}
+      onPress={() => handleSelectAvatar(item)}
+      testID={`avatar-item-${item.split('/').pop()}`}
+      activeOpacity={0.7}
+      accessibilityLabel="Selecionar este avatar"
+    >
+      <View style={styles.avatarWrapper}>
+        <Image 
+          source={{ uri: item }} 
+          style={styles.avatar} 
+          onError={(e) => {
+            console.error('Erro ao carregar imagem:', e.nativeEvent.error, 'URL:', item);
+          }}
+          resizeMode="cover"
+        />
+      </View>
+    </TouchableOpacity>
+  ), []);
 
-  // Componente para renderizar as abas de categorias de personalização
-  const renderMiiCategoryTabs = () => {
-    return (
-      <ScrollView 
-        horizontal 
-        showsHorizontalScrollIndicator={false} 
-        style={styles.miiCategoryTabs}
-        contentContainerStyle={styles.miiCategoryTabsContent}
-      >
-        {AVATAR_PARTS.map(part => (
-          <TouchableOpacity
-            key={part.id}
-            style={[
-              styles.miiCategoryTab,
-              currentPartCategory === part.id && styles.activeMiiCategoryTab
-            ]}
-            onPress={() => handleSelectPartCategory(part.id)}
-            accessibilityLabel={`Categoria ${part.name}`}
-          >
-            <Text style={[
-              styles.miiCategoryTabText,
-              currentPartCategory === part.id && styles.activeMiiCategoryTabText
-            ]}>
-              {part.name}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-    );
-  };
-  
-  // Componente para renderizar os botões de alternância entre opções, cores e ajustes
+  const renderMiiCategoryTabs = () => (
+    <ScrollView 
+      horizontal 
+      showsHorizontalScrollIndicator={false} 
+      style={styles.miiCategoryTabs}
+      contentContainerStyle={styles.miiCategoryTabsContent}
+    >
+      {AVATAR_PARTS.map(part => (
+        <TouchableOpacity
+          key={part.id}
+          style={[
+            styles.miiCategoryTab,
+            currentPartCategory === part.id && styles.activeMiiCategoryTab
+          ]}
+          onPress={() => handleSelectPartCategory(part.id)}
+          accessibilityLabel={`Categoria ${part.name}`}
+        >
+          <Text style={[
+            styles.miiCategoryTabText,
+            currentPartCategory === part.id && styles.activeMiiCategoryTabText
+          ]}>
+            {part.name}
+          </Text>
+        </TouchableOpacity>
+      ))}
+    </ScrollView>
+  );
+
   const renderCustomizationToggle = () => {
-    const currentPart = AVATAR_PARTS.find(part => part.id === currentPartCategory);
-    const hasColorOptions = currentPart?.colorizeOptions;
-    
+    const currentPartDef = AVATAR_PARTS.find(part => part.id === currentPartCategory);
+    const hasColorOptions = currentPartDef?.colorizeOptions;
     return (
       <View style={styles.customizationToggleContainer}>
         <SegmentedButtons
@@ -988,13 +718,9 @@ const AvatarSelector: React.FC<AvatarSelectorProps> = ({
     );
   };
 
-  // Componente para renderizar o modo de customização de Mii
   const renderMiiCustomizationMode = () => {
-    console.log("Renderizando modo de customização Mii");
-    
-    // Verificar se os dados estão prontos
+    console.log("Renderizando modo Mii");
     if (!AVATAR_PARTS || AVATAR_PARTS.length === 0) {
-      console.log("AVATAR_PARTS não está disponível");
       return (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#2196F3" />
@@ -1002,11 +728,7 @@ const AvatarSelector: React.FC<AvatarSelectorProps> = ({
         </View>
       );
     }
-    
-    // Verificar se o customAvatar está inicializado corretamente
-    const hasValidCustomAvatar = customAvatar && Object.keys(customAvatar).length > 0;
-    if (!hasValidCustomAvatar) {
-      console.log("customAvatar não está inicializado corretamente");
+    if (!customAvatar || Object.keys(customAvatar).length === 0) {
       return (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#2196F3" />
@@ -1014,10 +736,8 @@ const AvatarSelector: React.FC<AvatarSelectorProps> = ({
         </View>
       );
     }
-    
     return (
       <View style={[styles.miiContainer, {height: Dimensions.get('window').height - 50}]}>
-        {/* Preview do avatar 3D com rotação */}
         <View style={styles.previewWrapper}>
           <AvatarPreview
             customAvatar={customAvatar}
@@ -1028,8 +748,6 @@ const AvatarSelector: React.FC<AvatarSelectorProps> = ({
             avatarParts={AVATAR_PARTS}
           />
         </View>
-        
-        {/* Área de tabs fixada abaixo do preview */}
         <View style={styles.tabsContainer}>
           <ScrollView 
             horizontal 
@@ -1056,29 +774,8 @@ const AvatarSelector: React.FC<AvatarSelectorProps> = ({
             ))}
           </ScrollView>
         </View>
-        
-        {/* Toggle entre opções/cores/ajustes */}
-        <View style={styles.customizationToggleContainer}>
-          <SegmentedButtons
-            value={currentCustomization}
-            onValueChange={(value) => setCurrentCustomization(value as any)}
-            buttons={[
-              { value: 'option', label: 'Opções', icon: 'shape-outline' },
-              { 
-                value: 'color', 
-                label: 'Cores', 
-                icon: 'palette', 
-                disabled: !AVATAR_PARTS.find(part => part.id === currentPartCategory)?.colorizeOptions 
-              },
-              { value: 'sliders', label: 'Ajustes', icon: 'tune-vertical' }
-            ]}
-            style={styles.customizationToggle}
-          />
-        </View>
-        
+        {renderCustomizationToggle()}
         <View style={styles.divider} />
-        
-        {/* Conteúdo baseado na seleção atual (opções/cores/ajustes) */}
         <View style={styles.miiContentContainer}>
           {currentCustomization === 'option' && (
             <PartOptions
@@ -1088,7 +785,6 @@ const AvatarSelector: React.FC<AvatarSelectorProps> = ({
               onSelectPartOption={handleSelectPartOption}
             />
           )}
-          
           {currentCustomization === 'color' && (
             <ColorSelector
               currentPartCategory={currentPartCategory}
@@ -1100,10 +796,9 @@ const AvatarSelector: React.FC<AvatarSelectorProps> = ({
               onDismissColorMenu={() => setShowColorMenu(false)}
               colorMenuAnchor={colorMenuAnchor}
               onSaveCustomColor={handleSaveCustomColor}
-              canColorize={AVATAR_PARTS.find(part => part.id === currentPartCategory)?.colorizeOptions || false}
+              canColorize={AVATAR_PARTS.find(p => p.id === currentPartCategory)?.colorizeOptions || false}
             />
           )}
-          
           {currentCustomization === 'sliders' && (
             <CustomizationSliders
               currentPartCategory={currentPartCategory}
@@ -1113,25 +808,11 @@ const AvatarSelector: React.FC<AvatarSelectorProps> = ({
             />
           )}
         </View>
-        
-        {/* Botões de ação no rodapé fixo */}
         <View style={styles.miiActionButtons}>
-          <Button 
-            mode="outlined" 
-            onPress={onDismiss}
-            style={styles.miiActionButton}
-            icon="arrow-left"
-          >
+          <Button mode="outlined" onPress={onDismiss} style={styles.miiActionButton} icon="arrow-left">
             Cancelar
           </Button>
-          <Button 
-            mode="contained" 
-            onPress={handleSelectCustomAvatar}
-            style={[styles.miiActionButton, styles.confirmButton]}
-            icon="check"
-            loading={loading}
-            disabled={loading}
-          >
+          <Button mode="contained" onPress={handleSelectCustomAvatar} style={[styles.miiActionButton, styles.confirmButton]} icon="check" loading={loading} disabled={loading}>
             Confirmar
           </Button>
         </View>
@@ -1139,141 +820,105 @@ const AvatarSelector: React.FC<AvatarSelectorProps> = ({
     );
   };
 
-  // Componente para renderizar o modo de lista de avatares
-  const renderListMode = () => {
-    return (
-      <Card.Content style={styles.listContent}>
-        <Searchbar
-          placeholder="Pesquisar avatares..."
-          onChangeText={handleSearch}
-          value={searchQuery}
-          style={styles.searchBar}
-        />
-        
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filtersContainer}>
-          <View style={styles.filterSection}>
-            <Text style={styles.filterTitle}>Categoria:</Text>
-            <View style={styles.chipContainer}>
-              {getCategories().map((category) => (
-                <Chip
-                  key={category.value}
-                  selected={selectedCategory === category.value}
-                  onPress={() => setSelectedCategory(category.value)}
-                  style={styles.chip}
-                  mode={selectedCategory === category.value ? 'flat' : 'outlined'}
-                >
-                  {category.label}
-                </Chip>
-              ))}
-            </View>
+  const renderListMode = () => (
+    <Card.Content style={styles.listContent}>
+      <Searchbar
+        placeholder="Pesquisar avatares..."
+        onChangeText={handleSearch}
+        value={searchQuery}
+        style={styles.searchBar}
+      />
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filtersContainer}>
+        <View style={styles.filterSection}>
+          <Text style={styles.filterTitle}>Categoria:</Text>
+          <View style={styles.chipContainer}>
+            {getCategories().map(category => (
+              <Chip
+                key={category.value}
+                selected={selectedCategory === category.value}
+                onPress={() => setSelectedCategory(category.value)}
+                style={styles.chip}
+                mode={selectedCategory === category.value ? 'flat' : 'outlined'}
+              >
+                {category.label}
+              </Chip>
+            ))}
           </View>
-          
-          <View style={styles.filterSection}>
-            <Text style={styles.filterTitle}>Gênero:</Text>
-            <View style={styles.chipContainer}>
-              <Chip
-                selected={selectedGender === 'all'}
-                onPress={() => setSelectedGender('all')}
-                style={styles.chip}
-                mode={selectedGender === 'all' ? 'flat' : 'outlined'}
-              >
-                Todos
-              </Chip>
-              <Chip
-                selected={selectedGender === 'male'}
-                onPress={() => setSelectedGender('male')}
-                style={styles.chip}
-                mode={selectedGender === 'male' ? 'flat' : 'outlined'}
-              >
-                Masculino
-              </Chip>
-              <Chip
-                selected={selectedGender === 'female'}
-                onPress={() => setSelectedGender('female')}
-                style={styles.chip}
-                mode={selectedGender === 'female' ? 'flat' : 'outlined'}
-              >
-                Feminino
-              </Chip>
-              <Chip
-                selected={selectedGender === 'neutral'}
-                onPress={() => setSelectedGender('neutral')}
-                style={styles.chip}
-                mode={selectedGender === 'neutral' ? 'flat' : 'outlined'}
-              >
-                Neutro
-              </Chip>
-            </View>
-          </View>
-        </ScrollView>
-        
-        <Text style={styles.filterTitle}>Estilo Visual:</Text>
-        <SegmentedButtons
-          value={selectedStyle}
-          onValueChange={setSelectedStyle}
-          buttons={[
-            { value: 'cartoon', label: 'Cartoon' },
-            { value: 'realistic', label: 'Realista' },
-            { value: 'anime', label: 'Anime' }
-          ]}
-          style={styles.segmentedButton}
-        />
-
-        {/* Botão para criar avatar personalizado */}
-        <Button 
-          mode="contained" 
-          icon="account-edit" 
-          onPress={() => setSelectorMode('mii')}
-          style={styles.createMiiButton}
-        >
-          Criar Avatar Personalizado
-        </Button>
-
-        <View style={styles.avatarListWrapper}>
-          {loading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="#2196F3" />
-              <Text style={styles.loadingText}>Carregando avatares...</Text>
-            </View>
-          ) : error ? (
-            <View style={styles.errorContainer}>
-              <Text style={styles.errorText}>{error}</Text>
-              <Button 
-                mode="contained" 
-                onPress={() => {
-                  setLoading(true);
-                  // Trigger a re-fetch by changing and resetting the style
-                  const currentStyle = selectedStyle;
-                  setSelectedStyle(currentStyle === 'cartoon' ? 'realistic' : 'cartoon');
-                  setTimeout(() => setSelectedStyle(currentStyle), 100);
-                }}
-              >
-                Tentar Novamente
-              </Button>
-            </View>
-          ) : filteredAvatars.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>Nenhum avatar encontrado com os filtros selecionados.</Text>
-            </View>
-          ) : (
-            <FlatList
-              data={filteredAvatars}
-              renderItem={renderAvatar}
-              keyExtractor={(item, index) => `${item}-${index}`}
-              numColumns={numColumns}
-              contentContainerStyle={styles.avatarListContent}
-              initialNumToRender={8}
-              maxToRenderPerBatch={8}
-              windowSize={5}
-              removeClippedSubviews={Platform.OS !== 'web'}
-            />
-          )}
         </View>
-      </Card.Content>
-    );
-  };
+        <View style={styles.filterSection}>
+          <Text style={styles.filterTitle}>Gênero:</Text>
+          <View style={styles.chipContainer}>
+            <Chip selected={selectedGender === 'all'} onPress={() => setSelectedGender('all')} style={styles.chip} mode={selectedGender === 'all' ? 'flat' : 'outlined'}>
+              Todos
+            </Chip>
+            <Chip selected={selectedGender === 'male'} onPress={() => setSelectedGender('male')} style={styles.chip} mode={selectedGender === 'male' ? 'flat' : 'outlined'}>
+              Masculino
+            </Chip>
+            <Chip selected={selectedGender === 'female'} onPress={() => setSelectedGender('female')} style={styles.chip} mode={selectedGender === 'female' ? 'flat' : 'outlined'}>
+              Feminino
+            </Chip>
+            <Chip selected={selectedGender === 'neutral'} onPress={() => setSelectedGender('neutral')} style={styles.chip} mode={selectedGender === 'neutral' ? 'flat' : 'outlined'}>
+              Neutro
+            </Chip>
+          </View>
+        </View>
+      </ScrollView>
+      <Text style={styles.filterTitle}>Estilo Visual:</Text>
+      <SegmentedButtons
+        value={selectedStyle}
+        onValueChange={setSelectedStyle}
+        buttons={[
+          { value: 'cartoon', label: 'Cartoon' },
+          { value: 'realistic', label: 'Realista' },
+          { value: 'anime', label: 'Anime' }
+        ]}
+        style={styles.segmentedButton}
+      />
+      <Button mode="contained" icon="account-edit" onPress={() => setSelectorMode('mii')} style={styles.createMiiButton}>
+        Criar Avatar Personalizado
+      </Button>
+      <View style={styles.avatarListWrapper}>
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#2196F3" />
+            <Text style={styles.loadingText}>Carregando avatares...</Text>
+          </View>
+        ) : error ? (
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorText}>{error}</Text>
+            <Button
+              mode="contained"
+              onPress={() => {
+                setLoading(true);
+                const currentStyle = selectedStyle;
+                setSelectedStyle(currentStyle === 'cartoon' ? 'realistic' : 'cartoon');
+                setTimeout(() => setSelectedStyle(currentStyle), 100);
+              }}
+            >
+              Tentar Novamente
+            </Button>
+          </View>
+        ) : filteredAvatars.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>Nenhum avatar encontrado com os filtros selecionados.</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={filteredAvatars}
+            renderItem={renderAvatar}
+            keyExtractor={(item, index) => `${item}-${index}`}
+            numColumns={numColumns}
+            contentContainerStyle={styles.avatarListContent}
+            initialNumToRender={8}
+            maxToRenderPerBatch={8}
+            windowSize={5}
+            removeClippedSubviews={Platform.OS !== 'web'}
+          />
+        )}
+      </View>
+    </Card.Content>
+  );
 
-  // Componente para renderizar as categorias disponíveis com filtro por tipo
   const getCategories = () => {
     switch (characterType) {
       case 'child':
@@ -1305,39 +950,27 @@ const AvatarSelector: React.FC<AvatarSelectorProps> = ({
           { label: 'Heróis', value: 'hero' }
         ];
       default:
-        return [
-          { label: 'Todos', value: 'all' }
-        ];
+        return [{ label: 'Todos', value: 'all' }];
     }
   };
 
-  // Efeito para imprimir informações de debug no console
   useEffect(() => {
     console.log("AvatarSelector - Estado atual:");
-    console.log("- Modo: " + selectorMode);
-    console.log("- Visível: " + visible);
-    console.log("- enableCustomization: " + enableCustomization);
-    console.log("- Categoria atual: " + currentPartCategory);
-    console.log("- Modo de customização: " + currentCustomization);
-    
-    // Para debug: verificar valores do customAvatar
-    console.log("- customAvatar: ", JSON.stringify(customAvatar));
-    
-    // Verificar se AVATAR_PARTS contém dados
-    console.log("- AVATAR_PARTS carregado: " + (AVATAR_PARTS?.length || 0) + " partes");
-    
-    // Para debug: verificar a categoria atual
+    console.log("- Modo:", selectorMode);
+    console.log("- Visível:", visible);
+    console.log("- enableCustomization:", enableCustomization);
+    console.log("- Categoria atual:", currentPartCategory);
+    console.log("- Modo de customização:", currentCustomization);
+    console.log("- customAvatar:", JSON.stringify(customAvatar));
+    console.log("- AVATAR_PARTS carregado:", AVATAR_PARTS?.length || 0, "partes");
     const currentPartDef = AVATAR_PARTS.find(part => part.id === currentPartCategory);
-    console.log("- Categoria atual tem " + (currentPartDef?.options?.length || 0) + " opções");
-    
-    // Garantir que quando enableCustomization for verdadeiro, o modo seja 'mii'
+    console.log("- Categoria atual tem", currentPartDef?.options?.length || 0, "opções");
     if (visible && enableCustomization && selectorMode !== 'mii') {
-      console.log("Forçando modo 'mii' porque enableCustomization é verdadeiro");
+      console.log("Forçando modo 'mii' devido a enableCustomization");
       setSelectorMode('mii');
     }
   }, [visible, selectorMode, enableCustomization, currentPartCategory, currentCustomization, customAvatar]);
 
-  // Renderização principal do componente
   return (
     <Portal>
       <Modal
@@ -1346,38 +979,33 @@ const AvatarSelector: React.FC<AvatarSelectorProps> = ({
         contentContainerStyle={styles.modalContainer}
         dismissable={true}
       >
-        <SafeAreaView style={{flex: 1, width: '100%', height: '100%'}}>
-          <Animated.View style={[
-            styles.modalContent,
-            {
-              transform: [
-                { 
-                  translateY: slideAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [50, 0]
-                  })
-                }
-              ],
-              opacity: slideAnim
-            }
-          ]}>
+        <SafeAreaView style={{ flex: 1, width: '100%', height: '100%' }}>
+          <Animated.View
+            style={[
+              styles.modalContent,
+              {
+                transform: [
+                  {
+                    translateY: slideAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [50, 0]
+                    })
+                  }
+                ],
+                opacity: slideAnim
+              }
+            ]}
+          >
             <View style={styles.cardContainer}>
-              {/* Wrap the Card in a container that doesn't clip shadows */}
               <View style={styles.cardWrapper}>
                 <Card style={styles.card}>
-                  <Card.Title 
-                    title={selectorMode === 'list' ? title : "Criação de Avatar"} 
+                  <Card.Title
+                    title={selectorMode === 'list' ? title : "Criação de Avatar"}
                     subtitle={selectorMode === 'mii' ? "Personalize seu avatar ao estilo Mii" : undefined}
                     right={(props) => (
-                      <IconButton 
-                        {...props} 
-                        icon="close" 
-                        onPress={onDismiss}
-                        accessibilityLabel="Fechar"
-                      />
+                      <IconButton {...props} icon="close" onPress={onDismiss} accessibilityLabel="Fechar" />
                     )}
                   />
-                  
                   {selectorMode === 'list' ? renderListMode() : renderMiiCustomizationMode()}
                 </Card>
               </View>
@@ -1394,7 +1022,7 @@ const styles = StyleSheet.create({
     flex: 1,
     margin: 0,
     padding: 0,
-    justifyContent: 'flex-start', // Alterado para flex-start
+    justifyContent: 'flex-start',
     backgroundColor: 'rgba(0,0,0,0.5)'
   },
   modalContent: {
@@ -1404,7 +1032,7 @@ const styles = StyleSheet.create({
   },
   cardContainer: {
     flex: 1,
-    padding: 0 // Removido o padding para tela cheia
+    padding: 0
   },
   cardWrapper: {
     flex: 1,
@@ -1413,7 +1041,7 @@ const styles = StyleSheet.create({
   },
   card: {
     flex: 1,
-    borderRadius: 0, // Removido o borderRadius para tela cheia
+    borderRadius: 0,
     backgroundColor: '#ffffff',
     width: '100%',
     height: '100%'
@@ -1516,8 +1144,6 @@ const styles = StyleSheet.create({
   actions: {
     justifyContent: 'flex-end'
   },
-  
-  // Estilos para o modo de customização estilo Mii
   miiContainer: {
     flex: 1,
     backgroundColor: '#f5f5f5',
@@ -1525,7 +1151,7 @@ const styles = StyleSheet.create({
   },
   previewWrapper: {
     width: '100%',
-    height: 220, // Reduzido para dar mais espaço para as opções
+    height: 220,
     backgroundColor: '#2196F3'
   },
   miiOptionsContainer: {
@@ -1537,7 +1163,7 @@ const styles = StyleSheet.create({
     height: 50,
     borderBottomWidth: 1,
     borderBottomColor: '#ccc',
-    zIndex: 10 // Garante que fique acima de outros elementos
+    zIndex: 10
   },
   customizationToggleContainer: {
     padding: 10,
@@ -1545,7 +1171,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
     elevation: 2,
-    zIndex: 9 // Menor que o tabsContainer
+    zIndex: 9
   },
   customizationToggle: {
     marginHorizontal: 8
@@ -1588,8 +1214,8 @@ const styles = StyleSheet.create({
   miiContentContainer: {
     flex: 1,
     backgroundColor: '#fff',
-    paddingBottom: 80, // Aumentado o espaço para os botões no rodapé
-    height: 300, // Altura mínima para garantir visibilidade
+    paddingBottom: 80,
+    height: 300,
     minHeight: 300,
     overflow: 'visible'
   },
@@ -1605,7 +1231,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 100,
-    elevation: 5, // Adicionado para destacar mais no Android
+    elevation: 5,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.1,

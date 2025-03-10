@@ -9,9 +9,9 @@ import {
   TextInput,
   ActivityIndicator
 } from 'react-native';
-import { AvatarColor } from './AvatarParts';
+import { AvatarColor, CustomAvatar } from './AvatarParts';
 
-// Create simple implementations for Menu, Button, Dialog, Portal if react-native-paper is not available
+// Tenta importar os componentes do react-native-paper; se não estiverem disponíveis, utiliza fallbacks simples
 let Menu, Button, Dialog, Portal;
 try {
   const RNPaper = require('react-native-paper');
@@ -20,15 +20,23 @@ try {
   Dialog = RNPaper.Dialog;
   Portal = RNPaper.Portal;
 } catch (e) {
-  console.warn('react-native-paper is not available, using fallback components');
+  console.warn('react-native-paper não está disponível, utilizando componentes alternativos');
   
-  // Simple fallbacks for the components we need
+  // Fallback simples para Menu e seus itens
   Menu = ({ visible, onDismiss, anchor, style, children }) => {
     if (!visible) return null;
     return (
-      <View style={[{ position: 'absolute', backgroundColor: 'white', 
-              top: anchor.y, left: anchor.x, zIndex: 1000,
-              padding: 10, borderRadius: 5, borderWidth: 1, borderColor: '#ddd' }, style]}>
+      <View style={[{
+        position: 'absolute',
+        backgroundColor: 'white',
+        top: anchor.y,
+        left: anchor.x,
+        zIndex: 1000,
+        padding: 10,
+        borderRadius: 5,
+        borderWidth: 1,
+        borderColor: '#ddd'
+      }, style]}>
         {children}
       </View>
     );
@@ -52,9 +60,13 @@ try {
   Dialog = ({ visible, onDismiss, children }) => {
     if (!visible) return null;
     return (
-      <View style={{ 
-        position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-        backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', zIndex: 999 
+      <View style={{
+        position: 'absolute',
+        top: 0, left: 0, right: 0, bottom: 0,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 999
       }}>
         <View style={{ backgroundColor: 'white', borderRadius: 5, padding: 20, width: '80%' }}>
           {children}
@@ -71,7 +83,7 @@ try {
 
 interface ColorSelectorProps {
   currentPartCategory: string;
-  customAvatar: any;
+  customAvatar: CustomAvatar;
   savedColors: AvatarColor[];
   onSelectColor: (color: string) => void;
   onOpenColorMenu: (event: any) => void;
@@ -94,23 +106,22 @@ const ColorSelector: React.FC<ColorSelectorProps> = ({
   onSaveCustomColor,
   canColorize
 }) => {
+  // Estados para controle do diálogo de cor personalizada e loading
   const [showCustomColorDialog, setShowCustomColorDialog] = useState(false);
   const [customColor, setCustomColor] = useState('#FF0000');
   const [customColorName, setCustomColorName] = useState('');
   const [isLoading, setIsLoading] = useState(true);
 
-  // Use useEffect para controlar a transição entre categorias
+  // Quando a categoria mudar, exibe um loading breve para transição
   useEffect(() => {
     console.log(`ColorSelector: Categoria alterada para ${currentPartCategory}`);
     setIsLoading(true);
-    
-    // Pequeno delay para mostrar um indicador de carregamento e garantir que o componente será atualizado
     setTimeout(() => {
       setIsLoading(false);
     }, 100);
   }, [currentPartCategory]);
 
-  // Use useMemo to avoid unnecessary recalculations
+  // Array de cores pré-definidas memorizado para evitar recálculos
   const predefinedColors = useMemo(() => [
     { name: 'Vermelho', value: '#FF4D4D' },
     { name: 'Verde', value: '#4CAF50' },
@@ -124,11 +135,13 @@ const ColorSelector: React.FC<ColorSelectorProps> = ({
     { name: 'Branco', value: '#FFFFFF' }
   ], []);
 
+  // Abre o diálogo para criar uma cor personalizada
   const handleAddCustomColor = () => {
     onDismissColorMenu();
     setShowCustomColorDialog(true);
   };
 
+  // Salva a cor personalizada e reinicia os estados do diálogo
   const handleSaveCustomColor = () => {
     onSaveCustomColor(customColor, customColorName || 'Cor personalizada');
     setShowCustomColorDialog(false);
@@ -155,7 +168,7 @@ const ColorSelector: React.FC<ColorSelectorProps> = ({
     );
   }
   
-  // Gerar uma chave única para ScrollView para forçar recriação quando a categoria muda
+  // Gera uma chave única para forçar a recriação do ScrollView quando a categoria mudar
   const colorsKey = `colors-${currentPartCategory}`;
   
   return (
@@ -195,7 +208,7 @@ const ColorSelector: React.FC<ColorSelectorProps> = ({
         </View>
       </ScrollView>
       
-      {/* Menu de cores */}
+      {/* Menu de cores com opções pré-definidas */}
       <Menu
         visible={showColorMenu}
         onDismiss={onDismissColorMenu}
@@ -217,7 +230,7 @@ const ColorSelector: React.FC<ColorSelectorProps> = ({
         />
       </Menu>
 
-      {/* Diálogo para criar cor personalizada */}
+      {/* Diálogo para criação de cor personalizada */}
       <Portal>
         <Dialog visible={showCustomColorDialog} onDismiss={() => setShowCustomColorDialog(false)}>
           <Dialog.Title>Criar cor personalizada</Dialog.Title>
@@ -245,7 +258,7 @@ const ColorSelector: React.FC<ColorSelectorProps> = ({
         </Dialog>
       </Portal>
       
-      {/* Info section */}
+      {/* Exibe a cor atualmente selecionada */}
       <View style={styles.infoContainer}>
         <Text style={styles.infoText}>
           Cor atual: {savedColors.find(c => 

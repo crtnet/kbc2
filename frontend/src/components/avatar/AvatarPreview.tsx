@@ -1,26 +1,27 @@
 // src/components/avatar/AvatarPreview.tsx
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   StyleSheet,
   Animated,
-  PanResponder,
   Text,
   TouchableOpacity,
   Platform,
-  ActivityIndicator
+  ActivityIndicator,
+  Image,
+  PanResponderGestureState
 } from 'react-native';
-import { AvatarPart } from './AvatarParts';
+import { AvatarPart, CustomAvatar } from './AvatarParts';
 
 // Componente simulando LinearGradient para ambientes sem o módulo
-const GradientBackdrop = ({ children, style }) => (
+const GradientBackdrop: React.FC<{ style?: any }> = ({ children, style }) => (
   <View style={[{ backgroundColor: '#2196F3' }, style]}>
     {children}
   </View>
 );
 
 interface AvatarPreviewProps {
-  customAvatar: any;
+  customAvatar: CustomAvatar;
   onRandomize: () => void;
   rotateAnim: Animated.Value;
   scaleAnim: Animated.Value;
@@ -37,33 +38,30 @@ const AvatarPreview: React.FC<AvatarPreviewProps> = ({
   avatarParts
 }) => {
   console.log("Renderizando preview do avatar");
-  
-  // Estado para controlar carregamento de imagens
+
   const [loading, setLoading] = useState(true);
-  const [imageLoadErrors, setImageLoadErrors] = useState<{[key: string]: boolean}>({});
-  
-  // Efeito melhorado para resetar carregamento quando o avatar muda
+  const [imageLoadErrors, setImageLoadErrors] = useState<{ [key: string]: boolean }>({});
+
+  // Efeito para reiniciar o carregamento quando o avatar muda
   useEffect(() => {
     setLoading(true);
     console.log("Avatar mudou, recarregando preview...");
-    
-    // Verificar se temos as partes essenciais
+
+    // Verifica se temos as partes essenciais: face, eyes e mouth
     const hasFace = customAvatar.face && customAvatar.face.option && 
                     typeof customAvatar.face.option === 'string' && 
                     customAvatar.face.option.startsWith('http');
-    
     const hasEyes = customAvatar.eyes && customAvatar.eyes.option && 
                     typeof customAvatar.eyes.option === 'string' && 
                     customAvatar.eyes.option.startsWith('http');
-    
     const hasMouth = customAvatar.mouth && customAvatar.mouth.option && 
                      typeof customAvatar.mouth.option === 'string' && 
                      customAvatar.mouth.option.startsWith('http');
-    
+
     if (hasFace && hasEyes && hasMouth) {
       console.log("Avatar tem todas as partes essenciais");
-      
-      // Pré-carregar imagens
+
+      // Pré-carrega as imagens das partes essenciais
       const partsToPreload = ['face', 'eyes', 'mouth'];
       partsToPreload.forEach(partId => {
         if (customAvatar[partId] && customAvatar[partId].option) {
@@ -79,74 +77,53 @@ const AvatarPreview: React.FC<AvatarPreviewProps> = ({
           }
         }
       });
-      
-      // Resetar erros de carregamento
+
+      // Reseta erros de carregamento
       setImageLoadErrors({});
-      
-      // Mostrar o avatar após um pequeno atraso
+
+      // Exibe o avatar após um pequeno atraso
       setTimeout(() => {
         setLoading(false);
       }, 500);
     } else {
-      console.log("Avatar está incompleto:", 
-        hasFace ? "tem rosto" : "sem rosto", 
-        hasEyes ? "tem olhos" : "sem olhos", 
+      console.log("Avatar está incompleto:",
+        hasFace ? "tem rosto" : "sem rosto",
+        hasEyes ? "tem olhos" : "sem olhos",
         hasMouth ? "tem boca" : "sem boca");
-      
-      // Tentar corrigir partes ausentes
-      const updatedAvatar = { ...customAvatar };
+
+      // Tenta corrigir partes ausentes (apenas log; atualização real deve ser feita no componente pai)
       let wasUpdated = false;
-      
       if (!hasFace) {
         const facePart = avatarParts.find(part => part.id === 'face');
         if (facePart && facePart.options && facePart.options.length > 0) {
-          updatedAvatar.face = {
-            ...updatedAvatar.face,
-            option: facePart.options[0].imageUrl
-          };
-          wasUpdated = true;
           console.log("Corrigido: adicionado rosto padrão");
+          wasUpdated = true;
         }
       }
-      
       if (!hasEyes) {
         const eyesPart = avatarParts.find(part => part.id === 'eyes');
         if (eyesPart && eyesPart.options && eyesPart.options.length > 0) {
-          updatedAvatar.eyes = {
-            ...updatedAvatar.eyes,
-            option: eyesPart.options[0].imageUrl
-          };
-          wasUpdated = true;
           console.log("Corrigido: adicionado olhos padrão");
+          wasUpdated = true;
         }
       }
-      
       if (!hasMouth) {
         const mouthPart = avatarParts.find(part => part.id === 'mouth');
         if (mouthPart && mouthPart.options && mouthPart.options.length > 0) {
-          updatedAvatar.mouth = {
-            ...updatedAvatar.mouth,
-            option: mouthPart.options[0].imageUrl
-          };
-          wasUpdated = true;
           console.log("Corrigido: adicionada boca padrão");
+          wasUpdated = true;
         }
       }
-      
-      // Se houve correções, atualizar o avatar
       if (wasUpdated) {
-        // Não podemos atualizar diretamente o customAvatar, então apenas logamos
         console.log("Avatar foi corrigido com partes padrão");
       }
-      
-      // Mostrar o avatar após um pequeno atraso
       setTimeout(() => {
         setLoading(false);
       }, 500);
     }
   }, [customAvatar, avatarParts]);
 
-  // Para debug, vamos verificar quais partes temos
+  // Log para depuração das partes do avatar
   useEffect(() => {
     console.log("Verificando partes do avatar disponíveis:");
     Object.keys(customAvatar).forEach(partId => {
@@ -158,8 +135,8 @@ const AvatarPreview: React.FC<AvatarPreviewProps> = ({
       }
     });
   }, [customAvatar]);
-  
-  // Função para tratar erros de carregamento de imagem
+
+  // Função para tratar erros no carregamento das imagens
   const handleImageLoadError = (partId: string) => {
     console.error(`Erro ao carregar imagem para parte ${partId}`);
     setImageLoadErrors(prev => ({
@@ -167,84 +144,64 @@ const AvatarPreview: React.FC<AvatarPreviewProps> = ({
       [partId]: true
     }));
   };
-  
-  // Função melhorada para renderizar cada parte do avatar com suas transformações
+
+  // Renderiza cada parte do avatar com suas transformações
   const renderAvatarPart = (partId: string) => {
     const part = customAvatar[partId];
     if (!part) {
       console.log(`Parte ${partId} não encontrada no customAvatar`);
       return null;
     }
-    
+
     const partDef = avatarParts.find(p => p.id === partId);
     if (!partDef) {
       console.log(`Definição da parte ${partId} não encontrada em avatarParts`);
       return null;
     }
-    
-    // Se não houver opção definida, usamos a primeira das opções disponíveis
+
+    // Caso não haja opção definida, utiliza a primeira opção disponível
     if (!part.option && partDef.options && partDef.options.length > 0) {
       console.log(`Definindo opção padrão para parte ${partId}: ${partDef.options[0].imageUrl}`);
       part.option = partDef.options[0].imageUrl;
     }
-    
+
     if (!part.option) {
       console.log(`Parte ${partId} não tem opção definida nem opção padrão`);
       return null;
     }
-    
-    // Verificar se a URL da opção é válida
+
+    // Verifica se a URL da opção é válida; se não, utiliza fallback
     if (typeof part.option !== 'string' || !part.option.startsWith('http')) {
       console.error(`URL inválida para parte ${partId}: ${part.option}`);
-      
-      // Tentar usar a primeira opção disponível como fallback
       if (partDef.options && partDef.options.length > 0) {
         part.option = partDef.options[0].imageUrl;
         console.log(`Usando URL de fallback para ${partId}: ${part.option}`);
       } else {
-        return null; // Não podemos renderizar esta parte
+        return null;
       }
     }
-    
-    // Verificar se esta imagem teve erro de carregamento
+
     const hasError = imageLoadErrors[partId];
-    
-    // URL de fallback para caso de erro
     const fallbackImageUrl = 'https://cdn-icons-png.flaticon.com/512/1173/1173879.png';
     const imageUrl = hasError ? fallbackImageUrl : part.option;
-    
     const canColorize = partDef?.colorizeOptions;
-    
-    // Calcular transformações com base nas propriedades do avatar
-    const transforms = [];
-    
-    // Escala
-    if (part.size !== undefined && !isNaN(part.size)) {
-      transforms.push({ scale: part.size });
-    } else {
-      transforms.push({ scale: 1 }); // Valor padrão
-    }
-    
-    // Largura (se disponível)
+
+    // Calcula as transformações baseadas nas propriedades do avatar
+    const transforms: any[] = [];
+    transforms.push({ scale: part.size !== undefined && !isNaN(part.size) ? part.size : 1 });
     if (part.width !== undefined && !isNaN(part.width)) {
       transforms.push({ scaleX: part.width });
     }
-    
-    // Altura (se disponível)
     if (part.height !== undefined && !isNaN(part.height)) {
       transforms.push({ scaleY: part.height });
     }
-    
-    // Rotação (se disponível)
     if (part.rotation !== undefined && !isNaN(part.rotation)) {
       transforms.push({ rotate: `${part.rotation}deg` });
     }
-    
-    // Posição
+
     const translateY = part.position?.y !== undefined && !isNaN(part.position.y) ? part.position.y : 0;
     const translateX = part.position?.x !== undefined && !isNaN(part.position.x) ? part.position.x : 0;
-    
-    // Espaçamento para olhos e sobrancelhas
+
     let additionalStyle = {};
     if (partId === 'eyes' || partId === 'eyebrows') {
       const spacing = part.spacing !== undefined && !isNaN(part.spacing) ? part.spacing : 1;
@@ -254,26 +211,24 @@ const AvatarPreview: React.FC<AvatarPreviewProps> = ({
         paddingHorizontal: 10 * spacing
       };
     }
-    
-    // Estilo específico para cada tipo de parte
+
     let containerStyle = {};
-    let imageStyle = {
+    let imageStyle: any = {
       width: 150,
       height: 150,
-      resizeMode: 'contain' as 'contain',
+      resizeMode: 'contain',
       tintColor: canColorize && part.color ? part.color : undefined,
       transform: transforms
     };
-    
-    // Posicionamento específico para cada parte
+
     switch (partId) {
       case 'face':
-        containerStyle = { zIndex: 1, position: 'absolute' as 'absolute' };
+        containerStyle = { zIndex: 1, position: 'absolute' };
         break;
       case 'hair':
         containerStyle = { 
           zIndex: 10, 
-          position: 'absolute' as 'absolute',
+          position: 'absolute',
           top: -20 + translateY,
           transform: [{ translateX }]
         };
@@ -281,18 +236,14 @@ const AvatarPreview: React.FC<AvatarPreviewProps> = ({
       case 'eyes':
         containerStyle = { 
           zIndex: 5, 
-          position: 'absolute' as 'absolute',
+          position: 'absolute',
           top: 50 + translateY,
           transform: [{ translateX }],
-          flexDirection: 'row' as 'row',
+          flexDirection: 'row',
           ...additionalStyle
         };
-        imageStyle = {
-          ...imageStyle,
-          width: 40,
-          height: 40
-        };
-        // Renderizar dois olhos lado a lado
+        imageStyle = { ...imageStyle, width: 40, height: 40 };
+        // Renderiza dois olhos lado a lado
         return (
           <View style={containerStyle} key={partId}>
             <Animated.Image 
@@ -310,18 +261,14 @@ const AvatarPreview: React.FC<AvatarPreviewProps> = ({
       case 'eyebrows':
         containerStyle = { 
           zIndex: 6, 
-          position: 'absolute' as 'absolute',
+          position: 'absolute',
           top: 30 + translateY,
           transform: [{ translateX }],
-          flexDirection: 'row' as 'row',
+          flexDirection: 'row',
           ...additionalStyle
         };
-        imageStyle = {
-          ...imageStyle,
-          width: 40,
-          height: 20
-        };
-        // Renderizar duas sobrancelhas lado a lado
+        imageStyle = { ...imageStyle, width: 40, height: 20 };
+        // Renderiza duas sobrancelhas lado a lado
         return (
           <View style={containerStyle} key={partId}>
             <Animated.Image 
@@ -339,104 +286,77 @@ const AvatarPreview: React.FC<AvatarPreviewProps> = ({
       case 'nose':
         containerStyle = { 
           zIndex: 4, 
-          position: 'absolute' as 'absolute',
+          position: 'absolute',
           top: 70 + translateY,
           left: '50%',
           marginLeft: -15 + translateX,
         };
-        imageStyle = {
-          ...imageStyle,
-          width: 30,
-          height: 30
-        };
+        imageStyle = { ...imageStyle, width: 30, height: 30 };
         break;
       case 'mouth':
         containerStyle = { 
           zIndex: 3, 
-          position: 'absolute' as 'absolute',
+          position: 'absolute',
           top: 100 + translateY,
           left: '50%',
           marginLeft: -25 + translateX,
         };
-        imageStyle = {
-          ...imageStyle,
-          width: 50,
-          height: 30
-        };
+        imageStyle = { ...imageStyle, width: 50, height: 30 };
         break;
       case 'beard':
-        // Verificar se "Nenhuma" está selecionado
         const noneBeardOption = avatarParts.find(p => p.id === 'beard')?.options[0]?.imageUrl;
         if (part.option === noneBeardOption) {
-          return null; // Não renderizar se for "Nenhuma"
+          return null;
         }
         containerStyle = { 
           zIndex: 2, 
-          position: 'absolute' as 'absolute',
+          position: 'absolute',
           top: 90 + translateY,
           left: '50%',
           marginLeft: -40 + translateX,
         };
-        imageStyle = {
-          ...imageStyle,
-          width: 80,
-          height: 60
-        };
+        imageStyle = { ...imageStyle, width: 80, height: 60 };
         break;
       case 'glasses':
-        // Verificar se "Nenhum" está selecionado
         const noneGlassesOption = avatarParts.find(p => p.id === 'glasses')?.options[0]?.imageUrl;
         if (part.option === noneGlassesOption) {
-          return null; // Não renderizar se for "Nenhum"
+          return null;
         }
         containerStyle = { 
           zIndex: 7, 
-          position: 'absolute' as 'absolute',
+          position: 'absolute',
           top: 55 + translateY,
           left: '50%',
           marginLeft: -40 + translateX,
         };
-        imageStyle = {
-          ...imageStyle,
-          width: 80,
-          height: 30
-        };
+        imageStyle = { ...imageStyle, width: 80, height: 30 };
         break;
       case 'accessories':
-        // Verificar se "Nenhum" está selecionado
         const noneAccessoriesOption = avatarParts.find(p => p.id === 'accessories')?.options[0]?.imageUrl;
         if (part.option === noneAccessoriesOption) {
-          return null; // Não renderizar se for "Nenhum"
+          return null;
         }
         containerStyle = { 
           zIndex: 11, 
-          position: 'absolute' as 'absolute',
+          position: 'absolute',
           top: -10 + translateY,
           left: '50%',
           marginLeft: -40 + translateX,
         };
-        imageStyle = {
-          ...imageStyle,
-          width: 80,
-          height: 50
-        };
+        imageStyle = { ...imageStyle, width: 80, height: 50 };
         break;
       case 'outfit':
         containerStyle = { 
           zIndex: 0, 
-          position: 'absolute' as 'absolute',
-          top: 120,  // Ajustado para baixo
+          position: 'absolute',
+          top: 120,
           left: '50%',
           marginLeft: -75,
         };
-        imageStyle = {
-          ...imageStyle,
-          width: 150,
-          height: 100
-        };
+        imageStyle = { ...imageStyle, width: 150, height: 100 };
         break;
     }
-    
+
     return (
       <View key={partId} style={containerStyle}>
         <Animated.Image 
@@ -465,7 +385,7 @@ const AvatarPreview: React.FC<AvatarPreviewProps> = ({
                   { 
                     rotate: rotateAnim.interpolate({
                       inputRange: [-10, 10],
-                      outputRange: ['-10deg', '10deg'] // Reativada a rotação para melhor experiência
+                      outputRange: ['-10deg', '10deg']
                     })
                   },
                   { scale: scaleAnim }
@@ -474,17 +394,16 @@ const AvatarPreview: React.FC<AvatarPreviewProps> = ({
             ]}
             {...panResponder.panHandlers}
           >
-            {/* Renderizar todas as partes do avatar em ordem de camadas */}
-            {avatarParts.sort((a, b) => a.zIndex - b.zIndex).map(part => 
-              renderAvatarPart(part.id)
-            )}
+            {avatarParts
+              .sort((a, b) => a.zIndex - b.zIndex)
+              .map(part => renderAvatarPart(part.id))
+            }
           </Animated.View>
         )}
         
         <Text style={styles.previewInstructions}>Toque e arraste para girar</Text>
       </GradientBackdrop>
       
-      {/* Botão de aleatorização */}
       <TouchableOpacity
         style={styles.randomizeButton}
         onPress={onRandomize}
@@ -520,7 +439,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 3,
     borderColor: '#ddd',
-    overflow: 'visible',  // Importante: permite que partes fiquem visíveis fora do círculo
+    overflow: 'visible',
     position: 'relative',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 3 },
