@@ -14,6 +14,7 @@ router.get('/', avatarController.getAvatars);
 router.get('/categories', avatarController.getCategories);
 router.get('/styles', avatarController.getStyles);
 router.post('/upload', avatarController.uploadAvatar);
+router.post('/describe', avatarController.describeAvatar); // Nova rota para descrição de avatares
 
 // Rotas para gerenciamento de avatares personalizados
 router.post('/custom', avatarCustomizationController.generateCustomAvatar);

@@ -221,3 +221,75 @@ export const getCustomAvatarForEditing = async (avatarId: string): Promise<any> 
 export const updateCustomAvatar = async (avatarId: string, avatarData: any): Promise<string> => {
   return avatarCustomizationService.updateCustomAvatar(avatarId, avatarData);
 };
+
+/**
+ * Interface para os parâmetros da função getAvatarDescription
+ */
+interface GetAvatarDescriptionParams {
+  name: string;
+  avatarPath: string;
+  type: 'main' | 'secondary';
+}
+
+/**
+ * Obtém uma descrição detalhada do avatar para uso no DALL-E
+ * @param params Parâmetros contendo nome, caminho do avatar e tipo do personagem
+ * @returns Descrição detalhada do avatar
+ */
+export const getAvatarDescription = async (params: GetAvatarDescriptionParams): Promise<string> => {
+  try {
+    const token = await AsyncStorage.getItem('token');
+    
+    const response = await axios.post(
+      `${API_URL}/avatars/describe`,
+      params,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      }
+    );
+    
+    if (response.data && response.data.description) {
+      return response.data.description;
+    }
+    
+    throw new Error('Descrição do avatar não retornada pelo servidor');
+  } catch (error) {
+    console.error('Erro ao obter descrição do avatar:', error);
+    
+    // Em caso de erro, gera uma descrição genérica baseada no tipo do personagem
+    const isAnimal = /gato|cachorro|urso|leão|tigre|raposa|coelho|lobo|macaco|elefante|girafa|pássaro|pato|galinha/i.test(params.name);
+    
+    if (isAnimal) {
+      return `
+- Animal antropomórfico com características humanas
+- Postura bípede e expressão amigável
+- Cores vibrantes e adequadas para público infantil
+- Estilo de ilustração cartoon com traços limpos
+- Expressão facial alegre e acolhedora
+- Visual memorável e consistente para todas as ilustrações
+      `.trim();
+    }
+    
+    if (params.type === 'main') {
+      return `
+- Criança com expressão alegre e postura confiante
+- Cores vibrantes e harmoniosas
+- Estilo de ilustração infantil com traços expressivos
+- Olhos grandes e expressivos
+- Sorriso carismático e acolhedor
+- Visual distintivo e memorável para o protagonista
+      `.trim();
+    }
+    
+    return `
+- Personagem coadjuvante com características complementares
+- Cores que harmonizam com o personagem principal
+- Estilo visual consistente com a ilustração infantil
+- Expressão que reflete seu papel na história
+- Postura natural e bem definida
+- Visual que mantém consistência em todas as cenas
+      `.trim();
+  }
+};

@@ -244,25 +244,30 @@ class OpenAIUnifiedService {
   }
 
   /**
-   * Cria uma "edição" do avatar utilizando o endpoint de edições do DALL-E.
-   * Essa abordagem envia a imagem base (convertida para PNG com fundo transparente e dimensões 1024x1024),
-   * uma máscara (totalmente branca) e o prompt de edição (com contexto da página) para gerar uma imagem que mantenha
-   * as características do personagem e adicione elementos do cenário narrativo.
+   * Verifica se um caminho é uma URL externa
+   */
+  private isExternalUrl(path: string): boolean {
+    return path.startsWith('http://') || path.startsWith('https://');
+  }
+
+  /**
+   * Cria uma variação do avatar utilizando descrição textual detalhada
+   * em vez de enviar a imagem diretamente.
    */
   async createAvatarVariation(avatarPath: string, prompt: string): Promise<string> {
     try {
-      logger.info('Criando edição do avatar (usando endpoint de edições)', { 
+      logger.info('Criando variação do avatar usando descrição textual detalhada', { 
         avatarPath,
         promptLength: prompt.length
       });
 
-      const cacheKey = cacheService.generateKey('avatar_edit', {
+      const cacheKey = cacheService.generateKey('avatar_variation', {
         path: avatarPath,
         prompt: prompt.substring(0, 100)
       });
       const cachedImage = await cacheService.get<string>(cacheKey);
       if (cachedImage) {
-        logger.info('Edição de avatar recuperada do cache');
+        logger.info('Variação de avatar recuperada do cache');
         return cachedImage;
       }
 
@@ -271,79 +276,95 @@ class OpenAIUnifiedService {
         return await storyFallbackService.generateFallbackImage();
       }
 
-      // Verifica se é uma URL externa
-      const isExternalUrl = avatarPath.startsWith('http://') || avatarPath.startsWith('https://');
-      
-      // Para URLs externas, usamos diretamente o fallback textual
-      if (isExternalUrl) {
-        logger.info('Avatar é uma URL externa, usando fallback textual', { avatarPath });
-        return await this.createAvatarVariationFallback(avatarPath, prompt);
+      // Extrai o nome do personagem do caminho do avatar (se possível)
+      let characterName = '';
+      if (!this.isExternalUrl(avatarPath)) {
+        const baseName = path.basename(avatarPath, path.extname(avatarPath));
+        characterName = baseName
+          .replace(/dalle_\d+_/, '')
+          .replace(/main_|secondary_/, '')
+          .replace(/_/g, ' ');
+      } else {
+        // Para URLs externas, tenta extrair informações do caminho
+        const urlParts = avatarPath.split('/');
+        const fileName = urlParts[urlParts.length - 1];
+        
+        // Tenta extrair um nome do arquivo
+        if (fileName) {
+          characterName = fileName
+            .replace(/\.\w+$/, '') // Remove extensão
+            .replace(/[-_]/g, ' '); // Substitui traços e underscores por espaços
+        }
       }
 
+      // Determina o tipo de personagem com base no caminho
+      const characterType = avatarPath.includes('main_') ? 'main' : 'secondary';
+
       try {
-        // Verifica se o arquivo existe antes de tentar acessá-lo
-        await fs.access(avatarPath);
+        // Analisa a imagem do avatar e gera uma descrição detalhada
+        const avatarDescription = await imageProcessor.describeImage(
+          avatarPath,
+          characterName,
+          characterType as 'main' | 'secondary'
+        );
         
-        // Converter a imagem para PNG com fundo transparente e dimensões 1024x1024
-        const sharpModule = await import('sharp');
-        const avatarBuffer = await fs.readFile(avatarPath);
-        const pngBuffer = await sharpModule.default(avatarBuffer)
-          .resize(1024, 1024, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
-          .png()
-          .toBuffer();
-
-        // Criar uma máscara totalmente branca (1024x1024)
-        const maskBuffer = await sharpModule.default({
-          create: { width: 1024, height: 1024, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 1 } }
-        })
-          .png()
-          .toBuffer();
-
-        const formData = new FormData();
-        formData.append('image', pngBuffer, { filename: 'avatar.png', contentType: 'image/png' });
-        formData.append('mask', maskBuffer, { filename: 'mask.png', contentType: 'image/png' });
-        // Para o endpoint de edições, enviamos o prompt que reflete o contexto
-        formData.append('prompt', prompt);
-        formData.append('n', '1');
-        formData.append('size', '1024x1024');
-
-        const response = await axios.post('https://api.openai.com/v1/images/edits', formData, {
-          headers: {
-            'Authorization': `Bearer ${openaiConfig.apiKey}`,
-            ...formData.getHeaders()
-          },
-          timeout: 30000,
+        logger.info('Descrição do avatar gerada com sucesso através da análise da imagem', {
+          descriptionLength: avatarDescription.length
         });
 
-        if (response.data && response.data.data && response.data.data[0]?.url) {
-          const url = response.data.data[0].url;
-          logger.info('Edição de avatar gerada com sucesso pelo endpoint de edições', { url });
-          await cacheService.set(cacheKey, url, this.CACHE_TTL);
-          return url;
-        }
-        throw new Error('Resposta inválida do endpoint de edições.');
-      } catch (fileError) {
-        logger.warn('Erro ao acessar ou processar arquivo de avatar local, usando fallback textual', {
-          error: fileError instanceof Error ? fileError.message : 'Erro desconhecido',
-          avatarPath
+        // Constrói um prompt detalhado para o DALL-E
+        const detailedPrompt = `
+Gere uma ilustração para livro infantil de alta qualidade. 
+
+DESCRIÇÃO DETALHADA DO PERSONAGEM BASEADA NA ANÁLISE DO AVATAR:
+${avatarDescription}
+
+CENA SOLICITADA:
+${prompt}
+
+INSTRUÇÕES DE ESTILO:
+- Mantenha EXATAMENTE as mesmas características físicas descritas acima
+- Preserve as cores, roupas e estilo visual do personagem
+- O personagem deve ser facilmente reconhecível e consistente
+- Ilustração infantil com cores vibrantes e traços expressivos
+- Foco no personagem interagindo com o ambiente da cena
+- Visual adequado para crianças pequenas
+        `.trim();
+
+        logger.info('Gerando variação do avatar com descrição textual detalhada baseada na análise do avatar', {
+          promptLength: detailedPrompt.length
+        });
+
+        // Gera a imagem usando o DALL-E com o prompt detalhado
+        const imageUrl = await this.generateImageWithRetry(detailedPrompt, [], undefined);
+        
+        // Salva no cache
+        await cacheService.set(cacheKey, imageUrl, this.CACHE_TTL);
+        
+        return imageUrl;
+      } catch (error) {
+        logger.error('Erro ao gerar variação do avatar com descrição detalhada', {
+          error: error instanceof Error ? error.message : 'Erro desconhecido'
         });
         
-        // Se não conseguir acessar o arquivo, usa o fallback textual
+        // Fallback para descrição genérica
         return await this.createAvatarVariationFallback(avatarPath, prompt);
       }
     } catch (error: any) {
-      logger.warn('Falha ao gerar edição do avatar pelo endpoint de edições, usando fallback textual.', { error: error.message });
+      logger.warn('Falha ao gerar variação do avatar, usando fallback', { 
+        error: error.message 
+      });
       return await this.createAvatarVariationFallback(avatarPath, prompt);
     }
   }
 
   /**
-   * Fallback para criação de variação do avatar utilizando descrição textual.
+   * Fallback para criação de variação do avatar utilizando descrição textual genérica.
    */
   private async createAvatarVariationFallback(avatarPath: string, prompt: string): Promise<string> {
     try {
       // Verifica se é uma URL externa
-      const isExternalUrl = avatarPath.startsWith('http://') || avatarPath.startsWith('https://');
+      const isExternalUrl = this.isExternalUrl(avatarPath);
       
       let characterType = 'principal';
       let characterName = 'personagem';
@@ -368,7 +389,17 @@ class OpenAIUnifiedService {
         }
       }
       
-      const avatarDescription = await this.generateAvatarDescription(avatarPath);
+      // Descrição genérica para o personagem
+      const avatarDescription = `
+- Personagem ${characterType} chamado "${characterName}"
+- Aparência amigável e expressiva adequada para livro infantil
+- Cores vibrantes e harmoniosas
+- Estilo cartoon com traços simples e limpos
+- Expressão facial alegre e cativante
+- Postura dinâmica e convidativa
+- Visual consistente e reconhecível
+      `.trim();
+      
       const detailedPrompt = `
 Gere uma ilustração para livro infantil de alta qualidade. 
 
@@ -380,27 +411,40 @@ ${prompt}
 
 INSTRUÇÕES DE ESTILO:
 - Mantenha o mesmo estilo visual do personagem descrito acima
-- Cores vibrantes e harmoniosas como na imagem de referência
+- Cores vibrantes e harmoniosas
 - Ilustração infantil com traços limpos e expressivos
 - Foco no personagem interagindo com o ambiente da cena
 - Iluminação adequada e sombras suaves
 - Visual adequado para crianças pequenas
       `.trim();
-      logger.info('Gerando edição de avatar com fallback textual', {
+      
+      logger.info('Gerando variação de avatar com fallback textual', {
         characterName,
         characterType,
         promptLength: detailedPrompt.length
       });
+      
       return await this.generateImageWithRetry(detailedPrompt, [], undefined);
     } catch (fallbackError: any) {
-      logger.error('Erro no fallback textual para edição do avatar', { error: fallbackError.message });
+      logger.error('Erro no fallback textual para variação do avatar', { 
+        error: fallbackError.message 
+      });
+      
       const genericPrompt = `
 Ilustração infantil colorida com personagem de livro infantil.
 Cena: ${prompt}
 Estilo: desenho para crianças com cores vibrantes e traços simples.
       `.trim();
+      
       return await this.generateImageWithRetry(genericPrompt, [], undefined);
     }
+  }
+  
+  /**
+   * Verifica se um caminho é uma URL externa
+   */
+  private isExternalUrl(path: string): boolean {
+    return path.startsWith('http://') || path.startsWith('https://');
   }
 
   async generateImagesForStory(
@@ -457,7 +501,7 @@ Estilo: desenho para crianças com cores vibrantes e traços simples.
     storyContext?: string,
     pageIndex?: number,
     totalPages?: number,
-    // **NOVO**: Parâmetro opcional para o guia de estilo personalizado
+    // Parâmetro opcional para o guia de estilo personalizado
     customStyleGuide?: {
       character?: string;
       environment?: string;
@@ -470,7 +514,7 @@ Estilo: desenho para crianças com cores vibrantes e traços simples.
         mainCharacter: characters?.main?.name,
         secondaryCharacter: characters?.secondary?.name,
         pageIndex,
-        // **NOVO**: Inclui o estilo no cache key para diferenciar imagens com estilos diferentes
+        // Inclui o estilo no cache key para diferenciar imagens com estilos diferentes
         styleCharacter: customStyleGuide?.character?.substring(0, 50),
         styleEnvironment: customStyleGuide?.environment?.substring(0, 50)
       });
@@ -491,78 +535,102 @@ Estilo: desenho para crianças com cores vibrantes e traços simples.
       if (characters) {
         if (characters.main) {
           try {
-            logger.info('Preparando descrição do personagem principal para DALL-E', { 
+            logger.info('Analisando avatar e gerando descrição detalhada do personagem principal', { 
               name: characters.main.name,
               pageIndex
             });
-            const mainDesc = await imageProcessor.prepareCharacterDescription({
-              name: characters.main.name,
-              avatarPath: characters.main.avatarPath,
-              type: 'main'
-            });
-            characterPrompt += mainDesc;
-            logger.info('Descrição do personagem principal adicionada');
+            
+            // Usa o imageProcessor para ANALISAR O AVATAR e gerar uma descrição detalhada do personagem
+            const mainDesc = await imageProcessor.describeImage(
+              characters.main.avatarPath,
+              characters.main.name,
+              'main'
+            );
+            
+            // Formata a descrição para o DALL-E
+            characterPrompt += `PERSONAGEM PRINCIPAL "${characters.main.name}":\n${mainDesc}\n\nIMPORTANTE: Mantenha EXATAMENTE as mesmas características físicas, roupas e cores em todas as ilustrações.`;
+            
+            logger.info('Descrição detalhada do personagem principal gerada com sucesso a partir da análise do avatar');
           } catch (error) {
-            logger.error('Erro ao processar descrição do personagem principal:', {
+            logger.error('Erro ao gerar descrição do personagem principal:', {
               error: error instanceof Error ? error.message : 'Erro desconhecido',
               name: characters.main.name
             });
             characterPrompt += `PERSONAGEM PRINCIPAL "${characters.main.name}": personagem de livro infantil\n\n`;
           }
         }
+        
         if (characters.secondary) {
           try {
-            logger.info('Preparando descrição do personagem secundário para DALL-E', { 
+            logger.info('Analisando avatar e gerando descrição detalhada do personagem secundário', { 
               name: characters.secondary.name,
               pageIndex
             });
-            const secondaryDesc = await imageProcessor.prepareCharacterDescription({
-              name: characters.secondary.name,
-              avatarPath: characters.secondary.avatarPath,
-              type: 'secondary'
-            });
-            characterPrompt += '\n' + secondaryDesc;
-            logger.info('Descrição do personagem secundário adicionada');
+            
+            // Usa o imageProcessor para ANALISAR O AVATAR e gerar uma descrição detalhada do personagem
+            const secondaryDesc = await imageProcessor.describeImage(
+              characters.secondary.avatarPath,
+              characters.secondary.name,
+              'secondary'
+            );
+            
+            // Formata a descrição para o DALL-E
+            characterPrompt += `\n\nPERSONAGEM SECUNDÁRIO "${characters.secondary.name}":\n${secondaryDesc}\n\nIMPORTANTE: Mantenha EXATAMENTE as mesmas características físicas, roupas e cores em todas as ilustrações.`;
+            
+            logger.info('Descrição detalhada do personagem secundário gerada com sucesso a partir da análise do avatar');
           } catch (error) {
-            logger.error('Erro ao processar descrição do personagem secundário:', {
+            logger.error('Erro ao gerar descrição do personagem secundário:', {
               error: error instanceof Error ? error.message : 'Erro desconhecido',
               name: characters.secondary.name
             });
-            characterPrompt += `PERSONAGEM SECUNDÁRIO "${characters.secondary.name}": personagem de livro infantil\n\n`;
+            characterPrompt += `\n\nPERSONAGEM SECUNDÁRIO "${characters.secondary.name}": personagem de livro infantil\n\n`;
           }
         }
       }
       
-      // **NOVO**: Usa o estilo personalizado se fornecido, ou mantém o padrão
+      // Usa o estilo personalizado se fornecido, ou mantém o padrão
       const effectiveStyleGuide = {
         character: customStyleGuide?.character || this.styleGuide.character,
         environment: customStyleGuide?.environment || this.styleGuide.environment,
         artisticStyle: customStyleGuide?.artisticStyle || this.styleGuide.artisticStyle
       };
       
-      // Monta o prompt final, incluindo o estilo personalizado
+      // Extrai elementos da cena a partir do texto para enriquecer o contexto visual
+      const sceneElements = this.extractSceneElementsFromPage(
+        scenePrompt, 
+        characters?.main?.name || 'personagem principal',
+        characters?.secondary?.name
+      );
+      
+      // Monta o prompt final, usando as descrições geradas pela análise dos avatares
       const finalPrompt = `Ilustração para livro infantil.
 
 CENA: ${scenePrompt}
 
-PERSONAGENS: ${characterPrompt}
+ELEMENTOS DA CENA: ${sceneElements}
+
+PERSONAGENS: 
+${characterPrompt}
 
 ESTILO VISUAL:
-- Personagem: ${effectiveStyleGuide.character}
 - Ambiente: ${effectiveStyleGuide.environment}
 - Estilo artístico: ${effectiveStyleGuide.artisticStyle}
 
-Instruções: A imagem deve apresentar um cenário completo, com fundo e elementos ambientais que reflitam a narrativa da página, integrando os personagens de forma natural.`;
+INSTRUÇÕES DE ILUSTRAÇÃO:
+- A imagem deve apresentar um cenário completo, com fundo e elementos que reflitam a narrativa
+- Os personagens devem ser EXATAMENTE como descritos acima, mantendo consistência visual total
+- Integre os personagens de forma natural na cena, respeitando suas características físicas
+- Use cores vibrantes e adequadas para público infantil
+- Mantenha consistência com o estilo visual estabelecido`;
       
-      logger.info('Prompt final preparado com estilo personalizado', { 
+      logger.info('Prompt final preparado com descrições detalhadas dos personagens obtidas por análise dos avatares', { 
         promptLength: finalPrompt.length,
-        pageIndex,
-        styleGuideUsed: 'personalizado'
+        pageIndex
       });
   
       const imageUrl = await this.generateImageWithRetry(
         finalPrompt, 
-        [],
+        [], // Removemos referências de imagens, pois agora usamos as descrições textuais
         storyContext,
         pageIndex,
         totalPages

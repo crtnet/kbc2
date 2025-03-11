@@ -24,6 +24,8 @@ async function generateBookContent(bookId: string, params: {
   ageRange: string;
   prompt?: string;
   authorName?: string;
+  characterDescription?: string;
+  environmentDescription?: string;
 }) {
   try {
     logger.info(`Iniciando geração de conteúdo para o livro ${bookId}`);
@@ -169,6 +171,17 @@ async function generateBookContent(bookId: string, params: {
           'metadata.progress': Math.floor((i / updatedPages.length) * 100)
         });
         
+        // Construir prompt para geração de imagem com base nas descrições detalhadas
+        const characterDescription = params.characterDescription || '';
+        const environmentDescription = params.environmentDescription || '';
+        
+        // Cria um guia de estilo personalizado com as descrições fornecidas
+        const customStyleGuide = {
+          character: characterDescription,
+          environment: environmentDescription,
+          artisticStyle: "ilustração infantil vibrante com traços definidos e cores harmoniosas"
+        };
+        
         // Gerar prompt específico para a imagem da página
         const imagePrompt = `
           Crie uma ilustração para um livro infantil que represente a seguinte cena:
@@ -179,21 +192,29 @@ async function generateBookContent(bookId: string, params: {
           - Estilo cartoon amigável
           - Adequada para crianças de ${params.ageRange} anos
           - Cenário: ${params.setting}
+          - Ambiente: ${environmentDescription || params.setting}
           - Tom: ${params.tone}
         `;
 
-        // Tenta gerar imagem com referências dos avatares
+        // Tenta gerar imagem com descrições textuais detalhadas dos avatares analisados
         try {
+          logger.info('Gerando imagem com descrições textuais baseadas na análise dos avatares', {
+            page: i + 1,
+            hasCharacterDescription: !!characterDescription,
+            hasEnvironmentDescription: !!environmentDescription,
+          });
+          
           const imageUrl = await openaiUnifiedService.generateImage(
             imagePrompt, 
             characters,
             page.text,
             i,
-            updatedPages.length
+            updatedPages.length,
+            customStyleGuide // Passa o guia de estilo personalizado
           );
           
           updatedPages[i].imageUrl = imageUrl;
-          logger.info(`Imagem gerada com sucesso para página ${i + 1}`);
+          logger.info(`Imagem gerada com sucesso para página ${i + 1} usando descrições textuais dos avatares`);
           
           // Atualiza o livro com a página atual
           await Book.findByIdAndUpdate(bookId, {
@@ -331,6 +352,9 @@ export const bookController = {
         authorName: authorName || mainCharacter,
         language: language || 'pt-BR',
         prompt: prompt || '',
+        // Adicionamos os campos de descrição dos personagens e ambiente
+        characterDescription: req.body.characterDescription || '',
+        environmentDescription: req.body.environmentDescription || '',
         status: 'processing',
         metadata: {
           wordCount: 0,
@@ -360,7 +384,10 @@ export const bookController = {
         tone,
         ageRange,
         prompt,
-        authorName
+        authorName,
+        // Passar também as descrições detalhadas dos personagens e ambiente
+        characterDescription: req.body.characterDescription,
+        environmentDescription: req.body.environmentDescription
       }).catch(error => {
         logger.error(`Erro ao gerar conteúdo em background para livro ${book._id}:`, {
           error: error instanceof Error ? error.message : 'Erro desconhecido',

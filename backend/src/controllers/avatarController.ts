@@ -219,6 +219,43 @@ class AvatarController {
   };
 
   /**
+   * POST /avatars/describe
+   * Gera uma descrição detalhada do avatar para uso no DALL-E
+   */
+  public describeAvatar = async (req: Request, res: Response) => {
+    try {
+      const authReq = req as AuthRequest;
+      if (!authReq.user) {
+        return res.status(401).json({ error: 'Usuário não autenticado' });
+      }
+
+      const { name, avatarPath, type } = req.body;
+
+      if (!name || !avatarPath || !type) {
+        return res.status(400).json({
+          error: 'Parâmetros inválidos',
+          details: 'Nome, caminho do avatar e tipo são obrigatórios'
+        });
+      }
+
+      // Usa o imageProcessor para gerar a descrição
+      const description = await avatarService.describeAvatar({
+        name,
+        avatarPath,
+        type
+      });
+
+      return res.json({ description });
+    } catch (error: any) {
+      logger.error('Erro ao gerar descrição do avatar', { error: error.message });
+      return res.status(500).json({
+        error: 'Erro ao gerar descrição do avatar',
+        details: error.message
+      });
+    }
+  };
+
+  /**
    * Obtém as URLs dos avatares em um diretório
    * @param dir Diretório dos avatares
    * @returns Array de URLs dos avatares

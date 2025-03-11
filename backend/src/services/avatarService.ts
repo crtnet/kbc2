@@ -6,6 +6,7 @@ import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
 import { config } from '../config/config';
 import axios from 'axios';
+import { imageProcessor } from './imageProcessor';
 
 class AvatarService {
   /**
@@ -228,6 +229,81 @@ class AvatarService {
       // Em caso de erro, retorna um avatar padrão
       return this.getDefaultAvatar(isMain);
     }
+  }
+}
+
+  /**
+   * Gera uma descrição detalhada do avatar para uso no DALL-E
+   * @param params Parâmetros contendo nome, caminho do avatar e tipo do personagem
+   * @returns Descrição detalhada do avatar
+   */
+  async describeAvatar(params: {
+    name: string;
+    avatarPath: string;
+    type: 'main' | 'secondary';
+  }): Promise<string> {
+    try {
+      const { name, avatarPath, type } = params;
+      
+      // Usa o imageProcessor para gerar a descrição
+      const description = await imageProcessor.prepareCharacterDescription({
+        name,
+        avatarPath,
+        type
+      });
+
+      return description;
+    } catch (error) {
+      logger.error('Erro ao gerar descrição do avatar', {
+        error: error instanceof Error ? error.message : 'Erro desconhecido',
+        params
+      });
+      
+      // Em caso de erro, gera uma descrição genérica
+      return this.generateGenericDescription(params.name, params.type);
+    }
+  }
+
+  /**
+   * Gera uma descrição genérica para o personagem em caso de erro
+   * @param name Nome do personagem
+   * @param type Tipo do personagem (main ou secondary)
+   * @returns Descrição genérica do personagem
+   */
+  private generateGenericDescription(name: string, type: 'main' | 'secondary'): string {
+    // Determina se é um animal pelo nome
+    const isAnimal = /gato|cachorro|urso|leão|tigre|raposa|coelho|lobo|macaco|elefante|girafa|pássaro|pato|galinha/i.test(name);
+    
+    if (isAnimal) {
+      return `
+- Animal antropomórfico com características humanas
+- Postura bípede e expressão amigável
+- Cores vibrantes e adequadas para público infantil
+- Estilo de ilustração cartoon com traços limpos
+- Expressão facial alegre e acolhedora
+- Visual memorável e consistente para todas as ilustrações
+      `.trim();
+    }
+    
+    if (type === 'main') {
+      return `
+- Criança com expressão alegre e postura confiante
+- Cores vibrantes e harmoniosas
+- Estilo de ilustração infantil com traços expressivos
+- Olhos grandes e expressivos
+- Sorriso carismático e acolhedor
+- Visual distintivo e memorável para o protagonista
+      `.trim();
+    }
+    
+    return `
+- Personagem coadjuvante com características complementares
+- Cores que harmonizam com o personagem principal
+- Estilo visual consistente com a ilustração infantil
+- Expressão que reflete seu papel na história
+- Postura natural e bem definida
+- Visual que mantém consistência em todas as cenas
+      `.trim();
   }
 }
 

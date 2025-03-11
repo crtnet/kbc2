@@ -8,6 +8,7 @@ import AvatarSelector from '../screens/AvatarSelector';
 import { useAuth } from '../contexts/AuthContext';
 import * as bookService from '../services/bookService';
 import * as avatarService from '../services/avatarService';
+import { AvatarThumbnail } from '../components/avatar/preview';
 
 interface BookData {
   title: string;
@@ -157,7 +158,7 @@ function CreateBookScreen({ navigation }) {
 
       setLoading(true);
 
-      // Construímos o prompt usando TÍTULO, PERSONAGEM SECUNDÁRIO, etc.
+      // Construímos o prompt usando as descrições geradas
       const finalPrompt = `
         Crie uma história infantil com o título "${bookData.title}".
         O gênero é ${bookData.genre}, o tema é ${bookData.theme}, 
@@ -174,19 +175,15 @@ function CreateBookScreen({ navigation }) {
         A história deve ser escrita por ${bookData.authorName}.
         
         INSTRUÇÕES PARA GERAÇÃO DE IMAGENS:
-        ${bookData.mainCharacterAvatar ? `
         PERSONAGEM PRINCIPAL (${bookData.mainCharacter}):
-        - Use o avatar fornecido como referência EXATA para a aparência do personagem
-        - Mantenha as características físicas, roupas e cores do avatar em todas as ilustrações
-        - O personagem deve ser facilmente reconhecível e consistente em todas as cenas
-        - Preserve o estilo visual e personalidade transmitidos pelo avatar` : ''}
+        ${mainCharacterDescription}
         
-        ${bookData.secondaryCharacterAvatar ? `
+        ${bookData.secondaryCharacter && secondaryCharacterDescription ? `
         PERSONAGEM SECUNDÁRIO (${bookData.secondaryCharacter}):
-        - Use o avatar fornecido como referência EXATA para a aparência do personagem
-        - Mantenha as características físicas, roupas e cores do avatar em todas as ilustrações
-        - O personagem deve ser facilmente reconhecível e consistente em todas as cenas
-        - Preserve o estilo visual e personalidade transmitidos pelo avatar` : ''}
+        ${secondaryCharacterDescription}` : ''}
+        
+        AMBIENTE (${bookData.setting}):
+        ${bookData.environmentDescription}
         
         DIRETRIZES GERAIS PARA ILUSTRAÇÕES:
         - Mantenha um estilo de arte consistente em todo o livro
@@ -197,7 +194,7 @@ function CreateBookScreen({ navigation }) {
         - As expressões faciais e linguagem corporal devem refletir claramente as emoções dos personagens
         
         IMPORTANTE:
-        - A consistência visual dos personagens é CRUCIAL - use os avatares como guia definitivo
+        - A consistência visual dos personagens é CRUCIAL - use as descrições detalhadas como guia definitivo
         - As ilustrações devem manter o mesmo nível de qualidade e detalhamento em todo o livro
         - Cada cena deve ser memorável e cativante para o público infantil
       `;
@@ -210,30 +207,50 @@ function CreateBookScreen({ navigation }) {
         `${bookData.setting} é um ambiente colorido e acolhedor para crianças`;
 
       // Preparar os dados do livro para envio
+      const mainAvatarUrl = bookData.mainCharacterAvatar.startsWith('CUSTOM||') 
+        ? bookData.mainCharacterAvatar.split('||CUSTOM_AVATAR_DATA||')[0].replace('CUSTOM||', '')
+        : bookData.mainCharacterAvatar;
+
+      const secondaryAvatarUrl = bookData.secondaryCharacterAvatar 
+        ? (bookData.secondaryCharacterAvatar.startsWith('CUSTOM||')
+            ? bookData.secondaryCharacterAvatar.split('||CUSTOM_AVATAR_DATA||')[0].replace('CUSTOM||', '')
+            : bookData.secondaryCharacterAvatar)
+        : '';
+
+      // Gerar descrições detalhadas dos personagens usando o imageProcessor
+      const mainCharacterDescription = await avatarService.getAvatarDescription({
+        name: bookData.mainCharacter,
+        avatarPath: mainAvatarUrl,
+        type: 'main'
+      });
+
+      let secondaryCharacterDescription = '';
+      if (bookData.secondaryCharacter && secondaryAvatarUrl) {
+        secondaryCharacterDescription = await avatarService.getAvatarDescription({
+          name: bookData.secondaryCharacter,
+          avatarPath: secondaryAvatarUrl,
+          type: 'secondary'
+        });
+      }
+
+      // Preparar os dados do livro para envio
       const bookDataToSend = {
         title: bookData.title,
         genre: bookData.genre,
         theme: bookData.theme,
         mainCharacter: bookData.mainCharacter,
-        // Extrair apenas a URL da face para enviar ao servidor
-        mainCharacterAvatar: bookData.mainCharacterAvatar.startsWith('CUSTOM||') 
-          ? bookData.mainCharacterAvatar.split('||CUSTOM_AVATAR_DATA||')[0].replace('CUSTOM||', '')
-          : bookData.mainCharacterAvatar,
+        mainCharacterAvatar: mainAvatarUrl,
         secondaryCharacter: bookData.secondaryCharacter || '',
-        // Extrair apenas a URL da face para enviar ao servidor
-        secondaryCharacterAvatar: bookData.secondaryCharacterAvatar 
-          ? (bookData.secondaryCharacterAvatar.startsWith('CUSTOM||')
-              ? bookData.secondaryCharacterAvatar.split('||CUSTOM_AVATAR_DATA||')[0].replace('CUSTOM||', '')
-              : bookData.secondaryCharacterAvatar)
-          : '',
+        secondaryCharacterAvatar: secondaryAvatarUrl,
         setting: bookData.setting,
         tone: bookData.tone,
         ageRange: bookData.ageRange,
         prompt: finalPrompt.trim(),
         authorName: bookData.authorName,
         language: 'pt-BR',
-        // Garantir que as descrições estejam presentes
-        characterDescription: characterDesc,
+        // Usar as descrições geradas pelo imageProcessor
+        characterDescription: mainCharacterDescription,
+        secondaryCharacterDescription: secondaryCharacterDescription,
         environmentDescription: environmentDesc,
         // Dados adicionais para avatar personalizado
         mainCharacterAvatarData: bookData.mainCharacterAvatar.startsWith('CUSTOM||') 
@@ -332,28 +349,10 @@ function CreateBookScreen({ navigation }) {
             }}
           >
             {bookData.mainCharacterAvatar ? (
-              <Image
-                source={{ 
-                  uri: bookData.mainCharacterAvatar.startsWith('CUSTOM||') 
-                    ? bookData.mainCharacterAvatar.split('||CUSTOM_AVATAR_DATA||')[0].replace('CUSTOM||', '')
-                    : bookData.mainCharacterAvatar 
-                }}
+              <AvatarThumbnail 
+                avatarIdentifier={bookData.mainCharacterAvatar}
+                size={60}
                 style={styles.avatarPreview}
-                accessibilityLabel={`Avatar de ${bookData.mainCharacter}`}
-                defaultSource={require('../assets/placeholder-image.png')}
-                onError={(e) => {
-                  console.error('Erro ao carregar imagem do avatar principal. URL:', 
-                    bookData.mainCharacterAvatar.startsWith('CUSTOM||') 
-                      ? bookData.mainCharacterAvatar.split('||CUSTOM_AVATAR_DATA||')[0].replace('CUSTOM||', '')
-                      : bookData.mainCharacterAvatar,
-                    e.nativeEvent.error
-                  );
-                  // Se houver erro, usar uma imagem padrão
-                  setBookData(prev => ({
-                    ...prev,
-                    mainCharacterAvatar: 'https://cdn-icons-png.flaticon.com/512/4140/4140048.png'
-                  }));
-                }}
               />
             ) : (
               <View style={styles.avatarPlaceholder}>
@@ -363,16 +362,25 @@ function CreateBookScreen({ navigation }) {
           </TouchableOpacity>
         </View>
 
+        <Text style={styles.infoText}>
+          Selecione um avatar e descreva detalhadamente o personagem. O sistema analisará o avatar e usará a descrição para criar ilustrações consistentes.
+        </Text>
+
         {/* **NOVO**: Campo para descrição do personagem */}
         <TextInput
-          label="Descrição do Personagem Principal"
+          label="Descrição Detalhada do Personagem Principal"
           value={bookData.characterDescription}
           onChangeText={(text) => setBookData({ ...bookData, characterDescription: text })}
           mode="outlined"
           style={styles.input}
-          placeholder="Ex: menina de 8 anos, cabelos cacheados vermelhos, vestido amarelo..."
+          placeholder="Descreva detalhadamente a aparência, roupas, cores, expressão facial e características do personagem..."
           multiline
+          numberOfLines={4}
         />
+        <Text style={styles.helperText}>
+          Uma descrição detalhada ajuda na consistência visual. Inclua cor dos cabelos, olhos, roupas, 
+          acessórios, expressão facial e características marcantes do personagem.
+        </Text>
 
         <View style={styles.characterInputContainer}>
           <TextInput
@@ -402,32 +410,10 @@ function CreateBookScreen({ navigation }) {
               }}
             >
               {bookData.secondaryCharacterAvatar ? (
-                <Image
-                source={{
-                  uri:
-                    bookData.secondaryCharacterAvatar &&
-                    bookData.secondaryCharacterAvatar.startsWith('CUSTOM||')
-                      ? bookData.secondaryCharacterAvatar
-                          .split('||CUSTOM_AVATAR_DATA||')[0]
-                          .replace('CUSTOM||', '')
-                      : bookData.secondaryCharacterAvatar
-                }}
-                style={styles.avatarPreview}
-                  accessibilityLabel={`Avatar de ${bookData.secondaryCharacter}`}
-                  defaultSource={require('../assets/placeholder-image.png')}
-                  onError={(e) => {
-                    console.error('Erro ao carregar imagem do avatar secundário. URL:', 
-                      bookData.secondaryCharacterAvatar.startsWith('CUSTOM||') 
-                        ? bookData.secondaryCharacterAvatar.split('||CUSTOM_AVATAR_DATA||')[0].replace('CUSTOM||', '')
-                        : bookData.secondaryCharacterAvatar,
-                      e.nativeEvent.error
-                    );
-                    // Se houver erro, usar uma imagem padrão
-                    setBookData(prev => ({
-                      ...prev,
-                      secondaryCharacterAvatar: 'https://cdn-icons-png.flaticon.com/512/4140/4140061.png'
-                    }));
-                  }}
+                <AvatarThumbnail 
+                  avatarIdentifier={bookData.secondaryCharacterAvatar}
+                  size={60}
+                  style={styles.avatarPreview}
                 />
               ) : (
                 <View style={styles.avatarPlaceholder}>
@@ -448,16 +434,24 @@ function CreateBookScreen({ navigation }) {
         placeholder="Ex: floresta encantada, cidade mágica..."
       />
 
-      {/* **NOVO**: Campo para descrição do ambiente */}
+      <Text style={styles.infoText}>
+        Descreva detalhadamente o ambiente. Esta descrição será usada para gerar imagens consistentes e imersivas para o livro.
+      </Text>
+
       <TextInput
         label="Descrição Detalhada do Ambiente"
         value={bookData.environmentDescription}
         onChangeText={(text) => setBookData({ ...bookData, environmentDescription: text })}
         mode="outlined"
         style={styles.input}
-        placeholder="Ex: floresta mágica com cogumelos coloridos e fadas pequenas..."
+        placeholder="Descreva detalhadamente o ambiente, cores, iluminação, elementos característicos, atmosfera..."
         multiline
+        numberOfLines={4}
       />
+      <Text style={styles.helperText}>
+        Detalhes do ambiente enriquecem as ilustrações. Inclua cores predominantes, objetos importantes,
+        iluminação, clima e elementos que caracterizam o cenário.
+      </Text>
 
       <AvatarSelector
         visible={mainAvatarModalVisible}
@@ -756,6 +750,20 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     color: '#666'
   },
+  infoText: {
+    fontSize: 14,
+    marginBottom: 10,
+    color: '#1976d2',
+    fontStyle: 'italic'
+  },
+  helperText: {
+    fontSize: 12,
+    marginTop: -10,
+    marginBottom: 15,
+    color: '#666',
+    fontStyle: 'italic',
+    paddingHorizontal: 5,
+  },
   segmentedButton: {
     marginBottom: 15
   },
@@ -800,7 +808,6 @@ const styles = StyleSheet.create({
   avatarPreview: {
     width: '100%',
     height: '100%',
-    resizeMode: 'cover',
     borderRadius: 30,
     backgroundColor: '#ffffff' // Adding white background
   },
