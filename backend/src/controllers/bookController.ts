@@ -11,6 +11,7 @@ import { avatarFixService } from '../services/avatarFixService';
 import { GenerateStoryParams } from '../services/storyFallback.service';
 import { config } from '../config/config';
 import { imageProcessor } from '../services/imageProcessor';
+import { imageAnalysisService } from '../services/imageAnalysisService';
 
 interface AuthRequest extends Request {
   user?: {
@@ -121,20 +122,66 @@ class BookController {
         });
       }
       
-      // Enfatiza a importância das descrições detalhadas para melhores resultados
-      if (!characterDescription) {
-        logger.warn('Descrição detalhada do personagem não fornecida, qualidade da consistência visual pode ser afetada', {
-          title,
-          mainCharacter
-        });
-      }
+      // Analisa os avatares para gerar descrições detalhadas
+      let mainCharacterDesc = '';
+      let secondaryCharacterDesc = '';
       
-      if (!environmentDescription) {
-        logger.warn('Descrição detalhada do ambiente não fornecida, qualidade das imagens pode ser afetada', {
-          title,
-          setting
+      try {
+        // Analisa o avatar do personagem principal
+        if (mainCharacterAvatar) {
+          mainCharacterDesc = await imageAnalysisService.analyzeCustomAvatar(mainCharacterAvatar);
+          logger.info('Descrição do personagem principal gerada com sucesso', {
+            character: mainCharacter,
+            descriptionLength: mainCharacterDesc.length
+          });
+        }
+
+        // Analisa o avatar do personagem secundário (se existir)
+        if (secondaryCharacter && secondaryCharacterAvatar) {
+          secondaryCharacterDesc = await imageAnalysisService.analyzeCustomAvatar(secondaryCharacterAvatar);
+          logger.info('Descrição do personagem secundário gerada com sucesso', {
+            character: secondaryCharacter,
+            descriptionLength: secondaryCharacterDesc.length
+          });
+        }
+      } catch (error) {
+        logger.error('Erro ao analisar avatares', {
+          error: error instanceof Error ? error.message : 'Erro desconhecido'
         });
+        // Continua com as descrições fornecidas ou vazias
       }
+
+      // Usa as descrições geradas pela análise dos avatares ou as descrições fornecidas
+      const finalCharacterDescription = mainCharacterDesc || characterDescription || 
+        `${mainCharacter} é um personagem de livro infantil`;
+      
+      const finalSecondaryCharacterDescription = secondaryCharacterDesc || 
+        (secondaryCharacter ? characterDescription || `${secondaryCharacter} é um personagem de livro infantil` : '');
+      
+      // Usa a descrição do ambiente fornecida ou gera uma básica
+      const finalEnvironmentDescription = environmentDescription || 
+        `${setting} é um ambiente colorido e acolhedor para crianças`;
+
+      // Monta parâmetros para geração da história com estilo fixo
+      const storyParams: GenerateStoryParams = {
+        title,
+        genre,
+        theme,
+        mainCharacter,
+        mainCharacterDescription: finalCharacterDescription,
+        secondaryCharacter,
+        secondaryCharacterDescription: finalSecondaryCharacterDescription,
+        setting,
+        tone,
+        ageRange,
+        // Parâmetros de estilo com descrições detalhadas
+        styleGuide: {
+          character: finalCharacterDescription + 
+            (finalSecondaryCharacterDescription ? `\n\n${finalSecondaryCharacterDescription}` : ''),
+          environment: finalEnvironmentDescription,
+          artisticStyle: "ilustração cartoon, cores vibrantes, traços suaves, estilo livro infantil"
+        }
+      };
 
       // Validação mais branda para avatar - se não tiver, usaremos um padrão
       let normalizedMainAvatar = mainCharacterAvatar;
@@ -204,9 +251,9 @@ class BookController {
         genre,
         theme,
         mainCharacter,
-        mainCharacterAvatar: normalizedMainAvatar,
+        mainCharacterDescription,
         secondaryCharacter,
-        secondaryCharacterAvatar: normalizedSecondaryAvatar,
+        secondaryCharacterDescription,
         setting,
         tone,
         ageRange,
@@ -230,9 +277,9 @@ class BookController {
         genre,
         theme,
         mainCharacter,
-        mainCharacterAvatar: normalizedMainAvatar,
+        mainCharacterDescription,
         secondaryCharacter,
-        secondaryCharacterAvatar: normalizedSecondaryAvatar,
+        secondaryCharacterDescription,
         setting,
         tone,
         ageRange,
@@ -253,7 +300,6 @@ class BookController {
         // **NOVO**: Armazena o estilo no modelo
         styleGuide: storyParams.styleGuide,
         // Armazena as descrições para uso futuro
-        characterDescription: characterDescription || `${mainCharacter} é um personagem de livro infantil`,
         environmentDescription: environmentDescription || `${setting} é um ambiente colorido e acolhedor para crianças`
       });
 
@@ -429,179 +475,43 @@ class BookController {
 
     try {
       // Processa avatares e prepara personagens
-      logger.info('Iniciando processamento dos avatares para geração de imagens', { bookId });
+      logger.info('Iniciando processamento das descrições dos personagens para geração de imagens', { bookId });
       
       let characters = {
         main: {
           name: book.mainCharacter,
-          avatarPath: book.mainCharacterAvatar, // Usa a URL original como fallback
+          description: book.mainCharacterDescription,
           type: 'main' as 'main' | 'secondary'
         }
       };
 
-      if (book.secondaryCharacter && book.secondaryCharacterAvatar) {
+      if (book.secondaryCharacter && book.secondaryCharacterDescription) {
         characters.secondary = {
           name: book.secondaryCharacter,
-          avatarPath: book.secondaryCharacterAvatar, // Usa a URL original como fallback
+          description: book.secondaryCharacterDescription,
           type: 'secondary' as 'main' | 'secondary'
         };
       }
 
-      try {
-        // Verifica se os avatares são de CDNs confiáveis
-        const isMainAvatarTrustedCDN = avatarFixService.isTrustedCDN(book.mainCharacterAvatar);
-        const isSecondaryAvatarTrustedCDN = book.secondaryCharacterAvatar ? 
-          avatarFixService.isTrustedCDN(book.secondaryCharacterAvatar) : false;
-        
-        logger.info('Verificação de CDNs confiáveis', { 
-          mainIsTrustedCDN: isMainAvatarTrustedCDN,
-          secondaryIsTrustedCDN: isSecondaryAvatarTrustedCDN
-        });
-        
-        // Para o avatar principal
-        if (isMainAvatarTrustedCDN) {
-          logger.info('Avatar principal é de CDN confiável, usando diretamente', { 
-            url: book.mainCharacterAvatar 
-          });
-          characters.main.avatarPath = book.mainCharacterAvatar;
-        } else {
-          try {
-            // Processa a URL do avatar principal
-            characters.main.avatarPath = avatarFixService.processAvatarUrl(book.mainCharacterAvatar, true);
-            logger.info('URL do avatar principal processada com sucesso', { 
-              originalPath: book.mainCharacterAvatar,
-              processedPath: characters.main.avatarPath
-            });
-          } catch (mainAvatarError) {
-            logger.error('Erro ao processar URL do avatar principal, usando padrão', {
-              error: mainAvatarError instanceof Error ? mainAvatarError.message : 'Erro desconhecido'
-            });
-            // Usa um avatar padrão em caso de erro
-            characters.main.avatarPath = avatarFixService.getDefaultAvatarUrl(true);
-          }
-        }
-        
-        // Para o avatar secundário (se existir)
-        if (book.secondaryCharacter && book.secondaryCharacterAvatar) {
-          if (isSecondaryAvatarTrustedCDN) {
-            logger.info('Avatar secundário é de CDN confiável, usando diretamente', { 
-              url: book.secondaryCharacterAvatar 
-            });
-            characters.secondary.avatarPath = book.secondaryCharacterAvatar;
-          } else {
-            try {
-              // Processa a URL do avatar secundário
-              characters.secondary.avatarPath = avatarFixService.processAvatarUrl(book.secondaryCharacterAvatar, false);
-              logger.info('URL do avatar secundário processada com sucesso', { 
-                originalPath: book.secondaryCharacterAvatar,
-                processedPath: characters.secondary.avatarPath
-              });
-            } catch (secondaryAvatarError) {
-              logger.error('Erro ao processar URL do avatar secundário, usando padrão', {
-                error: secondaryAvatarError instanceof Error ? secondaryAvatarError.message : 'Erro desconhecido'
-              });
-              // Usa um avatar padrão em caso de erro
-              characters.secondary.avatarPath = avatarFixService.getDefaultAvatarUrl(false);
-            }
-          }
-        }
-        
-        // Prepara descrições de personagens para uso na geração de imagens
-        logger.info('Analisando avatares e gerando descrições detalhadas dos personagens', { 
-          mainCharacter: book.mainCharacter,
-          hasSecondaryCharacter: !!book.secondaryCharacter
-        });
-        
-        try {
-          // Analisa imagens dos avatares para gerar descrições detalhadas usando imageProcessor
-          const mainCharacterDescription = await imageProcessor.describeImage(
-            characters.main.avatarPath,
-            book.mainCharacter,
-            'main'
-          );
-          
-          let secondaryCharacterDescription = '';
-          if (characters.secondary) {
-            secondaryCharacterDescription = await imageProcessor.describeImage(
-              characters.secondary.avatarPath,
-              book.secondaryCharacter,
-              'secondary'
-            );
-          }
-          
-          // Formata as descrições para uso no DALL-E
-          const formattedMainDescription = `PERSONAGEM PRINCIPAL "${book.mainCharacter}":\n${mainCharacterDescription}\n\nIMPORTANTE: Mantenha EXATAMENTE as mesmas características físicas, roupas e cores em todas as ilustrações.`;
-          
-          let formattedSecondaryDescription = '';
-          if (secondaryCharacterDescription) {
-            formattedSecondaryDescription = `\n\nPERSONAGEM SECUNDÁRIO "${book.secondaryCharacter}":\n${secondaryCharacterDescription}\n\nIMPORTANTE: Mantenha EXATAMENTE as mesmas características físicas, roupas e cores em todas as ilustrações.`;
-          }
-          
-          // Adiciona as descrições ao styleGuide para uso na geração de imagens
-          if (!book.styleGuide) {
-            book.styleGuide = {
-              character: book.characterDescription || formattedMainDescription + formattedSecondaryDescription,
-              environment: book.environmentDescription || `cenário de ${book.setting}`,
-              artisticStyle: "ilustração cartoon, cores vibrantes, traços suaves, estilo livro infantil"
-            };
-          } else {
-            // Substitui a descrição existente com as informações detalhadas baseadas na análise dos avatares
-            book.styleGuide.character = formattedMainDescription + formattedSecondaryDescription;
-            // Garante que o estilo artístico está definido
-            book.styleGuide.artisticStyle = book.styleGuide.artisticStyle || 
-              "ilustração cartoon, cores vibrantes, traços suaves, estilo livro infantil";
-          }
-          
-          logger.info('Descrições detalhadas dos personagens geradas com sucesso através da análise dos avatares', {
-            mainDescriptionLength: mainCharacterDescription.length,
-            hasSecondaryDescription: !!secondaryCharacterDescription
-          });
-        } catch (descriptionError) {
-          logger.error('Erro ao analisar avatares e gerar descrições detalhadas, usando descrições básicas', {
-            error: descriptionError instanceof Error ? descriptionError.message : 'Erro desconhecido',
-            bookId
-          });
-          // Usa o serviço de avatar fixo para preparar descrições mais simples como fallback
-          const mainCharacterDescription = avatarFixService.prepareCharacterDescription(book.mainCharacter, true);
-          
-          let secondaryCharacterDescription = '';
-          if (characters.secondary) {
-            secondaryCharacterDescription = avatarFixService.prepareCharacterDescription(book.secondaryCharacter, false);
-          }
-          
-          // Adiciona as descrições fallback ao styleGuide
-          if (!book.styleGuide) {
-            book.styleGuide = {
-              character: book.characterDescription || mainCharacterDescription + 
-                (secondaryCharacterDescription ? `\n\n${secondaryCharacterDescription}` : ''),
-              environment: book.environmentDescription || `cenário de ${book.setting}`,
-              artisticStyle: "ilustração cartoon, cores vibrantes, traços suaves, estilo livro infantil"
-            };
-          }
-        }
-      } catch (avatarError) {
-        logger.error('Erro ao processar avatares, usando avatares padrão', {
-          error: avatarError instanceof Error ? avatarError.message : 'Erro desconhecido',
-          bookId
-        });
-        // Usa avatares padrão em caso de erro geral
-        characters.main.avatarPath = avatarFixService.getDefaultAvatarUrl(true);
-        if (characters.secondary) {
-          characters.secondary.avatarPath = avatarFixService.getDefaultAvatarUrl(false);
-        }
+      // Prepara o guia de estilo para a geração de imagens
+      if (!book.styleGuide) {
+        book.styleGuide = {
+          character: characters.main.description + 
+            (characters.secondary ? `\n\n${characters.secondary.description}` : ''),
+          environment: book.environmentDescription || `cenário de ${book.setting}`,
+          artisticStyle: "ilustração cartoon, cores vibrantes, traços suaves, estilo livro infantil"
+        };
       }
 
-      logger.info('Iniciando geração de imagens utilizando descrições detalhadas baseadas em análise de avatares', { 
+      logger.info('Iniciando geração de imagens utilizando descrições detalhadas dos personagens', { 
         bookId,
-        mainAvatarPath: characters.main.avatarPath,
-        hasSecondaryAvatar: !!characters.secondary,
+        hasSecondaryCharacter: !!characters.secondary,
         hasStyleGuide: !!book.styleGuide,
         characterDescriptionLength: book.styleGuide?.character?.length || 0,
         environmentDescriptionLength: book.styleGuide?.environment?.length || 0
       });
       
-      // Passa o styleGuide do livro (que agora contém descrições detalhadas baseadas na análise dos avatares)
-      // para o serviço de geração de imagens
+      // Passa o styleGuide do livro para o serviço de geração de imagens
       const imageUrls = await openaiUnifiedService.generateImagesForStory(pages, characters, book.styleGuide);
       
       // Atualiza as URLs das imagens no modelo

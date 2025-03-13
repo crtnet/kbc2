@@ -19,7 +19,7 @@ export interface AvatarPart {
   name: string;
   options: AvatarPartOption[];
   zIndex: number;
-  colorizeOptions?: boolean;
+  colorizeOptions: boolean;
   defaultColor?: string;
 }
 
@@ -197,7 +197,8 @@ export const AVATAR_PARTS: AvatarPart[] = [
     id: 'nose',
     name: 'Nariz',
     zIndex: 4,
-    colorizeOptions: false,
+    colorizeOptions: true,
+    defaultColor: '#FFE0B2',
     options: [
       { id: 'nose_small', name: 'Pequeno', imageUrl: 'https://cdn-icons-png.flaticon.com/512/3665/3665874.png' },
       { id: 'nose_medium', name: 'Médio', imageUrl: 'https://cdn-icons-png.flaticon.com/512/3665/3665877.png' },

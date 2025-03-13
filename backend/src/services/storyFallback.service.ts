@@ -6,9 +6,9 @@ export interface GenerateStoryParams {
   genre: string;
   theme: string;
   mainCharacter: string;
-  mainCharacterAvatar?: string;
+  mainCharacterDescription: string;
   secondaryCharacter?: string;
-  secondaryCharacterAvatar?: string;
+  secondaryCharacterDescription?: string;
   setting: string;
   tone: string;
   ageRange: string;

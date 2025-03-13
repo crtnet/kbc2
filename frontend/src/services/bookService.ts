@@ -2,7 +2,6 @@
 import axios from 'axios';
 import { API_URL } from '../config/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { normalizeAvatarUrl, isValidCdnUrl } from '../utils/avatarUtils';
 
 /**
  * Interface para os dados de criação de um livro
@@ -12,16 +11,15 @@ export interface CreateBookData {
   genre: 'adventure' | 'fantasy' | 'mystery';
   theme: 'friendship' | 'courage' | 'kindness';
   mainCharacter: string;
-  mainCharacterAvatar: string;
+  mainCharacterDescription: string;
   secondaryCharacter?: string;
-  secondaryCharacterAvatar?: string;
+  secondaryCharacterDescription?: string;
   setting: string;
   tone: 'fun' | 'adventurous' | 'calm';
   ageRange: '1-2' | '3-4' | '5-6' | '7-8' | '9-10' | '11-12';
   authorName: string;
   language?: string;
-  characterDescription?: string;
-  environmentDescription?: string;
+  environmentDescription: string;
   styleGuide?: {
     character?: string;
     environment?: string;
@@ -46,64 +44,16 @@ export const createBook = async (bookData: CreateBookData) => {
   try {
     const token = await AsyncStorage.getItem('token');
     
-    // Criar uma cópia profunda dos dados para não modificar o objeto original
-    const normalizedBookData = { ...bookData };
-    
-    try {
-      // Normalizar a URL do avatar principal
-      if (!normalizedBookData.mainCharacterAvatar) {
-        console.warn('Avatar do personagem principal não fornecido, usando avatar padrão');
-        normalizedBookData.mainCharacterAvatar = 'https://cdn-icons-png.flaticon.com/512/4140/4140048.png';
-      }
-      
-      // Verificar e normalizar a URL do avatar principal usando nossa função utilitária
-      if (normalizedBookData.mainCharacterAvatar) {
-        const originalUrl = normalizedBookData.mainCharacterAvatar;
-        normalizedBookData.mainCharacterAvatar = normalizeAvatarUrl(originalUrl);
-        console.log(`Avatar principal normalizado: ${originalUrl} -> ${normalizedBookData.mainCharacterAvatar}`);
-      }
-      
-      // Normalizar a URL do avatar secundário (se existir)
-      if (normalizedBookData.secondaryCharacter && !normalizedBookData.secondaryCharacterAvatar) {
-        console.warn('Avatar do personagem secundário não fornecido, usando avatar padrão');
-        normalizedBookData.secondaryCharacterAvatar = 'https://cdn-icons-png.flaticon.com/512/4140/4140051.png';
-      }
-      
-      if (normalizedBookData.secondaryCharacterAvatar) {
-        const originalUrl = normalizedBookData.secondaryCharacterAvatar;
-        normalizedBookData.secondaryCharacterAvatar = normalizeAvatarUrl(originalUrl);
-        console.log(`Avatar secundário normalizado: ${originalUrl} -> ${normalizedBookData.secondaryCharacterAvatar}`);
-      }
-    } catch (normalizationError) {
-      console.error('Erro durante a normalização de URLs de avatar:', normalizationError);
-      // Em caso de erro na normalização, usar avatares padrão seguros
-      normalizedBookData.mainCharacterAvatar = 'https://cdn-icons-png.flaticon.com/512/4140/4140048.png';
-      if (normalizedBookData.secondaryCharacter) {
-        normalizedBookData.secondaryCharacterAvatar = 'https://cdn-icons-png.flaticon.com/512/4140/4140051.png';
-      }
-    }
-    
-    // Verificação final para garantir que as URLs são válidas
-    if (!isValidCdnUrl(normalizedBookData.mainCharacterAvatar)) {
-      console.warn('A URL do avatar principal não é de um CDN confiável, usando avatar padrão');
-      normalizedBookData.mainCharacterAvatar = 'https://cdn-icons-png.flaticon.com/512/4140/4140048.png';
-    }
-    
-    if (normalizedBookData.secondaryCharacterAvatar && !isValidCdnUrl(normalizedBookData.secondaryCharacterAvatar)) {
-      console.warn('A URL do avatar secundário não é de um CDN confiável, usando avatar padrão');
-      normalizedBookData.secondaryCharacterAvatar = 'https://cdn-icons-png.flaticon.com/512/4140/4140051.png';
-    }
-    
-    // Log dos dados após normalização para depuração
-    console.log('Enviando requisição para criar livro com dados normalizados:', {
-      title: normalizedBookData.title,
-      mainCharacter: normalizedBookData.mainCharacter,
-      mainCharacterAvatar: normalizedBookData.mainCharacterAvatar,
-      secondaryCharacter: normalizedBookData.secondaryCharacter,
-      secondaryCharacterAvatar: normalizedBookData.secondaryCharacterAvatar
+    // Log dos dados para depuração
+    console.log('Enviando requisição para criar livro:', {
+      title: bookData.title,
+      mainCharacter: bookData.mainCharacter,
+      mainCharacterDescription: bookData.mainCharacterDescription?.substring(0, 100) + '...',
+      secondaryCharacter: bookData.secondaryCharacter,
+      secondaryCharacterDescription: bookData.secondaryCharacterDescription?.substring(0, 100) + '...'
     });
     
-    const response = await axios.post(`${API_URL}/books`, normalizedBookData, {
+    const response = await axios.post(`${API_URL}/books`, bookData, {
       headers: {
         Authorization: `Bearer ${token}`
       },

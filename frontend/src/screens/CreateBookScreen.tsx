@@ -158,7 +158,7 @@ function CreateBookScreen({ navigation }) {
 
       setLoading(true);
 
-      // Construímos o prompt usando as descrições geradas
+      // Construímos o prompt usando as descrições
       const finalPrompt = `
         Crie uma história infantil com o título "${bookData.title}".
         O gênero é ${bookData.genre}, o tema é ${bookData.theme}, 
@@ -176,14 +176,14 @@ function CreateBookScreen({ navigation }) {
         
         INSTRUÇÕES PARA GERAÇÃO DE IMAGENS:
         PERSONAGEM PRINCIPAL (${bookData.mainCharacter}):
-        ${mainCharacterDescription}
+        ${bookData.characterDescription || 'Personagem principal do livro'}
         
-        ${bookData.secondaryCharacter && secondaryCharacterDescription ? `
+        ${bookData.secondaryCharacter ? `
         PERSONAGEM SECUNDÁRIO (${bookData.secondaryCharacter}):
-        ${secondaryCharacterDescription}` : ''}
+        ${bookData.characterDescription || 'Personagem secundário do livro'}` : ''}
         
         AMBIENTE (${bookData.setting}):
-        ${bookData.environmentDescription}
+        ${bookData.environmentDescription || `Ambiente do livro: ${bookData.setting}`}
         
         DIRETRIZES GERAIS PARA ILUSTRAÇÕES:
         - Mantenha um estilo de arte consistente em todo o livro
@@ -207,58 +207,22 @@ function CreateBookScreen({ navigation }) {
         `${bookData.setting} é um ambiente colorido e acolhedor para crianças`;
 
       // Preparar os dados do livro para envio
-      const mainAvatarUrl = bookData.mainCharacterAvatar.startsWith('CUSTOM||') 
-        ? bookData.mainCharacterAvatar.split('||CUSTOM_AVATAR_DATA||')[0].replace('CUSTOM||', '')
-        : bookData.mainCharacterAvatar;
-
-      const secondaryAvatarUrl = bookData.secondaryCharacterAvatar 
-        ? (bookData.secondaryCharacterAvatar.startsWith('CUSTOM||')
-            ? bookData.secondaryCharacterAvatar.split('||CUSTOM_AVATAR_DATA||')[0].replace('CUSTOM||', '')
-            : bookData.secondaryCharacterAvatar)
-        : '';
-
-      // Gerar descrições detalhadas dos personagens usando o imageProcessor
-      const mainCharacterDescription = await avatarService.getAvatarDescription({
-        name: bookData.mainCharacter,
-        avatarPath: mainAvatarUrl,
-        type: 'main'
-      });
-
-      let secondaryCharacterDescription = '';
-      if (bookData.secondaryCharacter && secondaryAvatarUrl) {
-        secondaryCharacterDescription = await avatarService.getAvatarDescription({
-          name: bookData.secondaryCharacter,
-          avatarPath: secondaryAvatarUrl,
-          type: 'secondary'
-        });
-      }
-
-      // Preparar os dados do livro para envio
       const bookDataToSend = {
         title: bookData.title,
         genre: bookData.genre,
         theme: bookData.theme,
         mainCharacter: bookData.mainCharacter,
-        mainCharacterAvatar: mainAvatarUrl,
+        mainCharacterAvatar: bookData.mainCharacterAvatar,
         secondaryCharacter: bookData.secondaryCharacter || '',
-        secondaryCharacterAvatar: secondaryAvatarUrl,
+        secondaryCharacterAvatar: bookData.secondaryCharacterAvatar || '',
         setting: bookData.setting,
         tone: bookData.tone,
         ageRange: bookData.ageRange,
         prompt: finalPrompt.trim(),
         authorName: bookData.authorName,
         language: 'pt-BR',
-        // Usar as descrições geradas pelo imageProcessor
-        characterDescription: mainCharacterDescription,
-        secondaryCharacterDescription: secondaryCharacterDescription,
-        environmentDescription: environmentDesc,
-        // Dados adicionais para avatar personalizado
-        mainCharacterAvatarData: bookData.mainCharacterAvatar.startsWith('CUSTOM||') 
-          ? bookData.mainCharacterAvatar
-          : null,
-        secondaryCharacterAvatarData: bookData.secondaryCharacterAvatar && bookData.secondaryCharacterAvatar.startsWith('CUSTOM||')
-          ? bookData.secondaryCharacterAvatar
-          : null
+        characterDescription: bookData.characterDescription || '',
+        environmentDescription: bookData.environmentDescription || ''
       };
 
       console.log('Criando livro com dados:', bookDataToSend);
