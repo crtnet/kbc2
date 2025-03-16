@@ -11,6 +11,7 @@ import { avatarFixService } from '../services/avatarFixService';
 import { imageProcessor } from '../services/imageProcessor';
 import { imageAnalysisService } from '../services/imageAnalysisService';
 import { Character, GenerateStoryParams, StyleGuide } from '../types/book.types';
+import { io } from '../server'; // Importando o socket.io do servidor
 
 interface AuthRequest extends Request {
   user?: {
@@ -478,6 +479,15 @@ class BookController {
       };
       await book.save();
       
+      // Notifica o cliente via WebSocket
+      io.to(book.userId.toString()).emit('book_progress_update', {
+        bookId: book._id.toString(),
+        status: 'generating_images',
+        progress: 0,
+        totalPages: pages.length,
+        message: 'Iniciando geração de imagens...'
+      });
+      
       // Passa o styleGuide do livro para o serviço de geração de imagens
       const imageUrls = await openaiUnifiedFixService.generateImagesForStory(pages, characters, book.styleGuide);
       
@@ -492,6 +502,17 @@ class BookController {
           lastUpdated: new Date()
         };
         await book.save();
+        
+        // Notifica o cliente via WebSocket sobre o progresso
+        const progressPercentage = Math.round(((i + 1) / pages.length) * 100);
+        io.to(book.userId.toString()).emit('book_progress_update', {
+          bookId: book._id.toString(),
+          status: 'generating_images',
+          progress: progressPercentage,
+          currentPage: i + 1,
+          totalPages: pages.length,
+          message: `Imagem ${i + 1} de ${pages.length} gerada com sucesso`
+        });
         
         // Adiciona um pequeno atraso para garantir que o frontend possa receber as atualizações
         await new Promise(resolve => setTimeout(resolve, 1500));
@@ -512,6 +533,14 @@ class BookController {
         lastUpdated: new Date()
       };
       await book.save();
+      
+      // Notifica o cliente via WebSocket
+      io.to(book.userId.toString()).emit('book_progress_update', {
+        bookId: book._id.toString(),
+        status: 'images_completed',
+        progress: 80,
+        message: 'Todas as imagens foram geradas. Iniciando geração do PDF...'
+      });
       
       // Adiciona um atraso antes de iniciar a geração do PDF para garantir que o frontend atualize o status
       await new Promise(resolve => setTimeout(resolve, 2000));
@@ -560,6 +589,14 @@ class BookController {
           lastUpdated: new Date()
         };
         await book.save();
+        
+        // Notifica o cliente via WebSocket
+        io.to(book.userId.toString()).emit('book_progress_update', {
+          bookId: book._id.toString(),
+          status: 'generating_pdf',
+          progress: 85,
+          message: 'Gerando PDF do livro...'
+        });
         
         // Verifica se todas as páginas têm imagens antes de gerar o PDF
         let allPagesHaveImages = true;
@@ -651,6 +688,15 @@ class BookController {
         };
         await book.save();
         
+        // Notifica o cliente via WebSocket
+        io.to(book.userId.toString()).emit('book_progress_update', {
+          bookId: book._id.toString(),
+          status: 'completed',
+          progress: 100,
+          message: 'Livro concluído com sucesso!',
+          pdfUrl: pdfPath
+        });
+        
         logger.info(`PDF gerado com sucesso para o livro "${book.title}"`, {
           bookId,
           title: book.title,
@@ -687,6 +733,15 @@ class BookController {
           lastUpdated: new Date()
         };
         await book.save();
+        
+        // Notifica o cliente via WebSocket sobre o erro
+        io.to(book.userId.toString()).emit('book_progress_update', {
+          bookId: book._id.toString(),
+          status: 'error',
+          progress: 0,
+          message: 'Erro ao gerar o PDF do livro',
+          error: pdfError instanceof Error ? pdfError.message : 'Erro desconhecido'
+        });
       }
     }
   }

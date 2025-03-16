@@ -97,12 +97,36 @@ async function downloadImage(url: string, localPath: string): Promise<string> {
           }
         }
         
-        // Otimiza a imagem local antes de usar
+        // Otimiza a imagem local antes de usar - configurações mais agressivas para PDF
         try {
+          // Verifica o tamanho original da imagem para determinar o nível de otimização
+          const originalSize = fs.statSync(absolutePath).size;
+          let optimizationOptions;
+          
+          if (originalSize > 2 * 1024 * 1024) {
+            // Imagens grandes (>2MB): otimização muito agressiva
+            optimizationOptions = { width: 250, height: 250, quality: 50 };
+            logger.info(`Imagem local grande (${Math.round(originalSize / 1024 / 1024 * 10) / 10}MB), usando otimização muito agressiva`, {
+              url
+            });
+          } else if (originalSize > 1 * 1024 * 1024) {
+            // Imagens médias (1-2MB): otimização agressiva
+            optimizationOptions = { width: 280, height: 280, quality: 55 };
+            logger.info(`Imagem local média (${Math.round(originalSize / 1024)}KB), usando otimização agressiva`, {
+              url
+            });
+          } else {
+            // Imagens pequenas (<1MB): otimização moderada
+            optimizationOptions = { width: 300, height: 300, quality: 60 };
+            logger.info(`Imagem local pequena (${Math.round(originalSize / 1024)}KB), usando otimização moderada`, {
+              url
+            });
+          }
+          
           const optimizedPath = await imageOptimizer.optimizeImage(
             absolutePath,
             localPath,
-            { width: 400, height: 400, quality: 65 } // Configurações mais agressivas
+            optimizationOptions
           );
           
           logger.info(`Imagem local otimizada com sucesso: ${url}`, {
@@ -110,7 +134,8 @@ async function downloadImage(url: string, localPath: string): Promise<string> {
             originalPath: absolutePath,
             optimizedPath,
             originalSize: Math.round(fs.statSync(absolutePath).size / 1024) + 'KB',
-            optimizedSize: Math.round(fs.statSync(optimizedPath).size / 1024) + 'KB'
+            optimizedSize: Math.round(fs.statSync(optimizedPath).size / 1024) + 'KB',
+            optimizationLevel: JSON.stringify(optimizationOptions)
           });
           
           return optimizedPath;
@@ -138,13 +163,13 @@ async function downloadImage(url: string, localPath: string): Promise<string> {
     // Configuração melhorada para o download de imagens
     const response = await axios.get(url, { 
       responseType: 'arraybuffer',
-      timeout: 120000, // 2 minutos (reduzido para evitar travamentos)
+      timeout: 60000, // 1 minuto (reduzido para evitar travamentos)
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
       },
       // Adicionando retry e configurações de timeout
       maxRedirects: 5,
-      maxContentLength: 15 * 1024 * 1024, // 15MB max (reduzido)
+      maxContentLength: 10 * 1024 * 1024, // 10MB max (reduzido)
       validateStatus: function (status) {
         return status >= 200 && status < 300; // Aceita apenas status 2xx
       }
@@ -207,26 +232,32 @@ async function downloadImage(url: string, localPath: string): Promise<string> {
     let optimizationOptions;
     
     if (originalSize > 5 * 1024 * 1024) {
-      // Imagens muito grandes (>5MB): otimização muito agressiva
-      optimizationOptions = { width: 350, height: 350, quality: 55 };
-      logger.info(`Imagem muito grande (${Math.round(originalSize / 1024 / 1024 * 10) / 10}MB), usando otimização muito agressiva`, {
+      // Imagens muito grandes (>5MB): otimização extremamente agressiva
+      optimizationOptions = { width: 220, height: 220, quality: 45 };
+      logger.info(`Imagem muito grande (${Math.round(originalSize / 1024 / 1024 * 10) / 10}MB), usando otimização extremamente agressiva`, {
         url: url.substring(0, 50) + '...'
       });
     } else if (originalSize > 2 * 1024 * 1024) {
-      // Imagens grandes (2-5MB): otimização agressiva
-      optimizationOptions = { width: 400, height: 400, quality: 60 };
-      logger.info(`Imagem grande (${Math.round(originalSize / 1024 / 1024 * 10) / 10}MB), usando otimização agressiva`, {
+      // Imagens grandes (2-5MB): otimização muito agressiva
+      optimizationOptions = { width: 250, height: 250, quality: 50 };
+      logger.info(`Imagem grande (${Math.round(originalSize / 1024 / 1024 * 10) / 10}MB), usando otimização muito agressiva`, {
         url: url.substring(0, 50) + '...'
       });
     } else if (originalSize > 1 * 1024 * 1024) {
-      // Imagens médias (1-2MB): otimização moderada
-      optimizationOptions = { width: 450, height: 450, quality: 65 };
-      logger.info(`Imagem média (${Math.round(originalSize / 1024)}KB), usando otimização moderada`, {
+      // Imagens médias (1-2MB): otimização agressiva
+      optimizationOptions = { width: 280, height: 280, quality: 55 };
+      logger.info(`Imagem média (${Math.round(originalSize / 1024)}KB), usando otimização agressiva`, {
+        url: url.substring(0, 50) + '...'
+      });
+    } else if (originalSize > 500 * 1024) {
+      // Imagens pequenas-médias (500KB-1MB): otimização moderada
+      optimizationOptions = { width: 300, height: 300, quality: 60 };
+      logger.info(`Imagem pequena-média (${Math.round(originalSize / 1024)}KB), usando otimização moderada`, {
         url: url.substring(0, 50) + '...'
       });
     } else {
-      // Imagens pequenas (<1MB): otimização leve
-      optimizationOptions = { width: 500, height: 500, quality: 70 };
+      // Imagens pequenas (<500KB): otimização leve
+      optimizationOptions = { width: 350, height: 350, quality: 65 };
       logger.info(`Imagem pequena (${Math.round(originalSize / 1024)}KB), usando otimização leve`, {
         url: url.substring(0, 50) + '...'
       });
@@ -260,7 +291,7 @@ async function downloadImage(url: string, localPath: string): Promise<string> {
       });
       
       // Verifica se a imagem ainda está muito grande para o PDF
-      if (optimizedSize > 500 * 1024) {
+      if (optimizedSize > 300 * 1024) {
         logger.warn(`Imagem otimizada ainda é grande (${Math.round(optimizedSize / 1024)}KB), aplicando otimização adicional`, {
           url: url.substring(0, 50) + '...',
           optimizedPath
@@ -271,7 +302,7 @@ async function downloadImage(url: string, localPath: string): Promise<string> {
         const finalOptimizedPath = await imageOptimizer.optimizeImage(
           optimizedPath,
           finalPath,
-          { width: 300, height: 300, quality: 50 }
+          { width: 250, height: 250, quality: 45 }
         );
         
         const finalSize = fs.statSync(finalOptimizedPath).size;
@@ -297,8 +328,8 @@ async function downloadImage(url: string, localPath: string): Promise<string> {
         // Usa o sharp diretamente com configurações mais simples
         const sharp = require('sharp');
         const simpleBuffer = await sharp(tempPath, { failOnError: false })
-          .resize(350, 350, { fit: 'inside' })
-          .jpeg({ quality: 60, mozjpeg: true })
+          .resize(250, 250, { fit: 'inside' })
+          .jpeg({ quality: 50, mozjpeg: true })
           .toBuffer();
         
         fs.writeFileSync(localPath, simpleBuffer);
@@ -1376,22 +1407,41 @@ export async function generateBookPDF(book: IBook, options: PDFOptions = default
                   if (imagePath && fs.existsSync(imagePath) && fs.statSync(imagePath).size > 0) {
                     // Calcula dimensões ideais para a imagem no PDF
                     const maxWidth = pageWidth - 100;
-                    const maxHeight = pageHeight * 0.5;
+                    const maxHeight = pageHeight * 0.45; // Reduzido para deixar mais espaço para o texto
                     
                     // Obtém as dimensões reais da imagem
                     let imageWidth, imageHeight;
                     try {
-                      const sharp = require('sharp');
-                      const metadata = await sharp(imagePath).metadata();
-                      imageWidth = metadata.width;
-                      imageHeight = metadata.height;
-                    } catch (metadataError) {
-                      // Se não conseguir obter as dimensões, usa valores padrão
-                      logger.warn(`Não foi possível obter dimensões da imagem: ${metadataError.message}`, {
-                        imagePath
+                      const dimensions = sizeOf(imagePath);
+                      imageWidth = dimensions.width;
+                      imageHeight = dimensions.height;
+                      
+                      logger.info(`Dimensões originais da imagem para página ${page.pageNumber}: ${imageWidth}x${imageHeight}`, {
+                        pageNumber: page.pageNumber,
+                        imagePath,
+                        dimensions: `${imageWidth}x${imageHeight}`
                       });
-                      imageWidth = maxWidth;
-                      imageHeight = maxHeight;
+                    } catch (dimensionError) {
+                      // Se não conseguir obter as dimensões com sizeOf, tenta com sharp
+                      try {
+                        const sharp = require('sharp');
+                        const metadata = await sharp(imagePath).metadata();
+                        imageWidth = metadata.width;
+                        imageHeight = metadata.height;
+                        
+                        logger.info(`Dimensões obtidas via sharp para página ${page.pageNumber}: ${imageWidth}x${imageHeight}`, {
+                          pageNumber: page.pageNumber,
+                          imagePath,
+                          dimensions: `${imageWidth}x${imageHeight}`
+                        });
+                      } catch (sharpError) {
+                        // Se não conseguir obter as dimensões, usa valores padrão
+                        logger.warn(`Não foi possível obter dimensões da imagem: ${dimensionError.message}, ${sharpError?.message}`, {
+                          imagePath
+                        });
+                        imageWidth = maxWidth;
+                        imageHeight = maxHeight / 1.5; // Proporção padrão mais horizontal
+                      }
                     }
                     
                     // Calcula as dimensões proporcionais para caber no espaço disponível

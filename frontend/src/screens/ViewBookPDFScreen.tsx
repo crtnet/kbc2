@@ -1,11 +1,12 @@
 // src/screens/ViewBookPDFScreen.tsx
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ActivityIndicator, Text } from 'react-native';
-import { useRoute, RouteProp } from '@react-navigation/native';
+import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import { PDFViewer } from '../components/PDFViewer';
 import { getBookById, getBookPdfUrl } from '../services/bookService';
 import { Book } from '../types';
 import { logger } from '../utils/logger';
+import { Appbar } from 'react-native-paper';
 
 type RouteParams = {
   ViewBookPDF: {
@@ -14,6 +15,7 @@ type RouteParams = {
 };
 
 export const ViewBookPDFScreen: React.FC = () => {
+  const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<RouteParams, 'ViewBookPDF'>>();
   const [book, setBook] = useState<Book | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
@@ -111,8 +113,13 @@ export const ViewBookPDFScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
+      <Appbar.Header>
+        <Appbar.BackAction onPress={() => navigation.navigate('Home')} />
+        <Appbar.Content title={book?.title || 'Visualizar PDF'} />
+      </Appbar.Header>
       <PDFViewer 
         pdfUrl={pdfUrl}
+        bookTitle={book?.title || 'Livro'}
         onError={(error) => {
           logger.error('Erro ao exibir PDF', { error });
           setError('Erro ao exibir o PDF');

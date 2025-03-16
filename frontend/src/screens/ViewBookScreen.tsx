@@ -6,6 +6,8 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import * as bookService from '../services/bookService';
 import { useAuth } from '../contexts/AuthContext';
 import { API_URL } from '../config/api';
+import { socketService, BookProgressUpdate } from '../services/socketService';
+import { logger } from '../utils/logger';
 
 interface BookPage {
   pageNumber: number;
@@ -81,28 +83,76 @@ function ViewBookScreen() {
   useEffect(() => {
     fetchBook();
 
-    // Polling para atualizar o status do livro enquanto estiver processando
-    let interval: NodeJS.Timeout;
-    
-    // Sempre inicia o polling quando a tela é carregada
-    // e continua até que o livro esteja completo ou em erro
-    interval = setInterval(() => {
-      fetchBook();
-    }, 2000); // Atualiza a cada 2 segundos para feedback mais rápido
-    
-    // Só para o polling quando o livro estiver completo ou em erro
-    if (book && (
-      book.status === 'completed' || 
-      book.status === 'error' || 
-      book.status === 'images_error'
-    )) {
-      if (interval) clearInterval(interval);
-    }
+    // Inicializa o WebSocket
+    socketService.initialize().then((connected) => {
+      logger.info('WebSocket inicializado na tela ViewBookScreen', { connected });
+      
+      // Se conectado com sucesso, autentica o usuário
+      if (connected && user?.id) {
+        socketService.authenticate(user.id);
+      }
+    });
 
+    // Registra o listener para atualizações de progresso
+    const removeListener = socketService.addListener('book_progress_update', 
+      (data: BookProgressUpdate) => {
+        // Só processa atualizações para este livro
+        if (data.bookId === bookId) {
+          logger.info('Recebida atualização de progresso via WebSocket', { 
+            bookId, 
+            status: data.status,
+            progress: data.progress,
+            currentPage: data.currentPage,
+            totalPages: data.totalPages
+          });
+          
+          // Atualiza o livro com as informações recebidas
+          setBook(prevBook => {
+            if (!prevBook) return null;
+            
+            // Cria uma cópia atualizada do livro
+            const updatedBook = { ...prevBook };
+            
+            // Atualiza o status
+            updatedBook.status = data.status;
+            
+            // Atualiza os metadados
+            updatedBook.metadata = {
+              ...updatedBook.metadata,
+              currentPage: data.currentPage || updatedBook.metadata.currentPage,
+              totalPages: data.totalPages || updatedBook.metadata.totalPages,
+              lastUpdated: new Date().toISOString()
+            };
+            
+            // Se o PDF foi concluído, atualiza a URL
+            if (data.status === 'completed' && data.pdfUrl) {
+              updatedBook.pdfUrl = data.pdfUrl;
+            }
+            
+            return updatedBook;
+          });
+        }
+      }
+    );
+
+    // Polling como fallback para o WebSocket
+    let interval: NodeJS.Timeout;
+    interval = setInterval(() => {
+      // Só faz polling se o livro não estiver completo ou em erro
+      if (!book || (
+        book.status !== 'completed' && 
+        book.status !== 'error' && 
+        book.status !== 'images_error'
+      )) {
+        fetchBook();
+      }
+    }, 5000); // Polling a cada 5 segundos como fallback
+    
     return () => {
       if (interval) clearInterval(interval);
+      removeListener(); // Remove o listener do WebSocket
     };
-  }, [fetchBook, book?.status]);
+  }, [fetchBook, bookId, user?.id]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -123,7 +173,7 @@ function ViewBookScreen() {
       setDeleting(true);
       await bookService.deleteBook(bookId);
       setShowDeleteDialog(false);
-      navigation.goBack();
+      navigation.navigate('Home'); // Navega para a tela Home em vez de voltar
     } catch (err: any) {
       console.error('Erro ao excluir livro:', err);
       setError(err.response?.data?.error || 'Erro ao excluir o livro.');
@@ -218,15 +268,16 @@ function ViewBookScreen() {
         statusMessage = 'Gerando história e preparando personagens...';
         break;
       case 'generating_images':
-        progress = totalPages > 0 ? (currentPage / totalPages) * 100 : 10;
+        // Calcula o progresso com base nas imagens geradas
+        progress = totalPages > 0 ? Math.round((currentPage / totalPages) * 80) : 10;
         statusMessage = `Gerando imagens (${currentPage}/${totalPages})...`;
         break;
       case 'images_completed':
-        progress = 90;
+        progress = 80;
         statusMessage = 'Imagens concluídas. Preparando para gerar PDF...';
         break;
       case 'generating_pdf':
-        progress = 95;
+        progress = 90;
         statusMessage = 'Gerando PDF final...';
         break;
       case 'error':

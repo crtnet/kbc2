@@ -11,6 +11,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api, setAuthToken, setLogoutHandler } from '../services/api';
 import { useAsyncStorage } from '../hooks/useAsyncStorage';
 import { logger } from '../utils/logger';
+import { socketService } from '../services/socketService';
 
 interface User {
   id: string;
@@ -58,6 +59,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   useEffect(() => {
     setLogoutHandler(signOutGlobal);
   }, []);
+
+  // Autentica o socket quando o usuário estiver logado
+  useEffect(() => {
+    if (userData?.id) {
+      logger.info('Autenticando socket com ID do usuário', { userId: userData.id });
+      socketService.authenticate(userData.id);
+    }
+  }, [userData?.id]);
 
   useEffect(() => {
     logger.info('AuthContext - userData:', userData);
@@ -131,6 +140,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
       await setUserData(user);
 
+      // Autentica o socket com o ID do usuário
+      if (user?.id) {
+        socketService.authenticate(user.id);
+      }
+
       logger.info('Usuário logado com sucesso', { userId: user.id });
     } catch (error) {
       logger.error('Falha no login', error);
@@ -151,6 +165,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       await AsyncStorage.removeItem('token');
       globalToken = null;
       setAuthToken(null);
+      
+      // Desconecta o socket ao fazer logout
+      socketService.disconnect();
+      
       logger.info('Usuário deslogado');
     } catch (error) {
       logger.error('Falha ao deslogar', error);
@@ -178,6 +196,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         setAuthToken(tokenStr);
 
         await setUserData(user);
+        
+        // Autentica o socket com o ID do usuário
+        if (user?.id) {
+          socketService.authenticate(user.id);
+        }
+        
         logger.info('Usuário registrado com sucesso', { userId: user.id });
       } catch (error) {
         logger.error('Falha ao registrar', error);

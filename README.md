@@ -1,82 +1,68 @@
-# Aplicativo de Criação de Livros Infantis Personalizados
+# Kids Book Creator
 
-Este aplicativo permite que usuários criem histórias infantis personalizadas com personagens customizados, gerando automaticamente o conteúdo textual e as ilustrações.
+## Instalação
 
-## Principais Funcionalidades
+Para instalar todas as dependências necessárias, execute o script de instalação:
 
-### Criação de Livros Personalizados
-- Interface de usuário com processo em etapas para definir título, personagens, cenário, tema e faixa etária
-- Seleção de avatares para personagens principais e secundários
-- Personalização de gênero, tom narrativo e tema da história
-- Descrições detalhadas de personagens e ambientes para melhor consistência visual
+```bash
+chmod +x install-dependencies.sh
+./install-dependencies.sh
+```
 
-### Geração de Conteúdo com IA
-- Geração de texto da história usando OpenAI GPT
-- Geração de ilustrações para cada página usando DALL-E
-- Manutenção da consistência visual dos personagens nas ilustrações
-- Guia de estilo personalizado para cada livro
+## Executando o projeto
 
-### Produção de PDF
-- Geração automática de PDF com layout profissional
-- Capa personalizada com título e autor
-- Páginas com texto e ilustrações correspondentes
-- Múltiplos layouts disponíveis (padrão, livro ilustrado, quadrinhos)
-- Temas de cores personalizáveis
+### Backend
 
-### Gerenciamento de Livros
-- Listagem de livros criados pelo usuário
-- Visualização de livros em formato PDF
-- Visualização interativa em formato de flipbook
-- Acompanhamento do status de processamento em tempo real
+```bash
+cd backend
+npm run dev
+```
 
-## Arquitetura Técnica
+### Frontend
 
-### Frontend (React Native)
-- Interface de usuário responsiva com React Native e React Native Paper
-- Navegação entre telas com React Navigation
-- Gerenciamento de estado com Context API
-- Suporte a múltiplos idiomas (i18n)
-- Comunicação com o backend via API REST
+```bash
+cd frontend
+npm start
+```
 
-### Backend (Node.js/Express)
-- API RESTful com Express
-- Banco de dados MongoDB com Mongoose
-- Integração com OpenAI para geração de texto e imagens
-- Geração de PDFs com PDFKit
-- Sistema de cache para otimização de desempenho
-- Tratamento de erros e logging robusto
+## Melhorias implementadas
 
-## Fluxo de Criação de Livro
-1. O usuário preenche um formulário em etapas com informações sobre o livro
-2. O frontend envia os dados para o backend
-3. O backend gera a história usando OpenAI GPT
-4. O texto é dividido em páginas (aproximadamente 5 páginas)
-5. Para cada página, o sistema gera uma ilustração usando DALL-E
-6. As ilustrações mantêm consistência visual com os avatares dos personagens
-7. Um PDF é gerado combinando texto e ilustrações
-8. O usuário pode visualizar e baixar o PDF final
+1. **Otimização de imagens**:
+   - Implementação de cache de imagens no frontend
+   - Redimensionamento e compressão automática de imagens
+   - Limpeza automática do cache para economizar espaço
 
-## Melhorias Implementadas
+2. **Comunicação em tempo real**:
+   - Integração com Socket.IO para atualizações em tempo real
+   - Autenticação de usuários no socket
 
-### Consistência Visual
-- Processamento de avatares para manter características consistentes
-- Guia de estilo personalizado para cada livro
-- Descrições detalhadas de personagens e ambientes
+3. **Melhorias na interface**:
+   - Componente OptimizedImage para carregamento eficiente de imagens
+   - Placeholders durante o carregamento
+   - Tratamento de erros aprimorado
 
-### Layout do PDF
-- Múltiplos layouts disponíveis (padrão, livro ilustrado, quadrinhos)
-- Temas de cores personalizáveis
-- Elementos decorativos baseados no gênero e faixa etária
-- Tipografia adaptada à faixa etária do público-alvo
+4. **Funcionalidades do PDF**:
+   - Download e compartilhamento de PDFs
+   - Barra de progresso para downloads
+   - Melhor tratamento de erros
 
-### Experiência do Usuário
-- Seleção avançada de avatares com categorias e estilos
-- Visualização interativa em formato de flipbook
-- Acompanhamento do status de processamento em tempo real
-- Upload de avatares personalizados
+5. **Navegação**:
+   - Correção do botão voltar na tela de visualização de PDF
 
-## Próximos Passos
-- Implementação de recursos de compartilhamento social
-- Opções de impressão e entrega física
-- Suporte a mais idiomas
-- Recursos de edição avançada para personalização adicional
+## Estrutura do projeto
+
+### Backend
+
+- `/src/controllers`: Controladores da API
+- `/src/models`: Modelos de dados
+- `/src/services`: Serviços de negócio
+- `/src/utils`: Utilitários
+
+### Frontend
+
+- `/src/components`: Componentes reutilizáveis
+- `/src/screens`: Telas do aplicativo
+- `/src/services`: Serviços (API, socket, otimização de imagens)
+- `/src/contexts`: Contextos React (autenticação, tema)
+- `/src/navigation`: Configuração de navegação
+- `/src/utils`: Utilitários

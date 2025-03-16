@@ -1,10 +1,11 @@
-// src/components/BookCard.ts
+// src/components/BookCard.tsx
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Book } from '../types/book';
 import { useTheme } from '../hooks/useTheme';
 import { useTranslation } from 'react-i18next';
 import { MaterialIcons } from '@expo/vector-icons';
+import OptimizedImage from './OptimizedImage';
 
 // Biblioteca para formatação de datas
 import { format } from 'date-fns';
@@ -29,14 +30,20 @@ export const BookCard: React.FC<BookCardProps> = ({ book, onPress, onViewPDF }) 
     <TouchableOpacity
       style={[styles.container, { backgroundColor: theme.colors.card }]}
       onPress={onPress}
+      activeOpacity={0.7}
     >
-      <Image
+      <OptimizedImage
         source={{ uri: book.coverImage }}
         style={styles.cover}
+        width={100}
+        height={140}
+        quality={75}
         resizeMode="cover"
+        showPlaceholder={true}
+        placeholderColor={theme.colors.background}
       />
       <View style={styles.content}>
-        <Text style={[styles.title, { color: theme.colors.text }]}>
+        <Text style={[styles.title, { color: theme.colors.text }]} numberOfLines={2} ellipsizeMode="tail">
           {book.title}
         </Text>
         <Text style={[styles.date, { color: theme.colors.textSecondary }]}>
@@ -45,6 +52,7 @@ export const BookCard: React.FC<BookCardProps> = ({ book, onPress, onViewPDF }) 
         <TouchableOpacity
           style={[styles.pdfButton, { backgroundColor: theme.colors.primary }]}
           onPress={onViewPDF}
+          activeOpacity={0.8}
         >
           <MaterialIcons name="book" size={20} color="#fff" />
           <Text style={styles.pdfButtonText}>

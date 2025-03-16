@@ -1,5 +1,5 @@
 // src/screens/HomeScreen.tsx
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { BookList } from '../components/BookList';
@@ -13,6 +13,7 @@ import { Book } from '../types/book';
 import { Appbar, Menu } from 'react-native-paper';
 // Exemplo: se você tiver AuthContext com signOut
 import { useAuth } from '../contexts/AuthContext';
+import { imageOptimizationService } from '../services/imageOptimizationService';
 
 export const HomeScreen: React.FC = () => {
   const navigation = useNavigation<any>();
@@ -26,6 +27,20 @@ export const HomeScreen: React.FC = () => {
 
   const openMenu = () => setMenuVisible(true);
   const closeMenu = () => setMenuVisible(false);
+
+  // Inicializa o serviço de otimização de imagens
+  useEffect(() => {
+    const initImageService = async () => {
+      try {
+        await imageOptimizationService.initialize();
+        logger.info('Serviço de otimização de imagens inicializado');
+      } catch (error) {
+        logger.warn('Erro ao inicializar serviço de otimização de imagens', { error });
+      }
+    };
+    
+    initImageService();
+  }, []);
 
   /**
    * Busca os livros do usuário logado.
