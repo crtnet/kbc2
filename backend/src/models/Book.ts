@@ -29,12 +29,20 @@ export interface IBook extends Document {
   userId: mongoose.Types.ObjectId;
   pages: IPage[];
   pdfUrl?: string;
-  status: 'processing' | 'completed' | 'error';
+  status: 'processing' | 'generating_images' | 'images_completed' | 'generating_pdf' | 'completed' | 'error' | 'images_error';
   prompt?: string;
   styleGuide?: IStyleGuide;
   metadata: {
     wordCount: number;
     pageCount: number;
+    currentPage?: number;
+    totalPages?: number;
+    imagesCompleted?: boolean;
+    pdfGenerationStarted?: boolean;
+    pdfCompleted?: boolean;
+    error?: string;
+    pdfError?: string;
+    lastUpdated?: Date;
   };
   createdAt: Date;
   updatedAt: Date;
@@ -90,14 +98,22 @@ const bookSchema = new Schema<IBook>({
   status: {
     type: String,
     required: true,
-    enum: ['processing', 'completed', 'error'],
+    enum: ['processing', 'generating_images', 'images_completed', 'generating_pdf', 'completed', 'error', 'images_error'],
     default: 'processing'
   },
   prompt: { type: String },
   styleGuide: styleGuideSchema,
   metadata: {
     wordCount: { type: Number, required: true },
-    pageCount: { type: Number, required: true }
+    pageCount: { type: Number, required: true },
+    currentPage: { type: Number },
+    totalPages: { type: Number },
+    imagesCompleted: { type: Boolean },
+    pdfGenerationStarted: { type: Boolean },
+    pdfCompleted: { type: Boolean },
+    error: { type: String },
+    pdfError: { type: String },
+    lastUpdated: { type: Date }
   }
 }, {
   timestamps: true

@@ -26,11 +26,19 @@ interface Book {
   authorName: string;
   pages: BookPage[];
   pdfUrl?: string;
-  status: 'processing' | 'generating' | 'completed' | 'error';
+  status: 'processing' | 'generating_images' | 'images_completed' | 'generating_pdf' | 'completed' | 'error' | 'images_error';
   createdAt: string;
   metadata: {
     wordCount: number;
     pageCount: number;
+    currentPage?: number;
+    totalPages?: number;
+    imagesCompleted?: boolean;
+    pdfGenerationStarted?: boolean;
+    pdfCompleted?: boolean;
+    error?: string;
+    pdfError?: string;
+    lastUpdated?: string;
   };
 }
 
@@ -76,10 +84,19 @@ function ViewBookScreen() {
     // Polling para atualizar o status do livro enquanto estiver processando
     let interval: NodeJS.Timeout;
     
-    if (book && (book.status === 'processing' || book.status === 'generating')) {
-      interval = setInterval(() => {
-        fetchBook();
-      }, 5000); // Atualiza a cada 5 segundos
+    // Sempre inicia o polling quando a tela é carregada
+    // e continua até que o livro esteja completo ou em erro
+    interval = setInterval(() => {
+      fetchBook();
+    }, 2000); // Atualiza a cada 2 segundos para feedback mais rápido
+    
+    // Só para o polling quando o livro estiver completo ou em erro
+    if (book && (
+      book.status === 'completed' || 
+      book.status === 'error' || 
+      book.status === 'images_error'
+    )) {
+      if (interval) clearInterval(interval);
     }
 
     return () => {
@@ -138,10 +155,20 @@ function ViewBookScreen() {
         icon = 'clock-outline';
         label = 'Processando';
         break;
-      case 'generating':
+      case 'generating_images':
         color = 'orange';
         icon = 'image-outline';
         label = 'Gerando imagens';
+        break;
+      case 'images_completed':
+        color = 'purple';
+        icon = 'image-check-outline';
+        label = 'Imagens concluídas';
+        break;
+      case 'generating_pdf':
+        color = 'teal';
+        icon = 'file-pdf-outline';
+        label = 'Gerando PDF';
         break;
       case 'completed':
         color = 'green';
@@ -152,6 +179,11 @@ function ViewBookScreen() {
         color = 'red';
         icon = 'alert-circle-outline';
         label = 'Erro';
+        break;
+      case 'images_error':
+        color = 'red';
+        icon = 'image-broken-variant';
+        label = 'Erro nas imagens';
         break;
       default:
         color = 'gray';
@@ -172,27 +204,77 @@ function ViewBookScreen() {
   };
 
   const renderProgressIndicator = () => {
-    if (!book || book.status === 'completed' || book.status === 'error') return null;
+    if (!book || book.status === 'completed') return null;
 
-    const totalPages = book.metadata.pageCount;
-    const pagesWithImages = book.pages.filter(page => page.imageUrl).length;
-    const progress = totalPages > 0 ? (pagesWithImages / totalPages) * 100 : 0;
+    // Determina o progresso com base no status
+    let progress = 0;
+    let statusMessage = '';
+    let totalPages = book.metadata.totalPages || book.metadata.pageCount || 0;
+    let currentPage = book.metadata.currentPage || 0;
+
+    switch (book.status) {
+      case 'processing':
+        progress = 10; // Valor fixo para indicar que está processando
+        statusMessage = 'Gerando história e preparando personagens...';
+        break;
+      case 'generating_images':
+        progress = totalPages > 0 ? (currentPage / totalPages) * 100 : 10;
+        statusMessage = `Gerando imagens (${currentPage}/${totalPages})...`;
+        break;
+      case 'images_completed':
+        progress = 90;
+        statusMessage = 'Imagens concluídas. Preparando para gerar PDF...';
+        break;
+      case 'generating_pdf':
+        progress = 95;
+        statusMessage = 'Gerando PDF final...';
+        break;
+      case 'error':
+      case 'images_error':
+        progress = 100;
+        statusMessage = book.metadata.error || book.metadata.pdfError || 'Ocorreu um erro durante o processamento.';
+        break;
+      default:
+        progress = 0;
+        statusMessage = 'Aguardando processamento...';
+    }
 
     return (
       <Card style={styles.progressCard}>
         <Card.Content>
           <Text style={styles.progressTitle}>Progresso da geração</Text>
           <View style={styles.progressBarContainer}>
-            <View style={[styles.progressBar, { width: `${progress}%` }]} />
+            <View style={[
+              styles.progressBar, 
+              { width: `${progress}%` },
+              (book.status === 'error' || book.status === 'images_error') && { backgroundColor: 'red' }
+            ]} />
           </View>
-          <Text style={styles.progressText}>
-            {pagesWithImages} de {totalPages} páginas processadas ({Math.round(progress)}%)
+          
+          {book.status === 'generating_images' && (
+            <Text style={styles.progressText}>
+              {currentPage} de {totalPages} imagens geradas ({Math.round(progress)}%)
+            </Text>
+          )}
+          
+          <Text style={[
+            styles.progressInfo,
+            (book.status === 'error' || book.status === 'images_error') && styles.errorText
+          ]}>
+            {statusMessage}
           </Text>
-          <Text style={styles.progressInfo}>
-            {book.status === 'processing' 
-              ? 'Gerando história e imagens...' 
-              : 'Finalizando a criação do PDF...'}
-          </Text>
+          
+          {book.metadata.lastUpdated && (
+            <Text style={styles.timestampText}>
+              Última atualização: {new Date(book.metadata.lastUpdated).toLocaleString('pt-BR')}
+            </Text>
+          )}
+          
+          {(book.status === 'generating_images' || book.status === 'generating_pdf') && (
+            <Text style={styles.infoText}>
+              Este processo pode levar alguns minutos. As imagens estão sendo otimizadas para melhor desempenho.
+            </Text>
+          )}
         </Card.Content>
       </Card>
     );
@@ -312,7 +394,7 @@ function ViewBookScreen() {
           </Button>
           <Button 
             mode="contained" 
-            icon="file-pdf-box" 
+            icon="file-pdf" 
             onPress={handleViewPDF}
             style={styles.actionButton}
             disabled={!book.pdfUrl}
@@ -320,6 +402,25 @@ function ViewBookScreen() {
             Ver PDF
           </Button>
         </View>
+      )}
+
+      {(book.status === 'error' || book.status === 'images_error') && (
+        <Card style={[styles.progressCard, styles.errorCard]}>
+          <Card.Content>
+            <Text style={styles.errorTitle}>Erro na geração do livro</Text>
+            <Text style={styles.errorDescription}>
+              {book.metadata.error || book.metadata.pdfError || 'Ocorreu um erro durante o processamento do livro.'}
+            </Text>
+            <Button 
+              mode="contained" 
+              icon="refresh" 
+              onPress={fetchBook}
+              style={styles.retryButton}
+            >
+              Verificar novamente
+            </Button>
+          </Card.Content>
+        </Card>
       )}
 
       <Card style={styles.detailsCard}>
@@ -368,7 +469,7 @@ function ViewBookScreen() {
         </Card.Content>
       </Card>
 
-      {book.status === 'completed' && (
+      {(book.status === 'completed' || book.pages.some(page => page.text)) && (
         <Card style={styles.previewCard}>
           <Card.Content>
             <Text style={styles.sectionTitle}>Prévia do Livro</Text>
@@ -377,17 +478,45 @@ function ViewBookScreen() {
             {renderPageNavigation()}
             
             <View style={[styles.pageContainer, isTablet && styles.tabletPageContainer]}>
-              {currentPageData.imageUrl && (
-                <Image
-                  source={{ uri: currentPageData.imageUrl }}
-                  style={styles.pageImage}
-                  resizeMode="contain"
-                />
+              {currentPageData?.imageUrl ? (
+                <React.Fragment>
+                  {/* Componente de carregamento de imagem com tratamento de erro */}
+                  <View style={styles.imageContainer}>
+                    <Image
+                      source={{ 
+                        uri: currentPageData.imageUrl.startsWith('http') 
+                          ? currentPageData.imageUrl 
+                          : `${API_URL}${currentPageData.imageUrl}?t=${Date.now()}` // Add timestamp to prevent caching
+                      }}
+                      style={styles.pageImage}
+                      resizeMode="contain"
+                      onError={(e) => {
+                        console.error('Erro ao carregar imagem:', e.nativeEvent.error);
+                        // Log detailed error for debugging
+                        console.log('Image URL that failed:', currentPageData.imageUrl);
+                      }}
+                    />
+                    {/* Overlay de carregamento */}
+                    <ActivityIndicator 
+                      size="large" 
+                      color="#2196F3" 
+                      style={styles.imageLoadingIndicator} 
+                    />
+                  </View>
+                </React.Fragment>
+              ) : (
+                <View style={styles.noImageContainer}>
+                  <Text style={styles.noImageText}>Imagem não disponível</Text>
+                </View>
               )}
               
               <View style={styles.pageTextContainer}>
-                <Text style={styles.pageNumber}>Página {currentPageData.pageNumber}</Text>
-                <Text style={styles.pageText}>{currentPageData.text}</Text>
+                <Text style={styles.pageNumber}>Página {currentPageData?.pageNumber || currentPage + 1}</Text>
+                {currentPageData?.text ? (
+                  <Text style={styles.pageText}>{currentPageData.text}</Text>
+                ) : (
+                  <Text style={styles.noContentText}>Texto não disponível para esta página</Text>
+                )}
               </View>
             </View>
             
@@ -514,6 +643,35 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     color: '#666'
   },
+  infoText: {
+    fontSize: 13,
+    color: '#1976d2',
+    marginTop: 10,
+    fontStyle: 'italic'
+  },
+  timestampText: {
+    fontSize: 12,
+    color: '#999',
+    marginTop: 5
+  },
+  errorCard: {
+    backgroundColor: '#ffebee'
+  },
+  errorTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#d32f2f',
+    marginBottom: 10
+  },
+  errorDescription: {
+    fontSize: 14,
+    color: '#d32f2f',
+    marginBottom: 15
+  },
+  retryButton: {
+    backgroundColor: '#d32f2f',
+    marginTop: 10
+  },
   actionButtonsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-around',
@@ -575,6 +733,37 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     borderRadius: 8
   },
+  imageContainer: {
+    position: 'relative',
+    width: '100%',
+    height: 300,
+    marginBottom: 15,
+    borderRadius: 8,
+    backgroundColor: '#f0f0f0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden'
+  },
+  imageLoadingIndicator: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    marginLeft: -20,
+    marginTop: -20
+  },
+  noImageContainer: {
+    width: '100%',
+    height: 300,
+    backgroundColor: '#e0e0e0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 8,
+    marginBottom: 15
+  },
+  noImageText: {
+    fontSize: 16,
+    color: '#666'
+  },
   pageTextContainer: {
     flex: 1,
     padding: 10
@@ -588,6 +777,11 @@ const styles = StyleSheet.create({
   pageText: {
     fontSize: 16,
     lineHeight: 24
+  },
+  noContentText: {
+    fontSize: 16,
+    fontStyle: 'italic',
+    color: '#999'
   }
 });
 

@@ -7,12 +7,14 @@ interface AvatarThumbnailProps {
   avatarIdentifier: string;
   size?: number;
   style?: any;
+  onDescriptionGenerated?: (description: string) => void;
 }
 
 const AvatarThumbnail: React.FC<AvatarThumbnailProps> = ({ 
   avatarIdentifier, 
   size = 60,
-  style = {}
+  style = {},
+  onDescriptionGenerated
 }) => {
   const [loading, setLoading] = useState(true);
   const [customAvatar, setCustomAvatar] = useState<CustomAvatar | null>(null);
@@ -72,6 +74,12 @@ const AvatarThumbnail: React.FC<AvatarThumbnailProps> = ({
       });
 
       setCustomAvatar(restoredAvatar);
+      
+      // Gerar descrição do avatar
+      if (onDescriptionGenerated) {
+        const description = generateAvatarDescription(restoredAvatar);
+        onDescriptionGenerated(description);
+      }
     } catch (error) {
       console.error('Erro ao processar avatar:', error);
       if (avatarIdentifier.includes('||')) {
@@ -83,6 +91,183 @@ const AvatarThumbnail: React.FC<AvatarThumbnailProps> = ({
       setLoading(false);
     }
   }, [avatarIdentifier]);
+
+  // Gera uma descrição detalhada do avatar com base nas partes selecionadas
+  const generateAvatarDescription = (avatar: CustomAvatar): string => {
+    let description = '';
+    
+    // Adiciona descrição do rosto
+    if (avatar.face && avatar.face.option) {
+      const faceOption = AVATAR_PARTS.find(p => p.id === 'face')?.options.find(
+        o => o.imageUrl === avatar.face.option
+      );
+      if (faceOption?.description) {
+        description += faceOption.description + ' ';
+      }
+    }
+    
+    // Adiciona descrição dos olhos
+    if (avatar.eyes && avatar.eyes.option) {
+      const eyesOption = AVATAR_PARTS.find(p => p.id === 'eyes')?.options.find(
+        o => o.imageUrl === avatar.eyes.option
+      );
+      if (eyesOption?.description) {
+        description += eyesOption.description + ' ';
+      }
+    }
+    
+    // Adiciona descrição da boca
+    if (avatar.mouth && avatar.mouth.option) {
+      const mouthOption = AVATAR_PARTS.find(p => p.id === 'mouth')?.options.find(
+        o => o.imageUrl === avatar.mouth.option
+      );
+      if (mouthOption?.description) {
+        description += mouthOption.description + ' ';
+      }
+    }
+    
+    // Adiciona descrição do nariz
+    if (avatar.nose && avatar.nose.option) {
+      const noseOption = AVATAR_PARTS.find(p => p.id === 'nose')?.options.find(
+        o => o.imageUrl === avatar.nose.option
+      );
+      if (noseOption?.description) {
+        description += noseOption.description + ' ';
+      }
+    }
+    
+    // Adiciona descrição das sobrancelhas
+    if (avatar.eyebrows && avatar.eyebrows.option) {
+      const eyebrowsOption = AVATAR_PARTS.find(p => p.id === 'eyebrows')?.options.find(
+        o => o.imageUrl === avatar.eyebrows.option
+      );
+      if (eyebrowsOption?.description) {
+        description += eyebrowsOption.description + ' ';
+      }
+    }
+    
+    // Adiciona descrição do cabelo
+    if (avatar.hair && avatar.hair.option) {
+      // Verifica se não é a opção "nenhum"
+      const noneOption = AVATAR_PARTS.find(p => p.id === 'hair')?.options[0]?.imageUrl;
+      if (avatar.hair.option !== noneOption) {
+        const hairOption = AVATAR_PARTS.find(p => p.id === 'hair')?.options.find(
+          o => o.imageUrl === avatar.hair.option
+        );
+        if (hairOption?.description) {
+          description += hairOption.description + ' ';
+        }
+        
+        // Adiciona cor do cabelo se disponível
+        if (avatar.hair.color) {
+          const colorName = getColorName(avatar.hair.color);
+          if (colorName) {
+            description += `Cabelo na cor ${colorName}. `;
+          }
+        }
+      }
+    }
+    
+    // Adiciona descrição da barba
+    if (avatar.beard && avatar.beard.option) {
+      // Verifica se não é a opção "nenhum"
+      const noneOption = AVATAR_PARTS.find(p => p.id === 'beard')?.options[0]?.imageUrl;
+      if (avatar.beard.option !== noneOption) {
+        const beardOption = AVATAR_PARTS.find(p => p.id === 'beard')?.options.find(
+          o => o.imageUrl === avatar.beard.option
+        );
+        if (beardOption?.description) {
+          description += beardOption.description + ' ';
+        }
+        
+        // Adiciona cor da barba se disponível
+        if (avatar.beard.color) {
+          const colorName = getColorName(avatar.beard.color);
+          if (colorName) {
+            description += `Barba na cor ${colorName}. `;
+          }
+        }
+      }
+    }
+    
+    // Adiciona descrição dos óculos
+    if (avatar.glasses && avatar.glasses.option) {
+      // Verifica se não é a opção "nenhum"
+      const noneOption = AVATAR_PARTS.find(p => p.id === 'glasses')?.options[0]?.imageUrl;
+      if (avatar.glasses.option !== noneOption) {
+        const glassesOption = AVATAR_PARTS.find(p => p.id === 'glasses')?.options.find(
+          o => o.imageUrl === avatar.glasses.option
+        );
+        if (glassesOption?.description) {
+          description += glassesOption.description + ' ';
+        }
+      }
+    }
+    
+    // Adiciona descrição dos acessórios
+    if (avatar.accessories && avatar.accessories.option) {
+      // Verifica se não é a opção "nenhum"
+      const noneOption = AVATAR_PARTS.find(p => p.id === 'accessories')?.options[0]?.imageUrl;
+      if (avatar.accessories.option !== noneOption) {
+        const accessoriesOption = AVATAR_PARTS.find(p => p.id === 'accessories')?.options.find(
+          o => o.imageUrl === avatar.accessories.option
+        );
+        if (accessoriesOption?.description) {
+          description += accessoriesOption.description + ' ';
+        }
+      }
+    }
+    
+    // Adiciona descrição da roupa
+    if (avatar.outfit && avatar.outfit.option) {
+      const outfitOption = AVATAR_PARTS.find(p => p.id === 'outfit')?.options.find(
+        o => o.imageUrl === avatar.outfit.option
+      );
+      if (outfitOption?.description) {
+        description += outfitOption.description + ' ';
+        
+        // Adiciona cor da roupa se disponível
+        if (avatar.outfit.color) {
+          const colorName = getColorName(avatar.outfit.color);
+          if (colorName) {
+            description += `Roupa na cor ${colorName}. `;
+          }
+        }
+      }
+    }
+    
+    // Adiciona uma frase final para garantir que a descrição seja completa
+    description += "Mantenha esta aparência exata em todas as ilustrações para consistência visual.";
+    
+    return description.trim();
+  };
+  
+  // Função auxiliar para obter nome da cor a partir do código hexadecimal
+  const getColorName = (hexColor: string): string | null => {
+    const colorMap: {[key: string]: string} = {
+      '#FF4D4D': 'vermelha',
+      '#4CAF50': 'verde',
+      '#2196F3': 'azul',
+      '#FFC107': 'amarela',
+      '#9C27B0': 'roxa',
+      '#FF9800': 'laranja',
+      '#795548': 'marrom',
+      '#9E9E9E': 'cinza',
+      '#000000': 'preta',
+      '#FFFFFF': 'branca',
+      '#FFE0B2': 'pele clara',
+      '#FFCC80': 'pele média',
+      '#D2B48C': 'pele morena',
+      '#A0522D': 'pele escura',
+      '#FFF176': 'loira',
+      '#8D6E63': 'castanha',
+      '#FF7043': 'ruiva',
+      '#424242': 'preta',
+      '#B0BEC5': 'grisalha'
+    };
+    
+    return colorMap[hexColor] || null;
+  };
 
   // Renderiza cada parte do avatar
   const renderAvatarPart = (partId: string) => {

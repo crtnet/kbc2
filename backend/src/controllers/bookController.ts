@@ -4,14 +4,13 @@ import mongoose from 'mongoose';
 import path from 'path';
 import { logger } from '../utils/logger';
 import { Book } from '../models/Book';
-import { generateBookPDF } from '../services/pdfGenerator';
-import { openaiUnifiedService } from '../services/openai.unified'; // <--- Usei a versão revisada
+import { generateBookPDFWithFallback } from '../services/pdfGeneratorIntegration';
+import { openaiUnifiedFixService } from '../services/openai.unified.fix'; // <--- Usando a versão corrigida
 import { avatarService } from '../services/avatarService';
 import { avatarFixService } from '../services/avatarFixService';
-import { GenerateStoryParams } from '../services/storyFallback.service';
-import { config } from '../config/config';
 import { imageProcessor } from '../services/imageProcessor';
 import { imageAnalysisService } from '../services/imageAnalysisService';
+import { Character, GenerateStoryParams, StyleGuide } from '../types/book.types';
 
 interface AuthRequest extends Request {
   user?: {
@@ -111,6 +110,7 @@ class BookController {
         language = 'pt-BR',
         // **NOVO**: Características do personagem e ambiente
         characterDescription, // Ex: "menina de 8 anos, cabelos cacheados vermelhos..."
+        secondaryCharacterDescription = '',
         environmentDescription // Ex: "floresta mágica com cogumelos coloridos..."
       } = req.body;
 
@@ -122,66 +122,17 @@ class BookController {
         });
       }
       
-      // Analisa os avatares para gerar descrições detalhadas
-      let mainCharacterDesc = '';
-      let secondaryCharacterDesc = '';
-      
-      try {
-        // Analisa o avatar do personagem principal
-        if (mainCharacterAvatar) {
-          mainCharacterDesc = await imageAnalysisService.analyzeCustomAvatar(mainCharacterAvatar);
-          logger.info('Descrição do personagem principal gerada com sucesso', {
-            character: mainCharacter,
-            descriptionLength: mainCharacterDesc.length
-          });
-        }
-
-        // Analisa o avatar do personagem secundário (se existir)
-        if (secondaryCharacter && secondaryCharacterAvatar) {
-          secondaryCharacterDesc = await imageAnalysisService.analyzeCustomAvatar(secondaryCharacterAvatar);
-          logger.info('Descrição do personagem secundário gerada com sucesso', {
-            character: secondaryCharacter,
-            descriptionLength: secondaryCharacterDesc.length
-          });
-        }
-      } catch (error) {
-        logger.error('Erro ao analisar avatares', {
-          error: error instanceof Error ? error.message : 'Erro desconhecido'
-        });
-        // Continua com as descrições fornecidas ou vazias
-      }
-
-      // Usa as descrições geradas pela análise dos avatares ou as descrições fornecidas
-      const finalCharacterDescription = mainCharacterDesc || characterDescription || 
+      // Usa as descrições fornecidas pelo frontend diretamente
+      // Não tentamos mais analisar os avatares com o serviço de análise de imagens
+      const finalCharacterDescription = characterDescription || 
         `${mainCharacter} é um personagem de livro infantil`;
       
-      const finalSecondaryCharacterDescription = secondaryCharacterDesc || 
-        (secondaryCharacter ? characterDescription || `${secondaryCharacter} é um personagem de livro infantil` : '');
+      const finalSecondaryCharacterDescription = secondaryCharacterDescription || 
+        (secondaryCharacter ? `${secondaryCharacter} é um personagem de livro infantil` : '');
       
       // Usa a descrição do ambiente fornecida ou gera uma básica
       const finalEnvironmentDescription = environmentDescription || 
         `${setting} é um ambiente colorido e acolhedor para crianças`;
-
-      // Monta parâmetros para geração da história com estilo fixo
-      const storyParams: GenerateStoryParams = {
-        title,
-        genre,
-        theme,
-        mainCharacter,
-        mainCharacterDescription: finalCharacterDescription,
-        secondaryCharacter,
-        secondaryCharacterDescription: finalSecondaryCharacterDescription,
-        setting,
-        tone,
-        ageRange,
-        // Parâmetros de estilo com descrições detalhadas
-        styleGuide: {
-          character: finalCharacterDescription + 
-            (finalSecondaryCharacterDescription ? `\n\n${finalSecondaryCharacterDescription}` : ''),
-          environment: finalEnvironmentDescription,
-          artisticStyle: "ilustração cartoon, cores vibrantes, traços suaves, estilo livro infantil"
-        }
-      };
 
       // Validação mais branda para avatar - se não tiver, usaremos um padrão
       let normalizedMainAvatar = mainCharacterAvatar;
@@ -251,22 +202,23 @@ class BookController {
         genre,
         theme,
         mainCharacter,
-        mainCharacterDescription,
+        mainCharacterDescription: finalCharacterDescription,
         secondaryCharacter,
-        secondaryCharacterDescription,
+        secondaryCharacterDescription: finalSecondaryCharacterDescription,
         setting,
         tone,
         ageRange,
         // Parâmetros de estilo com descrições detalhadas
         styleGuide: {
-          character: characterDescription || `${mainCharacter} é um personagem de livro infantil`,
-          environment: environmentDescription || `${setting} é um ambiente colorido e acolhedor para crianças`,
+          character: finalCharacterDescription + 
+            (finalSecondaryCharacterDescription ? `\n\n${finalSecondaryCharacterDescription}` : ''),
+          environment: finalEnvironmentDescription,
           artisticStyle: "ilustração cartoon, cores vibrantes, traços suaves, estilo livro infantil"
         }
       };
 
       // Gera a história usando o serviço revisado
-      const story = await openaiUnifiedService.generateStory(storyParams);
+      const story = await openaiUnifiedFixService.generateStory(storyParams);
       const wordCount = story.split(/\s+/).length;
       const pages = this.splitStoryIntoPages(story);
 
@@ -277,9 +229,9 @@ class BookController {
         genre,
         theme,
         mainCharacter,
-        mainCharacterDescription,
+        mainCharacterDescription: finalCharacterDescription,
         secondaryCharacter,
-        secondaryCharacterDescription,
+        secondaryCharacterDescription: finalSecondaryCharacterDescription,
         setting,
         tone,
         ageRange,
@@ -300,7 +252,7 @@ class BookController {
         // **NOVO**: Armazena o estilo no modelo
         styleGuide: storyParams.styleGuide,
         // Armazena as descrições para uso futuro
-        environmentDescription: environmentDescription || `${setting} é um ambiente colorido e acolhedor para crianças`
+        environmentDescription: finalEnvironmentDescription
       });
 
       await newBook.save();
@@ -474,8 +426,11 @@ class BookController {
     if (!book) throw new Error('Livro não encontrado');
 
     try {
-      // Processa avatares e prepara personagens
-      logger.info('Iniciando processamento das descrições dos personagens para geração de imagens', { bookId });
+      // Prepara personagens usando as descrições fornecidas pelo usuário
+      logger.info(`Iniciando processamento das descrições dos personagens para geração de imagens do livro "${book.title}"`, { 
+        bookId,
+        title: book.title
+      });
       
       let characters = {
         main: {
@@ -503,31 +458,75 @@ class BookController {
         };
       }
 
-      logger.info('Iniciando geração de imagens utilizando descrições detalhadas dos personagens', { 
+      logger.info(`Iniciando geração de imagens para o livro "${book.title}" (${pages.length} páginas)`, { 
         bookId,
+        title: book.title,
         hasSecondaryCharacter: !!characters.secondary,
         hasStyleGuide: !!book.styleGuide,
         characterDescriptionLength: book.styleGuide?.character?.length || 0,
-        environmentDescriptionLength: book.styleGuide?.environment?.length || 0
+        environmentDescriptionLength: book.styleGuide?.environment?.length || 0,
+        totalPages: pages.length
       });
       
+      // Atualiza o status do livro para indicar que está gerando imagens
+      book.status = 'generating_images';
+      book.metadata = {
+        ...book.metadata,
+        currentPage: 0,
+        totalPages: pages.length,
+        lastUpdated: new Date()
+      };
+      await book.save();
+      
       // Passa o styleGuide do livro para o serviço de geração de imagens
-      const imageUrls = await openaiUnifiedService.generateImagesForStory(pages, characters, book.styleGuide);
+      const imageUrls = await openaiUnifiedFixService.generateImagesForStory(pages, characters, book.styleGuide);
       
       // Atualiza as URLs das imagens no modelo
       for (let i = 0; i < imageUrls.length && i < book.pages.length; i++) {
         book.pages[i].imageUrl = imageUrls[i];
+        
+        // Atualiza o progresso após cada imagem
+        book.metadata = {
+          ...book.metadata,
+          currentPage: i + 1,
+          lastUpdated: new Date()
+        };
+        await book.save();
+        
+        // Adiciona um pequeno atraso para garantir que o frontend possa receber as atualizações
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
+        logger.info(`Imagem ${i + 1}/${pages.length} salva para o livro "${book.title}"`, {
+          bookId,
+          pageNumber: i + 1,
+          totalPages: pages.length,
+          imageUrl: imageUrls[i].substring(0, 50) + '...'
+        });
       }
       
+      // Atualiza o status para indicar que todas as imagens foram geradas
+      book.status = 'images_completed';
+      book.metadata = {
+        ...book.metadata,
+        imagesCompleted: true,
+        lastUpdated: new Date()
+      };
       await book.save();
-      logger.info('Todas as imagens do livro foram geradas com sucesso', {
+      
+      // Adiciona um atraso antes de iniciar a geração do PDF para garantir que o frontend atualize o status
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      logger.info(`Todas as ${imageUrls.length} imagens do livro "${book.title}" foram geradas com sucesso`, {
         bookId,
+        title: book.title,
         totalImages: imageUrls.length
       });
     } catch (error) {
-      logger.error('Erro ao gerar imagens para o livro', {
+      logger.error(`Erro ao gerar imagens para o livro "${book.title}"`, {
         error: error instanceof Error ? error.message : 'Erro desconhecido',
-        bookId
+        bookId,
+        title: book.title,
+        stack: error instanceof Error ? error.stack : undefined
       });
       
       // Marca as páginas sem imagens
@@ -536,21 +535,157 @@ class BookController {
           book.pages[i].imageUrl = '/assets/images/fallback-page.jpg';
         }
       }
+      
+      // Atualiza o status para indicar erro na geração de imagens
+      book.status = 'images_error';
+      book.metadata = {
+        ...book.metadata,
+        error: error instanceof Error ? error.message : 'Erro desconhecido',
+        lastUpdated: new Date()
+      };
       await book.save();
     } finally {
       // Gera PDF independentemente de erro nas imagens
       try {
-        logger.info('Iniciando geração do PDF', { bookId });
-        const pdfPath = await generateBookPDF(book);
+        logger.info(`Iniciando geração do PDF para o livro "${book.title}"`, { 
+          bookId,
+          title: book.title
+        });
+        
+        // Atualiza o status para indicar que está gerando o PDF
+        book.status = 'generating_pdf';
+        book.metadata = {
+          ...book.metadata,
+          pdfGenerationStarted: true,
+          lastUpdated: new Date()
+        };
+        await book.save();
+        
+        // Verifica se todas as páginas têm imagens antes de gerar o PDF
+        let allPagesHaveImages = true;
+        for (const page of book.pages) {
+          if (!page.imageUrl || page.imageUrl === '') {
+            allPagesHaveImages = false;
+            logger.warn(`Página ${page.pageNumber} do livro "${book.title}" não tem imagem`, {
+              bookId,
+              pageNumber: page.pageNumber
+            });
+          }
+        }
+        
+        if (!allPagesHaveImages) {
+          logger.warn(`Algumas páginas do livro "${book.title}" não têm imagens, usando fallback`, {
+            bookId,
+            title: book.title
+          });
+          
+          // Adiciona imagens de fallback para páginas sem imagens
+          for (let i = 0; i < book.pages.length; i++) {
+            if (!book.pages[i].imageUrl || book.pages[i].imageUrl === '') {
+              book.pages[i].imageUrl = '/assets/images/fallback-page.jpg';
+              logger.info(`Imagem de fallback adicionada para página ${i + 1}`, {
+                bookId,
+                pageNumber: i + 1
+              });
+            }
+          }
+          await book.save();
+        }
+        
+        // Implementa retry para geração do PDF
+        let pdfPath = null;
+        let pdfAttempts = 0;
+        const MAX_PDF_ATTEMPTS = 3;
+        
+        // Importa a função de geração de PDF com fallback
+        while (pdfAttempts < MAX_PDF_ATTEMPTS && !pdfPath) {
+          try {
+            logger.info(`Tentativa ${pdfAttempts + 1} de geração do PDF para o livro "${book.title}"`, {
+              bookId,
+              title: book.title,
+              attempt: pdfAttempts + 1
+            });
+            
+            // Usa a nova função de geração de PDF com fallback
+            pdfPath = await generateBookPDFWithFallback(book);
+            
+            if (!pdfPath) {
+              throw new Error('Caminho do PDF não retornado pelo gerador');
+            }
+            
+            logger.info(`PDF gerado com sucesso na tentativa ${pdfAttempts + 1}`, {
+              bookId,
+              title: book.title,
+              pdfPath
+            });
+          } catch (pdfGenError) {
+            pdfAttempts++;
+            logger.error(`Erro na tentativa ${pdfAttempts} de gerar PDF para o livro "${book.title}"`, {
+              error: pdfGenError instanceof Error ? pdfGenError.message : 'Erro desconhecido',
+              bookId,
+              title: book.title,
+              attempt: pdfAttempts,
+              stack: pdfGenError instanceof Error ? pdfGenError.stack : undefined
+            });
+            
+            if (pdfAttempts >= MAX_PDF_ATTEMPTS) {
+              throw pdfGenError;
+            }
+            
+            // Aguarda antes de tentar novamente
+            await new Promise(resolve => setTimeout(resolve, 3000));
+          }
+        }
+        
+        // Verifica se o PDF foi gerado corretamente
+        if (!pdfPath) {
+          throw new Error('Falha em todas as tentativas de geração do PDF');
+        }
+        
         book.pdfUrl = pdfPath;
         book.status = 'completed';
+        book.metadata = {
+          ...book.metadata,
+          pdfCompleted: true,
+          lastUpdated: new Date()
+        };
         await book.save();
-      } catch (pdfError) {
-        logger.error('Erro ao gerar PDF', {
-          error: pdfError instanceof Error ? pdfError.message : 'Erro desconhecido',
-          bookId
+        
+        logger.info(`PDF gerado com sucesso para o livro "${book.title}"`, {
+          bookId,
+          title: book.title,
+          pdfPath
         });
+      } catch (pdfError) {
+        logger.error(`Erro ao gerar PDF para o livro "${book.title}"`, {
+          error: pdfError instanceof Error ? pdfError.message : 'Erro desconhecido',
+          bookId,
+          title: book.title,
+          stack: pdfError instanceof Error ? pdfError.stack : undefined
+        });
+        
+        // Log detalhado do erro
+        logger.error('Erro completo ao gerar PDF', {
+          error: pdfError,
+          bookId,
+          title: book.title,
+          bookData: {
+            pages: book.pages.map(p => ({
+              pageNumber: p.pageNumber,
+              hasText: !!p.text,
+              textLength: p.text?.length || 0,
+              hasImage: !!p.imageUrl,
+              imageUrl: p.imageUrl
+            }))
+          }
+        });
+        
         book.status = 'error';
+        book.metadata = {
+          ...book.metadata,
+          pdfError: pdfError instanceof Error ? pdfError.message : 'Erro desconhecido',
+          lastUpdated: new Date()
+        };
         await book.save();
       }
     }

@@ -6,7 +6,8 @@
     "start": "node dist/server.js",
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc",
-    "test:mongo": "ts-node src/utils/mongoTest.ts"
+    "test:mongo": "ts-node src/utils/mongoTest.ts",
+    "test:image": "ts-node src/scripts/test-image-generation.ts"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^2.1.1",
@@ -18,9 +19,11 @@
     "dotenv": "^16.4.7",
     "express": "^4.17.1",
     "fs-extra": "^11.3.0",
+    "image-size": "^1.1.1",
     "ioredis": "^5.5.0",
     "jsonwebtoken": "^8.5.1",
     "mongoose": "^6.13.8",
+    "multer": "^1.4.5-lts.1",
     "openai": "^4.85.3",
     "pdfkit": "^0.16.0",
     "sharp": "^0.33.5",
@@ -33,6 +36,7 @@
     "@types/express": "^4.17.21",
     "@types/fs-extra": "^11.0.4",
     "@types/jsonwebtoken": "^8.5.9",
+    "@types/multer": "^1.4.11",
     "@types/node": "^16.18.126",
     "@types/pdfkit": "^0.13.9",
     "ts-node-dev": "^1.1.8",

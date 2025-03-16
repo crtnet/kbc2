@@ -24,8 +24,9 @@ interface BookData {
   prompt?: string;
   authorName?: string;
   language?: string;
-  // **NOVO**: Campos para descrição de personagem e ambiente
+  // Campos para descrição de personagem e ambiente
   characterDescription?: string;
+  secondaryCharacterDescription?: string;
   environmentDescription?: string;
 }
 
@@ -51,8 +52,9 @@ function CreateBookScreen({ navigation }) {
     setting: '',
     tone: 'fun',
     ageRange: '5-6',
-    // **NOVO**: Valores iniciais para descrições
+    // Valores iniciais para descrições
     characterDescription: '',
+    secondaryCharacterDescription: '',
     environmentDescription: ''
   });
 
@@ -97,13 +99,27 @@ function CreateBookScreen({ navigation }) {
         // Seleciona o primeiro avatar da lista
         const selectedAvatar = avatars[0];
         
+        // Gera uma descrição padrão para o avatar
+        const defaultDescription = isMainCharacter 
+          ? `${bookData.mainCharacter || 'Personagem principal'} é uma criança com aparência amigável, expressão alegre e postura confiante. Veste roupas coloridas e confortáveis adequadas para aventuras.`
+          : `${bookData.secondaryCharacter || 'Personagem secundário'} é um adulto com expressão gentil e postura acolhedora. Veste roupas em tons neutros e tem uma aparência confiável.`;
+        
         if (isMainCharacter) {
-          setBookData({ ...bookData, mainCharacterAvatar: selectedAvatar });
+          setBookData({ 
+            ...bookData, 
+            mainCharacterAvatar: selectedAvatar,
+            characterDescription: defaultDescription
+          });
         } else {
-          setBookData({ ...bookData, secondaryCharacterAvatar: selectedAvatar });
+          setBookData({ 
+            ...bookData, 
+            secondaryCharacterAvatar: selectedAvatar,
+            secondaryCharacterDescription: defaultDescription
+          });
         }
         
         console.log(`Avatar ${isMainCharacter ? 'principal' : 'secundário'} selecionado:`, selectedAvatar);
+        console.log(`Descrição padrão gerada para ${isMainCharacter ? 'personagem principal' : 'personagem secundário'}`);
       } else {
         console.error('Nenhum avatar disponível');
         setError('Nenhum avatar disponível. Tente novamente.');
@@ -149,11 +165,19 @@ function CreateBookScreen({ navigation }) {
         return;
       }
 
-      // Se tem personagem secundário, deve ter avatar
-      if (bookData.secondaryCharacter && !bookData.secondaryCharacterAvatar) {
-        setError('Se você adicionar um personagem secundário, deve selecionar um avatar para ele');
-        setVisible(true);
-        return;
+      // Se tem personagem secundário, deve ter avatar e descrição
+      if (bookData.secondaryCharacter) {
+        if (!bookData.secondaryCharacterAvatar) {
+          setError('Se você adicionar um personagem secundário, deve selecionar um avatar para ele');
+          setVisible(true);
+          return;
+        }
+        
+        if (!bookData.secondaryCharacterDescription) {
+          setError('Por favor, adicione uma descrição para o personagem secundário');
+          setVisible(true);
+          return;
+        }
       }
 
       setLoading(true);
@@ -180,7 +204,7 @@ function CreateBookScreen({ navigation }) {
         
         ${bookData.secondaryCharacter ? `
         PERSONAGEM SECUNDÁRIO (${bookData.secondaryCharacter}):
-        ${bookData.characterDescription || 'Personagem secundário do livro'}` : ''}
+        ${bookData.secondaryCharacterDescription || 'Personagem secundário do livro'}` : ''}
         
         AMBIENTE (${bookData.setting}):
         ${bookData.environmentDescription || `Ambiente do livro: ${bookData.setting}`}
@@ -222,6 +246,7 @@ function CreateBookScreen({ navigation }) {
         authorName: bookData.authorName,
         language: 'pt-BR',
         characterDescription: bookData.characterDescription || '',
+        secondaryCharacterDescription: bookData.secondaryCharacterDescription || '',
         environmentDescription: bookData.environmentDescription || ''
       };
 
@@ -317,6 +342,15 @@ function CreateBookScreen({ navigation }) {
                 avatarIdentifier={bookData.mainCharacterAvatar}
                 size={60}
                 style={styles.avatarPreview}
+                onDescriptionGenerated={(description) => {
+                  if (description && !bookData.characterDescription) {
+                    setBookData(prev => ({
+                      ...prev,
+                      characterDescription: description
+                    }));
+                    console.log('Descrição do avatar principal gerada automaticamente');
+                  }
+                }}
               />
             ) : (
               <View style={styles.avatarPlaceholder}>
@@ -378,6 +412,15 @@ function CreateBookScreen({ navigation }) {
                   avatarIdentifier={bookData.secondaryCharacterAvatar}
                   size={60}
                   style={styles.avatarPreview}
+                  onDescriptionGenerated={(description) => {
+                    if (description && !bookData.secondaryCharacterDescription) {
+                      setBookData(prev => ({
+                        ...prev,
+                        secondaryCharacterDescription: description
+                      }));
+                      console.log('Descrição do avatar secundário gerada automaticamente');
+                    }
+                  }}
                 />
               ) : (
                 <View style={styles.avatarPlaceholder}>
@@ -388,6 +431,26 @@ function CreateBookScreen({ navigation }) {
           )}
         </View>
       </View>
+
+      {/* Campo para descrição do personagem secundário (condicional) */}
+      {bookData.secondaryCharacter && (
+        <>
+          <TextInput
+            label="Descrição Detalhada do Personagem Secundário"
+            value={bookData.secondaryCharacterDescription}
+            onChangeText={(text) => setBookData({ ...bookData, secondaryCharacterDescription: text })}
+            mode="outlined"
+            style={styles.input}
+            placeholder="Descreva detalhadamente a aparência, roupas, cores, expressão facial e características do personagem secundário..."
+            multiline
+            numberOfLines={4}
+          />
+          <Text style={styles.helperText}>
+            Uma descrição detalhada ajuda na consistência visual. Inclua cor dos cabelos, olhos, roupas, 
+            acessórios, expressão facial e características marcantes do personagem.
+          </Text>
+        </>
+      )}
 
       <TextInput
         label="Cenário da História"

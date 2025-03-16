@@ -11,6 +11,10 @@ if (!process.env.MONGODB_URI) {
   throw new Error('MONGODB_URI não definido no arquivo .env');
 }
 
+if (!process.env.OPENAI_API_KEY) {
+  throw new Error('OPENAI_API_KEY não definido no arquivo .env');
+}
+
 export const config = {
   jwtSecret: process.env.JWT_SECRET,
   jwtExpiresIn: process.env.JWT_EXPIRATION || '24h',
@@ -31,5 +35,13 @@ export const config = {
   bookImageWidth: 420,  // Largura ideal para A5
   bookImageHeight: 595, // Altura ideal para A5
   // Limite de tamanho de arquivo para imagens
-  maxImageSizeMB: parseInt(process.env.MAX_IMAGE_SIZE_MB || '2', 10),  // 2MB
+  maxImageSizeMB: parseInt(process.env.MAX_IMAGE_SIZE_MB || '2', 10),  // 2MB,
+  // Configurações da OpenAI
+  openai: {
+    apiKey: process.env.OPENAI_API_KEY,
+    organization: process.env.OPENAI_ORGANIZATION,
+    imageSize: process.env.OPENAI_IMAGE_SIZE || '1024x1024',
+    imageQuality: process.env.OPENAI_IMAGE_QUALITY || 'standard',
+    imageStyle: process.env.OPENAI_IMAGE_STYLE || 'natural'
+  }
 };

@@ -1,16 +1,16 @@
-import { Configuration, OpenAIApi } from 'openai';
+import OpenAI from 'openai';
 import { logger } from '../utils/logger';
 import { config } from '../config/config';
 import axios from 'axios';
 
 class ImageAnalysisService {
-  private openai: OpenAIApi;
+  private openai: OpenAI;
 
   constructor() {
-    const configuration = new Configuration({
+    this.openai = new OpenAI({
       apiKey: config.openai.apiKey,
+      organization: config.openai.organization
     });
-    this.openai = new OpenAIApi(configuration);
   }
 
   /**
@@ -28,7 +28,7 @@ class ImageAnalysisService {
       const base64Image = Buffer.from(response.data, 'binary').toString('base64');
 
       // Envia para o GPT-4 Vision para análise
-      const completion = await this.openai.createChatCompletion({
+      const completion = await this.openai.chat.completions.create({
         model: "gpt-4-vision-preview",
         messages: [
           {
@@ -64,7 +64,7 @@ class ImageAnalysisService {
         max_tokens: 500
       });
 
-      const description = completion.data.choices[0]?.message?.content;
+      const description = completion.choices[0]?.message?.content;
       if (!description) {
         throw new Error('Não foi possível gerar uma descrição para a imagem');
       }
