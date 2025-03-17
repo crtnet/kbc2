@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import { config } from './config';
-import bookRoutes from './routes/books.routes';
+import bookRoutes from './routes/bookRoutes';
 import authRoutes from './routes/auth.routes';
 import avatarRoutes from './routes/avatarRoutes';
 import { logger } from './utils/logger';

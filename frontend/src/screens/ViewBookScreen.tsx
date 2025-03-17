@@ -60,6 +60,20 @@ function ViewBookScreen() {
 
   const screenWidth = Dimensions.get('window').width;
   const isTablet = screenWidth > 768;
+  
+  // Override the default back button behavior
+  React.useLayoutEffect(() => {
+    navigation.setOptions({
+      headerLeft: () => (
+        <IconButton
+          icon="arrow-left"
+          size={24}
+          onPress={() => navigation.navigate('Home')}
+          style={{ marginLeft: 8 }}
+        />
+      ),
+    });
+  }, [navigation]);
 
   const fetchBook = useCallback(async () => {
     try {
@@ -171,12 +185,33 @@ function ViewBookScreen() {
   const handleDeleteBook = async () => {
     try {
       setDeleting(true);
+      setError(null);
+      
+      console.log('Iniciando exclusão do livro:', bookId);
       await bookService.deleteBook(bookId);
+      
+      console.log('Livro excluído com sucesso:', bookId);
       setShowDeleteDialog(false);
-      navigation.navigate('Home'); // Navega para a tela Home em vez de voltar
+      
+      // Exibe mensagem de sucesso antes de navegar
+      setError('Livro excluído com sucesso!');
+      setTimeout(() => {
+        navigation.navigate('Home'); // Navega para a tela Home em vez de voltar
+      }, 1000);
     } catch (err: any) {
       console.error('Erro ao excluir livro:', err);
-      setError(err.response?.data?.error || 'Erro ao excluir o livro.');
+      
+      // Exibe mensagem de erro mais amigável
+      let errorMessage = 'Erro ao excluir o livro.';
+      
+      if (err.message) {
+        errorMessage = err.message;
+      } else if (err.response?.data?.error) {
+        errorMessage = err.response.data.error;
+      }
+      
+      setError(`Erro ao excluir livro: ${errorMessage}`);
+      setShowDeleteDialog(false);
     } finally {
       setDeleting(false);
     }
@@ -384,8 +419,8 @@ function ViewBookScreen() {
     return (
       <View style={styles.errorContainer}>
         <Text style={styles.errorText}>Livro não encontrado.</Text>
-        <Button mode="contained" onPress={() => navigation.goBack()}>
-          Voltar
+        <Button mode="contained" onPress={() => navigation.navigate('Home')}>
+          Voltar para Home
         </Button>
       </View>
     );
@@ -536,7 +571,9 @@ function ViewBookScreen() {
                     <Image
                       source={{ 
                         uri: currentPageData.imageUrl.startsWith('http') 
-                          ? currentPageData.imageUrl 
+                          ? (currentPageData.imageUrl.includes('oaidalleapiprodscus.blob.core.windows.net') 
+                             ? `/assets/images/fallback-page.jpg?t=${Date.now()}` // Use fallback for DALL-E URLs
+                             : currentPageData.imageUrl)
                           : `${API_URL}${currentPageData.imageUrl}?t=${Date.now()}` // Add timestamp to prevent caching
                       }}
                       style={styles.pageImage}

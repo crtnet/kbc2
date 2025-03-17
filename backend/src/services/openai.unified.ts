@@ -106,6 +106,13 @@ class OpenAIUnifiedService {
         // Removendo qualquer parâmetro de URL ou imagem de referência que possa estar no prompt
         const cleanPrompt = this.removeUrlsFromPrompt(prompt);
 
+        // Log completo do prompt para depuração
+        logger.info(`DALL-E PROMPT COMPLETO para página ${pageNumber}:`, {
+          pageNumber,
+          prompt: cleanPrompt,
+          promptLength: cleanPrompt.length
+        });
+
         logger.info(`Enviando prompt para geração da imagem da página ${pageNumber}`, {
           pageNumber,
           promptLength: cleanPrompt.length
@@ -117,6 +124,12 @@ class OpenAIUnifiedService {
           size: config.openai.imageSize as "1024x1024" | "512x512" | "256x256",
           quality: config.openai.imageQuality as "standard" | "hd",
           style: config.openai.imageStyle as "natural" | "vivid"
+        });
+
+        // Log da resposta do DALL-E
+        logger.info(`DALL-E RESPOSTA para página ${pageNumber}:`, {
+          pageNumber,
+          responseData: JSON.stringify(response)
         });
 
         const imageUrl = response.data[0]?.url;

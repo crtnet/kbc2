@@ -1,4 +1,4 @@
-// src/routes/books.routes.ts
+// src/routes/bookRoutes.ts
 
 import { Router } from 'express';
 import { authMiddleware } from '../middlewares/auth';
@@ -32,5 +32,11 @@ router.post('/', bookController.createBook);
  * Retorna o PDF do livro (se o usuário for dono)
  */
 router.get('/:bookId/pdf', bookController.getPDF);
+
+/**
+ * DELETE /books/:bookId
+ * Exclui um livro específico (que pertença ao usuário)
+ */
+router.delete('/:bookId', bookController.deleteBook);
 
 export default router;

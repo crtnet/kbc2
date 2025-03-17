@@ -85,7 +85,8 @@ Formate com linha em branco entre páginas.`;
         try {
           // Prompt otimizado para DALL-E com contexto da história
           const optimizedPrompt = this.optimizePrompt(prompt, storyContext, pageIndex, totalPages);
-          logger.info('Tamanho do prompt otimizado:', { 
+          logger.info('DALL-E PROMPT COMPLETO:', { 
+            prompt: optimizedPrompt,
             originalLength: prompt.length,
             optimizedLength: optimizedPrompt.length,
             pageIndex
@@ -109,6 +110,12 @@ Formate com linha em branco entre páginas.`;
 
           const response = await this.openai.images.generate(dalleParams);
 
+          // Log da resposta do DALL-E
+          logger.info('DALL-E RESPOSTA:', {
+            responseData: JSON.stringify(response),
+            pageIndex
+          });
+
           if (!response?.data?.[0]?.url) {
             throw new Error('Resposta inválida do DALL-E');
           }
@@ -126,6 +133,13 @@ Formate com linha em branco entre páginas.`;
             logger.warn('Tentando gerar com dimensões padrão 1024x1024', { pageIndex });
             try {
               const optimizedPrompt = this.optimizePrompt(prompt, storyContext, pageIndex, totalPages);
+              
+              // Log do prompt para a segunda tentativa
+              logger.info('DALL-E PROMPT SEGUNDA TENTATIVA:', {
+                prompt: optimizedPrompt,
+                pageIndex
+              });
+              
               const response = await this.openai.images.generate({
                 model: "dall-e-3",
                 prompt: optimizedPrompt.substring(0, this.MAX_PROMPT_LENGTH),
@@ -135,6 +149,12 @@ Formate com linha em branco entre páginas.`;
                 style: "vivid", // Consistente com o anterior
                 response_format: "url",
                 reference_images: referenceImages.length > 0 ? [referenceImages[0]] : undefined
+              });
+              
+              // Log da resposta da segunda tentativa
+              logger.info('DALL-E RESPOSTA SEGUNDA TENTATIVA:', {
+                responseData: JSON.stringify(response),
+                pageIndex
               });
               
               if (!response?.data?.[0]?.url) {
@@ -312,6 +332,14 @@ Formate com linha em branco entre páginas.`;
       const finalPrompt = characterPrompt 
         ? `${characterPrompt}\n\nCENA:\n${optimizedScene}`
         : optimizedScene;
+        
+      // Log do prompt final
+      logger.info('DALL-E PROMPT FINAL:', {
+        prompt: finalPrompt,
+        pageIndex,
+        hasCharacterPrompt: !!characterPrompt,
+        hasReferenceImages: referenceImages.length > 0
+      });
 
       // Gerar imagem
       const imageUrl = await this.generateImageWithRetry(

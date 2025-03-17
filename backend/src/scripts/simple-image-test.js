@@ -10,7 +10,8 @@ const openai = new OpenAI({
 // Função para gerar uma imagem
 async function generateImage(prompt) {
   try {
-    console.log(`Gerando imagem com prompt: "${prompt.substring(0, 100)}..."`);
+    console.log(`DALL-E PROMPT COMPLETO: "${prompt}"`);
+    console.log(`Comprimento do prompt: ${prompt.length} caracteres`);
     
     const response = await openai.images.generate({
       model: "dall-e-2",
@@ -20,6 +21,8 @@ async function generateImage(prompt) {
       quality: "standard",
       style: "vivid"
     });
+
+    console.log('DALL-E RESPOSTA:', JSON.stringify(response, null, 2));
 
     return response.data[0]?.url;
   } catch (error) {

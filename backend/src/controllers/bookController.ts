@@ -452,10 +452,10 @@ class BookController {
       // Prepara o guia de estilo para a geração de imagens
       if (!book.styleGuide) {
         book.styleGuide = {
-          character: characters.main.description + 
-            (characters.secondary ? `\n\n${characters.secondary.description}` : ''),
+          character: `${book.mainCharacter}: ${characters.main.description}` + 
+            (characters.secondary ? `\n\n${book.secondaryCharacter}: ${characters.secondary.description}` : ''),
           environment: book.environmentDescription || `cenário de ${book.setting}`,
-          artisticStyle: "ilustração cartoon, cores vibrantes, traços suaves, estilo livro infantil"
+          artisticStyle: "ilustração digital simples com traços suaves, cores vibrantes e contornos limpos, inspirados em livros infantis"
         };
       }
 
@@ -493,7 +493,17 @@ class BookController {
       
       // Atualiza as URLs das imagens no modelo
       for (let i = 0; i < imageUrls.length && i < book.pages.length; i++) {
-        book.pages[i].imageUrl = imageUrls[i];
+        // Check if the URL is from DALL-E and use a fallback if it is
+        const imageUrl = imageUrls[i];
+        if (imageUrl.includes('oaidalleapiprodscus.blob.core.windows.net')) {
+          logger.warn(`DALL-E URL detected for image ${i + 1}, using fallback`, {
+            bookId,
+            pageNumber: i + 1
+          });
+          book.pages[i].imageUrl = '/assets/images/fallback-page.jpg';
+        } else {
+          book.pages[i].imageUrl = imageUrl;
+        }
         
         // Atualiza o progresso após cada imagem
         book.metadata = {
@@ -745,6 +755,48 @@ class BookController {
       }
     }
   }
+
+  /**
+   * DELETE /books/:bookId
+   * Exclui um livro específico do usuário
+   */
+  public deleteBook = async (req: Request, res: Response) => {
+    try {
+      const authReq = req as AuthRequest;
+      if (!authReq.user) {
+        return res.status(401).json({ error: 'Usuário não autenticado' });
+      }
+
+      const { bookId } = req.params;
+      logger.info('deleteBook - Recebido bookId:', bookId);
+
+      if (!mongoose.Types.ObjectId.isValid(bookId)) {
+        logger.warn('ID inválido detectado:', bookId);
+        return res.status(400).json({ error: 'ID de livro inválido' });
+      }
+
+      const userId = new mongoose.Types.ObjectId(authReq.user.id);
+
+      // Garante que o livro pertença ao usuário
+      const book = await Book.findOne({ _id: bookId, userId }).exec();
+      if (!book) {
+        logger.warn('Livro não encontrado ou não pertence ao usuário', { bookId });
+        return res.status(404).json({ error: 'Livro não encontrado' });
+      }
+
+      // Exclui o livro
+      await Book.deleteOne({ _id: bookId, userId }).exec();
+
+      logger.info('Livro excluído com sucesso', { bookId });
+      return res.json({ message: 'Livro excluído com sucesso' });
+    } catch (error: any) {
+      logger.error(`Erro ao excluir livro ${req.params.bookId}`, { error: error.message });
+      return res.status(500).json({ 
+        error: 'Erro ao excluir livro',
+        details: error.message
+      });
+    }
+  };
 }
 
 export default new BookController();

@@ -93,6 +93,18 @@ class OpenAIUnifiedFixService {
         // Removendo qualquer parâmetro de URL ou imagem de referência que possa estar no prompt
         const cleanPrompt = this.removeUrlsFromPrompt(prompt);
 
+        // Log completo do prompt para depuração
+        logger.info(`Prompt DALL-E: ${pageNumber}/${pages.length}`, {
+          pageNumber,
+          prompt: cleanPrompt,
+          promptLength: cleanPrompt.length,
+          characters: Object.keys(characters).map(key => ({
+            name: characters[key].name,
+            type: characters[key].type,
+            colors: this.extractColorInfo(characters[key].description)
+          }))
+        });
+
         logger.info(`Enviando prompt para geração da imagem da página ${pageNumber}`, {
           pageNumber,
           promptLength: cleanPrompt.length
@@ -106,8 +118,8 @@ class OpenAIUnifiedFixService {
         while (attempts < this.MAX_RETRIES) {
           try {
             // Log detalhado do prompt para depuração
-            logger.info(`Prompt para página ${pageNumber} (tentativa ${attempts + 1}):`, {
-              prompt: cleanPrompt.substring(0, 200) + '...',
+            logger.info(`Prompt DALL-E (tentativa ${attempts + 1}): ${pageNumber}/${totalPages}`, {
+              prompt: cleanPrompt,
               pageNumber,
               attempt: attempts + 1
             });
@@ -116,14 +128,21 @@ class OpenAIUnifiedFixService {
             const delay = Math.floor(Math.random() * 2000) + 1000; // 1-3 segundos
             await new Promise(resolve => setTimeout(resolve, delay));
             
-            // Usando modelo mais simples e rápido para melhorar a confiabilidade
+            // Usando modelo mais avançado para melhor qualidade e consistência
             const response = await this.openai.images.generate({
-              model: "dall-e-2", // Usando o modelo mais estável
+              model: "dall-e-3", // Usando o modelo mais avançado
               prompt: cleanPrompt.substring(0, this.MAX_PROMPT_LENGTH),
               n: 1,
-              size: "1024x1024", // Mantendo tamanho grande para qualidade
+              size: "1024x1024", // Tamanho padrão para DALL-E 3
               quality: "standard",
               style: "vivid" // Melhor para livros infantis
+            });
+
+            // Log da resposta do DALL-E
+            logger.info(`Resposta DALL-E: ${pageNumber}/${totalPages} (tentativa ${attempts + 1})`, {
+              pageNumber,
+              attempt: attempts + 1,
+              responseData: JSON.stringify(response)
             });
 
             imageUrl = response.data[0]?.url;
@@ -222,15 +241,29 @@ class OpenAIUnifiedFixService {
           });
           
           // Cria um prompt simplificado
-          const simplifiedPrompt = `Ilustração simples para livro infantil. Cena com personagens interagindo. Estilo cartoon colorido.`;
+          const simplifiedPrompt = `Ilustração digital simples para livro infantil com traços suaves, cores vibrantes e contornos limpos. Cena com personagens: ${characters.main.name} (personagem principal) ${characters.secondary ? `e ${characters.secondary.name} (personagem secundário)` : ''} interagindo. Reserve espaço na parte inferior para texto. Mantenha consistência visual com mesma paleta de cores.`;
           
-          // Tenta gerar com o modelo mais simples
+          // Log do prompt de fallback
+          logger.info(`Prompt DALL-E Fallback: ${pageNumber}/${pages.length}`, {
+            pageNumber,
+            prompt: simplifiedPrompt,
+            promptLength: simplifiedPrompt.length
+          });
+          
+          // Tenta gerar com o modelo mais avançado
           const fallbackResponse = await this.openai.images.generate({
-            model: "dall-e-2",
+            model: "dall-e-3",
             prompt: simplifiedPrompt,
             n: 1,
-            size: "512x512", // Tamanho menor para maior chance de sucesso
-            quality: "standard"
+            size: "1024x1024", // Tamanho padrão para DALL-E 3
+            quality: "standard",
+            style: "vivid"
+          });
+          
+          // Log da resposta do DALL-E para o fallback
+          logger.info(`Resposta DALL-E Fallback: ${pageNumber}/${pages.length}`, {
+            pageNumber,
+            responseData: JSON.stringify(fallbackResponse)
           });
           
           const fallbackUrl = fallbackResponse.data[0]?.url;
@@ -564,13 +597,13 @@ Tema Principal: ${params.theme}
 Tom da Narrativa: ${params.tone}
 
 Personagem Principal: ${params.mainCharacter}
-${params.mainCharacterDescription}
+Descrição do Personagem Principal: ${params.mainCharacterDescription}
 
 ${params.secondaryCharacter ? `Personagem Secundário: ${params.secondaryCharacter}
-${params.secondaryCharacterDescription}` : ''}
+Descrição do Personagem Secundário: ${params.secondaryCharacterDescription}` : ''}
 
 Cenário: ${params.setting}
-${params.styleGuide.environment}
+Descrição do Ambiente: ${params.styleGuide.environment}
 
 A história deve:
 1. Ser apropriada para crianças de ${params.ageRange} anos
@@ -597,25 +630,31 @@ Por favor, crie uma história envolvente que mantenha a consistência com as des
     // Extrai a cena principal do texto da página
     const mainScene = this.extractMainScene(pageText);
 
-    // Constrói o prompt base com o estilo artístico
-    let prompt = `Ilustração de livro infantil, estilo cartoon, cores vibrantes e alegres. `;
+    // Constrói o prompt base com o estilo artístico atualizado
+    let prompt = `Ilustração digital simples para livro infantil, com traços suaves, cores vibrantes e contornos limpos. `;
 
     // Prioriza a cena completa da página
     prompt += `Cena completa: ${mainScene}. `;
 
-    // Adiciona descrições dos personagens de forma mais concisa
+    // Adiciona descrições dos personagens de forma mais concisa, incluindo cores
     if (styleGuide.character) {
-      // Limita o tamanho da descrição do personagem para não sobrecarregar o prompt
-      const characterDescription = styleGuide.character.length > 400 
-        ? styleGuide.character.substring(0, 400) + '...' 
-        : styleGuide.character;
+      // Extrai informações de cores dos personagens
+      const mainCharColors = this.extractColorInfo(characters.main.description);
+      const secondaryCharColors = characters.secondary ? this.extractColorInfo(characters.secondary.description) : '';
       
-      prompt += `Personagens na cena: ${characterDescription}. `;
+      // Adiciona os nomes dos personagens explicitamente com suas cores
+      prompt += `Personagens na cena: ${characters.main.name}: ${mainCharColors} ${characters.main.description.substring(0, 150)}`;
+      if (characters.secondary) {
+        prompt += `, ${characters.secondary.name}: ${secondaryCharColors} ${characters.secondary.description.substring(0, 150)}`;
+      }
+      prompt += `. `;
     } else {
       // Fallback para o caso de não ter descrição no styleGuide
-      prompt += `Personagem principal na cena: ${characters.main.description.substring(0, 150)}`;
+      const mainCharColors = this.extractColorInfo(characters.main.description);
+      prompt += `Personagem principal na cena: ${characters.main.name}: ${mainCharColors} ${characters.main.description.substring(0, 150)}`;
       if (characters.secondary) {
-        prompt += `. Personagem secundário na cena: ${characters.secondary.description.substring(0, 150)}`;
+        const secondaryCharColors = this.extractColorInfo(characters.secondary.description);
+        prompt += `. Personagem secundário na cena: ${characters.secondary.name}: ${secondaryCharColors} ${characters.secondary.description.substring(0, 150)}`;
       }
       prompt += `. `;
     }
@@ -627,20 +666,115 @@ Por favor, crie uma história envolvente que mantenha a consistência com as des
     
     prompt += `Ambiente da cena: ${environmentDescription}. `;
 
-    // Adiciona diretrizes específicas para livros infantis
-    prompt += `Estilo: ilustração de livro infantil profissional, cena completa com todos os personagens interagindo, cores vivas, traços limpos, alta qualidade, imagem horizontal em formato de página de livro.`;
+    // Adiciona diretrizes específicas atualizadas para livros infantis
+    prompt += `Estilo: ilustração digital simples com traços suaves, cores vibrantes e contornos limpos, inspirados em livros infantis. `;
+    prompt += `Composição: reserve espaço na parte inferior da imagem para inserção de texto da história. `;
+    prompt += `Consistência visual: mantenha a mesma paleta de cores, qualidade e proporção dos elementos em todas as ilustrações. `;
+    prompt += `Crie uma imagem horizontal em formato de página de livro com todos os personagens interagindo na cena.`;
 
     // Verifica o tamanho total do prompt e reduz se necessário
     if (prompt.length > this.MAX_PROMPT_LENGTH) {
+      const originalPrompt = prompt;
       prompt = prompt.substring(0, this.MAX_PROMPT_LENGTH - 3) + '...';
       logger.warn(`Prompt para imagem da página ${pageNumber} foi truncado por exceder o limite`, {
         pageNumber,
-        originalLength: prompt.length,
-        truncatedLength: this.MAX_PROMPT_LENGTH
+        originalLength: originalPrompt.length,
+        truncatedLength: this.MAX_PROMPT_LENGTH,
+        originalPrompt: originalPrompt,
+        truncatedPrompt: prompt,
+        characters: Object.keys(characters).map(key => ({
+          name: characters[key].name,
+          type: characters[key].type,
+          colors: this.extractColorInfo(characters[key].description)
+        }))
+      });
+    } else {
+      // Log do prompt completo para depuração
+      logger.info(`Prompt construído para página ${pageNumber}:`, {
+        pageNumber,
+        promptLength: prompt.length,
+        prompt: prompt,
+        characters: Object.keys(characters).map(key => ({
+          name: characters[key].name,
+          type: characters[key].type,
+          colors: this.extractColorInfo(characters[key].description)
+        }))
       });
     }
 
     return prompt;
+  }
+  
+  /**
+   * Extrai informações de cores da descrição do personagem
+   * @private
+   */
+  private extractColorInfo(description: string): string {
+    if (!description) return '';
+    
+    // Lista de cores comuns em português e inglês
+    const colorTerms = [
+      'vermelho', 'vermelho-', 'vermelha', 'vermelhas', 'vermelhos',
+      'azul', 'azul-', 'azuis',
+      'verde', 'verde-', 'verdes',
+      'amarelo', 'amarelo-', 'amarela', 'amarelas', 'amarelos',
+      'laranja', 'laranja-',
+      'roxo', 'roxo-', 'roxa', 'roxas', 'roxos',
+      'rosa', 'rosa-',
+      'marrom', 'marrom-', 'marrons',
+      'preto', 'preto-', 'preta', 'pretas', 'pretos',
+      'branco', 'branco-', 'branca', 'brancas', 'brancos',
+      'cinza', 'cinza-', 'cinzas',
+      'dourado', 'dourado-', 'dourada', 'douradas', 'dourados',
+      'prateado', 'prateado-', 'prateada', 'prateadas', 'prateados',
+      'red', 'blue', 'green', 'yellow', 'orange', 'purple', 'pink', 'brown', 'black', 'white', 'grey', 'gray', 'golden', 'silver'
+    ];
+    
+    // Partes do corpo ou itens que podem ter cores
+    const bodyParts = [
+      'cabelo', 'cabelos', 'olhos', 'olho', 'pele', 'roupa', 'roupas', 'vestido', 'calça', 'calças', 
+      'camisa', 'camiseta', 'blusa', 'casaco', 'jaqueta', 'chapéu', 'boné', 'sapato', 'sapatos', 
+      'tênis', 'bota', 'botas', 'meia', 'meias', 'luva', 'luvas', 'cachecol', 'lenço',
+      'hair', 'eyes', 'eye', 'skin', 'clothes', 'dress', 'pants', 'shirt', 't-shirt', 'jacket', 
+      'hat', 'cap', 'shoe', 'shoes', 'sneakers', 'boot', 'boots', 'sock', 'socks', 'glove', 'gloves', 'scarf'
+    ];
+    
+    // Procura por padrões de cores na descrição
+    const lowerDesc = description.toLowerCase();
+    let colorInfo = '';
+    
+    // Procura por padrões como "cabelo vermelho", "olhos azuis", etc.
+    for (const part of bodyParts) {
+      for (const color of colorTerms) {
+        // Padrões comuns em português
+        const patterns = [
+          `${part} ${color}`,
+          `${part} de cor ${color}`,
+          `${part} na cor ${color}`,
+          `${part} é ${color}`,
+          `${part} são ${color}`,
+          `${color} ${part}`
+        ];
+        
+        for (const pattern of patterns) {
+          if (lowerDesc.includes(pattern)) {
+            colorInfo += `${part} ${color}, `;
+            break;
+          }
+        }
+      }
+    }
+    
+    // Se não encontrou informações específicas, procura por menções gerais de cores
+    if (!colorInfo) {
+      for (const color of colorTerms) {
+        if (lowerDesc.includes(` ${color} `)) {
+          colorInfo += `${color}, `;
+        }
+      }
+    }
+    
+    return colorInfo ? `(cores: ${colorInfo.trim().replace(/,$/, '')}) ` : '';
   }
 
   /**
@@ -663,7 +797,7 @@ Por favor, crie uma história envolvente que mantenha a consistência com as des
       const maxSentences = Math.min(4, sentences.length);
       const mainSceneSentences = sentences.slice(0, maxSentences);
       
-      // Prioriza sentenças que descrevem ação
+      // Prioriza sentenças que descrevem ação ou mencionam personagens
       const actionWords = [
         ' está ', ' estão ', ' fazendo ', ' faz ', ' vai ', ' vão ',
         ' corre', ' pula', ' brinca', ' sorri', ' olha', ' vê ',

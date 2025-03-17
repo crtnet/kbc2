@@ -150,7 +150,11 @@ function FlipBookScreen() {
         <Text style={styles.coverTitle}>{title}</Text>
         {pages[0]?.imageUrl && (
           <Image
-            source={{ uri: pages[0].imageUrl }}
+            source={{ 
+              uri: pages[0].imageUrl.includes('oaidalleapiprodscus.blob.core.windows.net')
+                ? '/assets/images/fallback-page.jpg'
+                : pages[0].imageUrl 
+            }}
             style={styles.coverImage}
             resizeMode="contain"
           />
@@ -170,7 +174,11 @@ function FlipBookScreen() {
         
         {page.imageUrl && (
           <Image
-            source={{ uri: page.imageUrl }}
+            source={{ 
+              uri: page.imageUrl.includes('oaidalleapiprodscus.blob.core.windows.net')
+                ? '/assets/images/fallback-page.jpg'
+                : page.imageUrl 
+            }}
             style={styles.pageImage}
             resizeMode="contain"
           />

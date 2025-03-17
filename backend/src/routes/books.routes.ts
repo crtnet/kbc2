@@ -33,4 +33,10 @@ router.post('/', bookController.createBook);
  */
 router.get('/:bookId/pdf', bookController.getPDF);
 
+/**
+ * DELETE /books/:bookId
+ * Exclui um livro específico (que pertença ao usuário)
+ */
+router.delete('/:bookId', bookController.deleteBook);
+
 export default router;

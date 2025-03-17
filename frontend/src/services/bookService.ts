@@ -120,15 +120,39 @@ export const deleteBook = async (bookId: string) => {
   try {
     const token = await AsyncStorage.getItem('token');
     
+    console.log(`Tentando excluir livro com ID: ${bookId}`);
+    
     const response = await axios.delete(`${API_URL}/books/${bookId}`, {
       headers: {
         Authorization: `Bearer ${token}`
       }
     });
     
+    console.log(`Livro ${bookId} excluído com sucesso:`, response.data);
     return response.data;
-  } catch (error) {
+  } catch (error: any) {
     console.error(`Erro ao excluir livro ${bookId}:`, error);
+    
+    // Mensagens de erro mais detalhadas
+    if (error.response) {
+      // O servidor respondeu com um status de erro
+      console.error(`Status do erro: ${error.response.status}`);
+      console.error('Dados da resposta:', error.response.data);
+      
+      if (error.response.status === 404) {
+        throw new Error(`Livro com ID ${bookId} não encontrado no servidor`);
+      } else if (error.response.status === 401) {
+        throw new Error('Usuário não autenticado. Faça login novamente.');
+      } else if (error.response.status === 403) {
+        throw new Error('Você não tem permissão para excluir este livro.');
+      }
+    } else if (error.request) {
+      // A requisição foi feita mas não houve resposta
+      console.error('Sem resposta do servidor:', error.request);
+      throw new Error('Sem resposta do servidor. Verifique sua conexão com a internet.');
+    }
+    
+    // Erro genérico ou outros erros
     throw error;
   }
 };
