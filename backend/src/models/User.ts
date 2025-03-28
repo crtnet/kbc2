@@ -1,21 +1,7 @@
-import mongoose, { Schema, Document } from 'mongoose';
-import { ObjectId } from 'mongodb';
+import mongoose, { Schema } from 'mongoose';
+import { IUser, UserModel } from '../types/user.types';
 
-export interface IUser extends Document {
-  _id: ObjectId;
-  name: string;
-  email: string;
-  password: string;
-  type: 'admin' | 'user';
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-const UserSchema = new Schema<IUser>({
-  name: { 
-    type: String, 
-    required: true 
-  },
+const UserSchema: Schema = new Schema({
   email: { 
     type: String, 
     required: true, 
@@ -27,19 +13,37 @@ const UserSchema = new Schema<IUser>({
     type: String, 
     required: true 
   },
+  name: { 
+    type: String,
+    trim: true
+  },
   type: { 
     type: String, 
-    enum: ['admin', 'user'], 
-    default: 'user' 
+    required: true,
+    default: 'user',
+    enum: ['user', 'admin']
   }
 }, {
-  timestamps: true,
-  collection: 'users'
+  timestamps: true
 });
 
 // Índices
-UserSchema.index({ email: 1 }, { unique: true });
+UserSchema.index({ email: 1 });
 
-export const UserModel = mongoose.model<IUser>('User', UserSchema);
+// Métodos de instância
+UserSchema.methods.comparePassword = async function(candidatePassword: string): Promise<boolean> {
+  try {
+    const bcrypt = require('bcryptjs');
+    return await bcrypt.compare(candidatePassword, this.password);
+  } catch (error) {
+    console.error('Erro ao comparar senha:', error);
+    return false;
+  }
+};
 
-export default UserModel;
+// Métodos estáticos
+UserSchema.statics.findByEmail = function(email: string): Promise<IUser | null> {
+  return this.findOne({ email: email.toLowerCase() });
+};
+
+export const User = mongoose.model<IUser, UserModel>('User', UserSchema);

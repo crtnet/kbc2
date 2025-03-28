@@ -1,65 +1,46 @@
-# Serviço OpenAI Unificado - Correção de Geração de Imagens
+# Serviços da Aplicação
 
-## Problema Resolvido
+Este diretório contém todos os serviços utilizados pela aplicação para geração de livros infantis ilustrados.
 
-Este serviço corrige problemas na geração de imagens para livros infantis, especificamente:
+## Estrutura de Serviços
 
-1. **Falhas na geração de imagens**: O serviço anterior falhava ao gerar imagens para as páginas dos livros, resultando em erros como "Erro ao gerar imagem para página X/Y".
+### Serviços Principais
 
-2. **Problemas com prompts**: Os prompts anteriores eram muito complexos ou continham elementos que o API da OpenAI rejeitava.
+- **avatarService.unified.ts**: Serviço unificado para gerenciamento de avatares dos personagens
+- **bookService.ts**: Serviço para gerenciamento de livros
+- **openai.unified.ts**: Serviço unificado para interação com a API da OpenAI
+- **pdfService.ts**: Serviço para geração de PDFs dos livros
 
-3. **Falta de tratamento de erros robusto**: O serviço anterior não tinha um mecanismo adequado para lidar com falhas na geração de imagens.
+### Serviços de Processamento de Imagem
 
-## Melhorias Implementadas
+- **imageProcessor.ts**: Processamento de imagens geradas
+- **imageOptimizer.ts**: Otimização de imagens para melhor desempenho
+- **imageAnalysisService.ts**: Análise de imagens para garantir qualidade e adequação
 
-1. **Simplificação de Prompts**:
-   - Remoção de URLs e referências a imagens dos prompts
-   - Limitação do tamanho das descrições de personagens e ambientes
-   - Formatação mais clara e direta dos prompts
+### Serviços de Geração de Conteúdo
 
-2. **Tratamento de Erros Robusto**:
-   - Implementação de sistema de retry com backoff
-   - Fallback para imagens padrão quando a geração falha
-   - Logging detalhado para facilitar a depuração
+- **storyGenerator.ts**: Geração de histórias para os livros
+- **storyFallback.service.ts**: Serviço de fallback para garantir geração de histórias mesmo em caso de falhas
 
-3. **Otimização de Modelo**:
-   - Uso do modelo DALL-E 2 que é mais estável para este caso de uso
-   - Parâmetros otimizados para geração de imagens infantis
+### Serviços de Suporte
 
-4. **Extração de Cena Melhorada**:
-   - Algoritmo mais robusto para extrair a cena principal de cada página
-   - Detecção de ações e elementos importantes para visualização
+- **cache.service.ts**: Serviço de cache para melhorar desempenho
+- **style.service.ts**: Serviço para gerenciamento de estilos visuais dos livros
 
-## Como Usar
+## Boas Práticas
 
-O serviço pode ser usado diretamente através do controlador de livros, que já foi atualizado para usar esta versão corrigida:
+1. **Centralização de Importações**: Use o arquivo `index.ts` para importar serviços
+2. **Serviços Unificados**: Prefira usar os serviços unificados (com sufixo `.unified`) que combinam funcionalidades
+3. **Tratamento de Erros**: Todos os serviços devem implementar tratamento robusto de erros
+4. **Logging**: Use o logger centralizado para registrar operações importantes
+5. **Fallbacks**: Implemente mecanismos de fallback para garantir resiliência
+
+## Exemplo de Uso
 
 ```typescript
-// Exemplo de uso no controlador
-const imageUrls = await openaiUnifiedFixService.generateImagesForStory(
-  pages, 
-  characters, 
-  book.styleGuide
-);
+// Importação recomendada
+import { avatarService, bookService } from '../services';
+
+// Uso do serviço
+const avatarUrl = avatarService.processAvatarUrl(rawUrl, isMainCharacter);
 ```
-
-## Estrutura de Tipos
-
-Os tipos foram padronizados e movidos para um arquivo centralizado em `../types/book.types.ts`:
-
-- `Character`: Representa um personagem da história
-- `StyleGuide`: Define o estilo visual do livro
-- `GenerateStoryParams`: Parâmetros para geração da história
-
-## Logs e Depuração
-
-O serviço inclui logs detalhados em cada etapa do processo, facilitando a identificação de problemas:
-
-- Logs de início e fim de geração de cada imagem
-- Logs de prompts enviados (parciais para não sobrecarregar)
-- Logs detalhados de erros com stack traces
-
-## Imagens de Fallback
-
-Em caso de falha na geração de imagens, o sistema usa automaticamente imagens de fallback localizadas em:
-`/public/assets/images/fallback-page.jpg`

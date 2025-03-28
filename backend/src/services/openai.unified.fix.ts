@@ -4,17 +4,48 @@ import { logger } from '../utils/logger';
 import fs from 'fs';
 import path from 'path';
 import { Character, GenerateStoryParams, StyleGuide } from '../types/book.types';
+import { Configuration } from 'openai';
+import { dalleConfigs } from '../config/dalleConfig';
 
-class OpenAIUnifiedFixService {
+interface ImagePromptParams {
+  pageText: string;
+  styleGuide: {
+    character: string;
+    environment: string;
+    artisticStyle: string;
+  };
+  complexity: string;
+  imageType: 'cover' | 'fullPage' | 'spreadPage' | 'inlineImage';
+}
+
+export class OpenAIUnifiedFixService {
   private openai: OpenAI;
   private MAX_PROMPT_LENGTH = 4000;
   private MAX_RETRIES = 3;
   private RETRY_DELAY = 2000;
 
   constructor() {
+    // Log para debug da chave da API
+    console.log('Verificando chave da API OpenAI:', {
+      hasKey: !!process.env.OPENAI_API_KEY,
+      keyLength: process.env.OPENAI_API_KEY?.length,
+      keyStart: process.env.OPENAI_API_KEY?.substring(0, 7)
+    });
+
+    // Verifica se deve pular a validação da chave da API
+    const skipValidation = process.env.SKIP_OPENAI_KEY_VALIDATION === 'true';
+    
+    if (!process.env.OPENAI_API_KEY && !skipValidation) {
+      throw new Error('OPENAI_API_KEY não está definida nas variáveis de ambiente');
+    }
+
+    // Se estiver pulando a validação, usa uma chave fictícia para desenvolvimento
+    const apiKey = skipValidation && !process.env.OPENAI_API_KEY 
+      ? 'sk-dummy-key-for-development-purposes-only'
+      : process.env.OPENAI_API_KEY;
+
     this.openai = new OpenAI({
-      apiKey: config.openai.apiKey,
-      organization: config.openai.organization
+      apiKey: apiKey
     });
   }
 
@@ -30,8 +61,7 @@ class OpenAIUnifiedFixService {
         messages: [
           {
             role: "system",
-            content: `Você é um autor especializado em livros infantis para crianças de ${params.ageRange} anos.
-                     Crie uma história envolvente e apropriada para a idade, mantendo um tom ${params.tone}.`
+            content: "Você é um escritor especializado em criar histórias infantis. Suas histórias devem ser apropriadas para a faixa etária especificada, com linguagem adequada e elementos educativos."
           },
           {
             role: "user",
@@ -118,7 +148,7 @@ class OpenAIUnifiedFixService {
         while (attempts < this.MAX_RETRIES) {
           try {
             // Log detalhado do prompt para depuração
-            logger.info(`Prompt DALL-E (tentativa ${attempts + 1}): ${pageNumber}/${totalPages}`, {
+            logger.info(`Prompt DALL-E (tentativa ${attempts + 1}): ${pageNumber}/${pages.length}`, {
               prompt: cleanPrompt,
               pageNumber,
               attempt: attempts + 1
@@ -139,7 +169,7 @@ class OpenAIUnifiedFixService {
             });
 
             // Log da resposta do DALL-E
-            logger.info(`Resposta DALL-E: ${pageNumber}/${totalPages} (tentativa ${attempts + 1})`, {
+            logger.info(`Resposta DALL-E: ${pageNumber}/${pages.length} (tentativa ${attempts + 1})`, {
               pageNumber,
               attempt: attempts + 1,
               responseData: JSON.stringify(response)
@@ -833,6 +863,75 @@ Por favor, crie uma história envolvente que mantenha a consistência com as des
       
       // Em caso de erro, retorna uma descrição genérica
       return "Cena de livro infantil com personagens em interação";
+    }
+  }
+
+  public async generateImagePrompt(params: ImagePromptParams): Promise<string> {
+    const { pageText, styleGuide, complexity, imageType } = params;
+
+    const prompt = `Crie uma ilustração para uma página de livro infantil com as seguintes características:
+
+Texto da página: "${pageText}"
+
+Personagem principal: ${styleGuide.character}
+Ambiente: ${styleGuide.environment}
+Estilo artístico: ${styleGuide.artisticStyle}
+Complexidade: ${complexity}
+Tipo de imagem: ${imageType}
+
+A ilustração deve:
+1. Representar fielmente a cena descrita no texto
+2. Manter a consistência com a descrição do personagem principal
+3. Criar um ambiente que corresponda à descrição fornecida
+4. Seguir o estilo artístico especificado
+5. Ser apropriada para o nível de complexidade indicado
+6. Ser atraente e envolvente para crianças
+7. Manter um tom positivo e educativo
+8. Ser adequada para o tipo de imagem especificado (${imageType})
+
+Por favor, gere uma descrição detalhada da ilustração que será usada para criar a imagem.`;
+
+    try {
+      const completion = await this.openai.chat.completions.create({
+        model: "gpt-4",
+        messages: [
+          {
+            role: "system",
+            content: "Você é um especialista em criar prompts para ilustrações de livros infantis. Seu objetivo é gerar descrições detalhadas que resultarão em imagens atraentes e apropriadas para crianças."
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 500
+      });
+
+      return completion.choices[0].message.content || '';
+    } catch (error) {
+      console.error('Erro ao gerar prompt de imagem:', error);
+      throw new Error('Falha ao gerar prompt de imagem');
+    }
+  }
+
+  public async generateImage(prompt: string, imageType: 'cover' | 'fullPage' | 'spreadPage' | 'inlineImage'): Promise<string> {
+    try {
+      const config = dalleConfigs[imageType];
+      const response = await this.openai.images.generate({
+        model: config.model,
+        prompt: prompt,
+        n: config.n,
+        size: config.size,
+        quality: config.quality,
+        style: config.style
+      });
+
+      return response.data[0].url || '';
+    } catch (error) {
+      console.error('Erro ao gerar imagem:', error);
+      // Retorna uma URL de imagem de fallback em caso de erro
+      return 'https://via.placeholder.com/1024x1024?text=Imagem+não+disponível';
     }
   }
 }

@@ -14,11 +14,15 @@ import { Text, IconButton, Portal, Modal, Button } from 'react-native-paper';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as bookService from '../services/bookService';
+import { API_URL } from '../config/api';
+import { imageCacheService } from '../services/imageCacheService';
+import { logger } from '../utils/logger';
 
 interface BookPage {
+  _id: string;
   pageNumber: number;
-  text: string;
   imageUrl: string;
+  text: string;
 }
 
 interface RouteParams {
@@ -151,9 +155,9 @@ function FlipBookScreen() {
         {pages[0]?.imageUrl && (
           <Image
             source={{ 
-              uri: pages[0].imageUrl.includes('oaidalleapiprodscus.blob.core.windows.net')
-                ? '/assets/images/fallback-page.jpg'
-                : pages[0].imageUrl 
+              uri: pages[0].imageUrl.startsWith('http')
+                ? pages[0].imageUrl
+                : `${API_URL}${pages[0].imageUrl}`
             }}
             style={styles.coverImage}
             resizeMode="contain"
@@ -166,23 +170,51 @@ function FlipBookScreen() {
     );
   };
 
-  // Renderiza uma página do livro
+  const AsyncPageImage = ({ page }: { page: BookPage }) => {
+    const [imageUrl, setImageUrl] = useState<string | null>(null);
+
+    useEffect(() => {
+      const loadImage = async () => {
+        try {
+          const cachedUrl = await imageCacheService.getImageUrl(page.imageUrl);
+          setImageUrl(cachedUrl);
+        } catch (error) {
+          logger.error('Erro ao obter URL da imagem do cache', {
+            error: error instanceof Error ? error.message : 'Erro desconhecido',
+            pageId: page._id
+          });
+          setImageUrl(page.imageUrl);
+        }
+      };
+
+      loadImage();
+    }, [page.imageUrl]);
+
+    if (!imageUrl) {
+      return null;
+    }
+
+    return (
+      <Image
+        source={{ uri: imageUrl }}
+        style={styles.pageImage}
+        resizeMode="contain"
+        onError={(error) => {
+          logger.error('Erro ao carregar imagem da página', {
+            error: error.nativeEvent.error,
+            pageId: page._id
+          });
+        }}
+      />
+    );
+  };
+
   const renderPage = (page: BookPage) => {
     return (
-      <View style={styles.pageContainer}>
+      <View key={page._id} style={styles.page}>
         <Text style={styles.pageNumber}>Página {page.pageNumber}</Text>
         
-        {page.imageUrl && (
-          <Image
-            source={{ 
-              uri: page.imageUrl.includes('oaidalleapiprodscus.blob.core.windows.net')
-                ? '/assets/images/fallback-page.jpg'
-                : page.imageUrl 
-            }}
-            style={styles.pageImage}
-            resizeMode="contain"
-          />
-        )}
+        {page.imageUrl && <AsyncPageImage page={page} />}
         
         <Text style={styles.pageText}>{page.text}</Text>
       </View>
@@ -332,18 +364,18 @@ function FlipBookScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5'
+    backgroundColor: '#fff',
   },
   contentContainer: {
     flex: 1,
     justifyContent: 'center',
-    alignItems: 'center'
+    alignItems: 'center',
   },
   animatedContainer: {
-    width: width,
-    height: height,
+    width: '100%',
+    height: '100%',
     justifyContent: 'center',
-    alignItems: 'center'
+    alignItems: 'center',
   },
   coverContainer: {
     flex: 1,
@@ -372,30 +404,36 @@ const styles = StyleSheet.create({
     color: '#666',
     marginTop: 20
   },
-  pageContainer: {
-    flex: 1,
+  page: {
+    width: '100%',
+    height: '100%',
     padding: 20,
     backgroundColor: '#fff',
     borderRadius: 10,
-    margin: 20,
-    elevation: 5
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
   pageNumber: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: 'bold',
-    color: '#666',
     marginBottom: 10,
-    textAlign: 'center'
+    textAlign: 'center',
   },
   pageImage: {
     width: '100%',
-    height: height * 0.4,
-    marginBottom: 20
+    height: 300,
+    marginBottom: 10,
   },
   pageText: {
     fontSize: 16,
     lineHeight: 24,
-    textAlign: 'justify'
+    textAlign: 'justify',
   },
   backCoverContainer: {
     flex: 1,

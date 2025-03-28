@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,17 +10,25 @@ import {
   Platform,
   ScrollView
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { api } from '../services/api';
 
 export default function RegisterScreen() {
   // Substitua "any" pelo tipo específico da sua navegação, se houver.
   const navigation = useNavigation<any>();
+  const route = useRoute();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Preenche o email se for passado como parâmetro
+  useEffect(() => {
+    if (route.params?.email) {
+      setEmail(route.params.email);
+    }
+  }, [route.params]);
 
   const handleRegister = async () => {
     if (!name || !email || !password || !confirmPassword) {

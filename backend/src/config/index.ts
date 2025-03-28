@@ -1,15 +1,15 @@
-import dotenv from 'dotenv';
+import { config as appConfig } from './config';
+import { openaiConfig } from './openai';
 import path from 'path';
 
-dotenv.config();
-
+// Merge configs and export
 export const config = {
-  port: process.env.PORT || 3000,
-  mongoUri: process.env.MONGODB_URI || 'mongodb://localhost:27017/kids-book-creator',
-  jwtSecret: process.env.JWT_SECRET || 'your_jwt_secret_key',
-  openaiApiKey: process.env.OPENAI_API_KEY || '',
-  
-  // Configurações de diretórios
+  ...appConfig,
+  openai: {
+    ...appConfig.openai,
+    ...openaiConfig
+  },
+  // Configurações de diretórios adicionais
   publicDirectory: path.resolve(__dirname, '../../public'),
   pdfDirectory: path.resolve(__dirname, '../../public/pdfs'),
   

@@ -3,10 +3,11 @@ import AuthController from '../controllers/AuthController';
 import { authMiddleware } from '../middlewares/auth';
 
 const router = Router();
+const authController = new AuthController();
 
 // Rotas públicas
-router.post('/register', (req, res) => AuthController.register(req, res));
-router.post('/login', (req, res) => AuthController.login(req, res));
+router.post('/register', (req, res) => authController.register(req, res));
+router.post('/login', (req, res) => authController.login(req, res));
 
 // Rotas protegidas
 router.get('/verify', authMiddleware, (req, res) => AuthController.verifyToken(req, res));

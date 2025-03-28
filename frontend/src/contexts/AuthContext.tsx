@@ -121,31 +121,103 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const signIn = useCallback(async (email: string, password: string) => {
     try {
       setIsLoading(true);
-      const response = await api.post('/auth/login', { email, password });
-      const { token, user } = response.data;
-      logger.info('SignIn - token recebido:', token);
-      logger.info('SignIn - user:', user);
+      logger.info('Tentando fazer login com:', { email, apiUrl: api.defaults.baseURL });
+      
+      // Tenta fazer login com a URL principal
+      try {
+        const response = await api.post('/auth/login', { email, password });
+        const { token, user } = response.data;
+        logger.info('SignIn - token recebido:', token);
+        logger.info('SignIn - user:', user);
 
-      const tokenStr =
-        typeof token === 'string' ? token.trim().replace(/^"|"$/g, '') : '';
+        const tokenStr =
+          typeof token === 'string' ? token.trim().replace(/^"|"$/g, '') : '';
 
-      if (!tokenStr) {
-        throw new Error('Token inválido retornado pelo servidor');
+        if (!tokenStr) {
+          throw new Error('Token inválido retornado pelo servidor');
+        }
+        // Armazena o token e atualiza
+        await setToken(tokenStr);
+        await AsyncStorage.setItem('token', tokenStr);
+        globalToken = tokenStr;
+        setAuthToken(tokenStr);
+
+        await setUserData(user);
+
+        // Autentica o socket com o ID do usuário
+        if (user?.id) {
+          socketService.authenticate(user.id);
+        }
+
+        logger.info('Usuário logado com sucesso', { userId: user.id });
+      } catch (error: any) {
+        // Se for um erro de rede, tenta URLs alternativas
+        if (error.message === 'Network Error' && config.apiUrlAlternatives && config.apiUrlAlternatives.length > 0) {
+          logger.warn('Erro de rede na URL principal, tentando URLs alternativas');
+          
+          // Tenta cada URL alternativa
+          for (const alternativeUrl of config.apiUrlAlternatives) {
+            if (alternativeUrl === api.defaults.baseURL) continue; // Pula a URL atual
+            
+            try {
+              logger.info(`Tentando URL alternativa: ${alternativeUrl}`);
+              
+              // Cria uma instância temporária do axios com a URL alternativa
+              const tempApi = axios.create({
+                baseURL: alternativeUrl,
+                timeout: 10000, // Timeout menor para falhar mais rápido
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Accept': 'application/json',
+                }
+              });
+              
+              const response = await tempApi.post('/auth/login', { email, password });
+              
+              if (response.data && response.data.token) {
+                logger.info(`Login bem-sucedido com URL alternativa: ${alternativeUrl}`);
+                
+                // Atualiza a URL padrão da API para a que funcionou
+                api.defaults.baseURL = alternativeUrl;
+                
+                // Processa o login normalmente
+                const { token, user } = response.data;
+                const tokenStr = typeof token === 'string' ? token.trim().replace(/^"|"$/g, '') : '';
+                
+                if (!tokenStr) {
+                  throw new Error('Token inválido retornado pelo servidor');
+                }
+                
+                await setToken(tokenStr);
+                await AsyncStorage.setItem('token', tokenStr);
+                globalToken = tokenStr;
+                setAuthToken(tokenStr);
+                await setUserData(user);
+                
+                if (user?.id) {
+                  socketService.authenticate(user.id);
+                }
+                
+                logger.info('Usuário logado com sucesso (URL alternativa)', { userId: user.id });
+                return; // Sai da função se o login for bem-sucedido
+              }
+            } catch (altError) {
+              logger.error(`Falha ao tentar URL alternativa: ${alternativeUrl}`, altError);
+              // Continua para a próxima URL
+            }
+          }
+          
+          // Se chegou aqui, nenhuma URL alternativa funcionou
+          throw new Error('Não foi possível conectar ao servidor. Verifique sua conexão com a internet.');
+        } else if (error.response?.status === 401) {
+          // Erro de credenciais inválidas - usar a mensagem específica do backend se disponível
+          const errorMessage = error.response?.data?.message || 'Email ou senha incorretos. Verifique suas credenciais e tente novamente.';
+          throw new Error(errorMessage);
+        } else {
+          // Se não for um erro de rede ou não houver URLs alternativas, repassa o erro
+          throw error;
+        }
       }
-      // Armazena o token e atualiza
-      await setToken(tokenStr);
-      await AsyncStorage.setItem('token', tokenStr);
-      globalToken = tokenStr;
-      setAuthToken(tokenStr);
-
-      await setUserData(user);
-
-      // Autentica o socket com o ID do usuário
-      if (user?.id) {
-        socketService.authenticate(user.id);
-      }
-
-      logger.info('Usuário logado com sucesso', { userId: user.id });
     } catch (error) {
       logger.error('Falha no login', error);
       Alert.alert(

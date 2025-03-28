@@ -4,6 +4,7 @@ import { io, Socket } from 'socket.io-client';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { detectSocketUrl } from '../utils/network/apiDetector';
 
 // Interface para as atualizações de progresso do livro
 export interface BookProgressUpdate {
@@ -54,12 +55,21 @@ class SocketService {
       // Obtém o token de autenticação
       const token = await AsyncStorage.getItem('token');
       
-      this.socket = io(config.apiUrl, {
+      // Tenta obter a URL de API que está funcionando
+      const workingApiUrl = await AsyncStorage.getItem('working_api_url');
+      
+      // Detecta a URL correta para o Socket.IO
+      const apiUrl = workingApiUrl || 'http://3.93.247.189:3000/api';
+      const socketUrl = await detectSocketUrl(apiUrl);
+      
+      logger.info(`Tentando conectar Socket.IO em: ${socketUrl}`);
+      
+      this.socket = io(socketUrl, {
         transports: ['websocket', 'polling'], // Tenta websocket primeiro, depois polling
         reconnection: true,
         reconnectionAttempts: this.maxReconnectAttempts,
         reconnectionDelay: 1000,
-        timeout: 10000,
+        timeout: 10000, // Aumentado para 10 segundos
         autoConnect: true,
         forceNew: true,
         auth: {
@@ -75,7 +85,7 @@ class SocketService {
           logger.warn('Timeout ao conectar Socket.IO');
           this.initialized = false;
           resolve(false);
-        }, 5000);
+        }, 10000); // Aumentado para 10 segundos
         
         this.socket?.once('connect', () => {
           clearTimeout(connectTimeout);
@@ -83,7 +93,8 @@ class SocketService {
           resolve(true);
         });
         
-        this.socket?.once('connect_error', () => {
+        this.socket?.once('connect_error', (err) => {
+          logger.error('Erro ao conectar Socket.IO', { error: err.message });
           clearTimeout(connectTimeout);
           this.initialized = false;
           resolve(false);
@@ -325,6 +336,10 @@ class SocketService {
     this.initialize();
   }
 }
+
+// Cria e exporta uma instância única do serviço
+const socketServiceInstance = new SocketService();
+export { socketServiceInstance as socketService };
 
 // Exporta uma instância única do serviço
 export const socketService = new SocketService();

@@ -3,6 +3,7 @@
 import { Router } from 'express';
 import { authMiddleware } from '../middlewares/auth';
 import bookController from '../controllers/bookController';
+import { bookAsyncController } from '../controllers/bookAsync.controller';
 
 const router = Router();
 
@@ -28,6 +29,24 @@ router.get('/:bookId', bookController.getBook);
 router.post('/', bookController.createBook);
 
 /**
+ * POST /books/async
+ * Cria um novo livro de forma assíncrona
+ */
+router.post('/async', bookAsyncController.createBookAsync);
+
+/**
+ * GET /books/:bookId/status
+ * Verifica o status de um livro em processamento
+ */
+router.get('/:bookId/status', bookAsyncController.checkBookStatus);
+
+/**
+ * POST /books/:bookId/generate-pdf
+ * Gera o PDF do livro (se o usuário for dono)
+ */
+router.post('/:bookId/generate-pdf', bookController.generatePDF);
+
+/**
  * GET /books/:bookId/pdf
  * Retorna o PDF do livro (se o usuário for dono)
  */
@@ -35,7 +54,7 @@ router.get('/:bookId/pdf', bookController.getPDF);
 
 /**
  * DELETE /books/:bookId
- * Exclui um livro específico (que pertença ao usuário)
+ * Remove um livro (se o usuário for dono)
  */
 router.delete('/:bookId', bookController.deleteBook);
 

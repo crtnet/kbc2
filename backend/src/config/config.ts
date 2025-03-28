@@ -1,7 +1,9 @@
 import dotenv from 'dotenv';
+import path from 'path';
+import { redisConfig } from './redis';
 
-// Carrega as variáveis de ambiente
-dotenv.config();
+// Carrega as variáveis de ambiente do arquivo .env
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 if (!process.env.JWT_SECRET) {
   throw new Error('JWT_SECRET não definido no arquivo .env');
@@ -11,17 +13,27 @@ if (!process.env.MONGODB_URI) {
   throw new Error('MONGODB_URI não definido no arquivo .env');
 }
 
-if (!process.env.OPENAI_API_KEY) {
+// Verifica se deve pular a validação da chave da API OpenAI
+const skipOpenAIValidation = process.env.SKIP_OPENAI_KEY_VALIDATION === 'true';
+
+if (!process.env.OPENAI_API_KEY && !skipOpenAIValidation) {
   throw new Error('OPENAI_API_KEY não definido no arquivo .env');
 }
 
 export const config = {
-  jwtSecret: process.env.JWT_SECRET,
-  jwtExpiresIn: process.env.JWT_EXPIRATION || '24h',
-  mongoUri: process.env.MONGODB_URI,
-  port: parseInt(process.env.PORT || '3000', 10),
-  corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:19006',
+  port: process.env.PORT || 3000,
   nodeEnv: process.env.NODE_ENV || 'development',
+  mongoUri: process.env.MONGODB_URI || 'mongodb://localhost:27017/kbc2',
+  redis: redisConfig,
+  jwt: {
+    secret: process.env.JWT_SECRET || 'your-secret-key',
+    expiresIn: process.env.JWT_EXPIRES_IN || '7d'
+  },
+  upload: {
+    maxFileSize: parseInt(process.env.MAX_FILE_SIZE || '5242880'), // 5MB
+    uploadDir: process.env.UPLOAD_DIR || 'uploads'
+  },
+  corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:19006',
   logLevel: process.env.LOG_LEVEL || 'info',
   pdfOutputDir: process.env.PDF_OUTPUT_DIR || './storage/pdfs',
   imageOutputDir: process.env.IMAGE_OUTPUT_DIR || './storage/images',
@@ -40,6 +52,9 @@ export const config = {
   openai: {
     apiKey: process.env.OPENAI_API_KEY,
     organization: process.env.OPENAI_ORGANIZATION,
+    model: 'gpt-4',
+    maxTokens: 2000,
+    temperature: 0.7,
     imageSize: process.env.OPENAI_IMAGE_SIZE || '1024x1024',
     imageQuality: process.env.OPENAI_IMAGE_QUALITY || 'standard',
     imageStyle: process.env.OPENAI_IMAGE_STYLE || 'natural'

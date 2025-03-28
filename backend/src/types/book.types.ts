@@ -23,12 +23,13 @@ export interface StyleGuide {
   character: string;
   environment: string;
   artisticStyle: string;
+  complexity: string;
 }
 
 export interface Character {
   name: string;
   description: string;
-  type: 'main' | 'secondary';
+  role: string;
 }
 
 export interface GenerateStoryParams {
@@ -37,10 +38,35 @@ export interface GenerateStoryParams {
   theme: string;
   mainCharacter: string;
   mainCharacterDescription: string;
-  secondaryCharacter?: string;
-  secondaryCharacterDescription?: string;
-  setting: string;
-  tone: string;
+  environmentDescription: string;
   ageRange: string;
-  styleGuide: StyleGuide;
+}
+
+export interface ImagePosition {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface Page {
+  pageNumber: number;
+  text: string;
+  imageUrl: string;
+  imageType: 'cover' | 'fullPage' | 'spreadPage' | 'inlineImage';
+  imagePosition?: ImagePosition;
+}
+
+export interface Book {
+  title: string;
+  author: string;
+  genre: string;
+  theme: string;
+  mainCharacter: string;
+  mainCharacterDescription: string;
+  environmentDescription: string;
+  ageRange: string;
+  pages: Page[];
+  createdAt: Date;
+  updatedAt: Date;
 }

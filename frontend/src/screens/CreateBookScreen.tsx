@@ -9,33 +9,68 @@ import { useAuth } from '../contexts/AuthContext';
 import * as bookService from '../services/bookService';
 import * as avatarService from '../services/avatarService';
 import { AvatarThumbnail } from '../components/avatar/preview';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { CreateBookData } from '../services/bookService';
+
+type RootStackParamList = {
+  CreateBook: undefined;
+  ViewBook: { bookId: string };
+  // ... outras rotas
+};
+
+type CreateBookScreenProps = {
+  navigation: NativeStackNavigationProp<RootStackParamList, 'CreateBook'>;
+};
+
+// Variável global para armazenar dados temporários
+declare global {
+  var mainCharacterAvatarData: string | null;
+  var secondaryCharacterAvatarData: string | null;
+}
+
+// Definir os tipos literais
+type Genre = 'adventure' | 'fantasy' | 'mystery';
+type Theme = 'friendship' | 'courage' | 'kindness';
+type Tone = 'fun' | 'adventurous' | 'calm';
+type AgeRange = '1-2' | '3-4' | '5-6' | '7-8' | '9-10' | '11-12';
+
+// Type guards
+const isValidGenre = (value: string): value is Genre => 
+  ['adventure', 'fantasy', 'mystery'].includes(value);
+const isValidTheme = (value: string): value is Theme => 
+  ['friendship', 'courage', 'kindness'].includes(value);
+const isValidTone = (value: string): value is Tone => 
+  ['fun', 'adventurous', 'calm'].includes(value);
+const isValidAgeRange = (value: string): value is AgeRange => 
+  ['1-2', '3-4', '5-6', '7-8', '9-10', '11-12'].includes(value);
 
 interface BookData {
   title: string;
-  genre: 'adventure' | 'fantasy' | 'mystery';
-  theme: 'friendship' | 'courage' | 'kindness';
+  genre: string;
+  theme: string;
   mainCharacter: string;
   mainCharacterAvatar?: string;
   secondaryCharacter?: string;
   secondaryCharacterAvatar?: string;
   setting: string;
-  tone: 'fun' | 'adventurous' | 'calm';
-  ageRange: '1-2' | '3-4' | '5-6' | '7-8' | '9-10' | '11-12';
+  tone: string;
+  ageRange: string;
   prompt?: string;
   authorName?: string;
   language?: string;
-  // Campos para descrição de personagem e ambiente
   characterDescription?: string;
   secondaryCharacterDescription?: string;
   environmentDescription?: string;
 }
 
-function CreateBookScreen({ navigation }) {
+function CreateBookScreen({ navigation }: CreateBookScreenProps) {
   const { user } = useAuth();
   const [step, setStep] = useState<number>(1);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
+  const [progressMessage, setProgressMessage] = useState<string>('');
   const [visible, setVisible] = useState<boolean>(false);
+  const [statusCheckInterval, setStatusCheckInterval] = useState<NodeJS.Timeout | null>(null);
 
   const [mainAvatarModalVisible, setMainAvatarModalVisible] = useState<boolean>(false);
   const [secondaryAvatarModalVisible, setSecondaryAvatarModalVisible] = useState<boolean>(false);
@@ -43,20 +78,28 @@ function CreateBookScreen({ navigation }) {
   const [bookData, setBookData] = useState<BookData>({
     title: '',
     authorName: '',
-    genre: 'adventure',
-    theme: 'friendship',
+    genre: 'adventure' as Genre,
+    theme: 'friendship' as Theme,
     mainCharacter: '',
     mainCharacterAvatar: '',
     secondaryCharacter: '',
     secondaryCharacterAvatar: '',
     setting: '',
-    tone: 'fun',
-    ageRange: '5-6',
-    // Valores iniciais para descrições
+    tone: 'fun' as Tone,
+    ageRange: '5-6' as AgeRange,
     characterDescription: '',
     secondaryCharacterDescription: '',
     environmentDescription: ''
   });
+
+  // Limpar o intervalo quando o componente for desmontado
+  React.useEffect(() => {
+    return () => {
+      if (statusCheckInterval) {
+        clearInterval(statusCheckInterval);
+      }
+    };
+  }, [statusCheckInterval]);
 
   const handleNext = () => {
     if (step === 1 && (!bookData.title || !bookData.authorName)) {
@@ -180,95 +223,163 @@ function CreateBookScreen({ navigation }) {
         }
       }
 
+      // Validar e converter os valores para os tipos corretos
+      if (!isValidGenre(bookData.genre)) {
+        throw new Error('Gênero inválido');
+      }
+      if (!isValidTheme(bookData.theme)) {
+        throw new Error('Tema inválido');
+      }
+      if (!isValidTone(bookData.tone)) {
+        throw new Error('Tom inválido');
+      }
+      if (!isValidAgeRange(bookData.ageRange)) {
+        throw new Error('Faixa etária inválida');
+      }
+
       setLoading(true);
+      setError('');
+      setProgressMessage('Iniciando criação do seu livro... Por favor, aguarde.');
+      setVisible(true);
 
-      // Construímos o prompt usando as descrições
-      const finalPrompt = `
-        Crie uma história infantil com o título "${bookData.title}".
-        O gênero é ${bookData.genre}, o tema é ${bookData.theme}, 
-        o tom é ${bookData.tone}, e se passa em ${bookData.setting}.
-        ${
-          bookData.secondaryCharacter 
-            ? `A história deve focar em DOIS personagens principais:\n
-               1. ${bookData.mainCharacter} (protagonista)\n
-               2. ${bookData.secondaryCharacter} (deuteragonista)\n
-               Ambos os personagens DEVEM ter papéis importantes na história, interagindo entre si e influenciando os eventos principais.`
-            : `O personagem principal é ${bookData.mainCharacter}.`
-        }
-        A história é para crianças de ${bookData.ageRange} anos.
-        A história deve ser escrita por ${bookData.authorName}.
-        
-        INSTRUÇÕES PARA GERAÇÃO DE IMAGENS:
-        PERSONAGEM PRINCIPAL (${bookData.mainCharacter}):
-        ${bookData.characterDescription || 'Personagem principal do livro'}
-        
-        ${bookData.secondaryCharacter ? `
-        PERSONAGEM SECUNDÁRIO (${bookData.secondaryCharacter}):
-        ${bookData.secondaryCharacterDescription || 'Personagem secundário do livro'}` : ''}
-        
-        AMBIENTE (${bookData.setting}):
-        ${bookData.environmentDescription || `Ambiente do livro: ${bookData.setting}`}
-        
-        DIRETRIZES GERAIS PARA ILUSTRAÇÕES:
-        - Mantenha um estilo de arte consistente em todo o livro
-        - Use cores vibrantes e composições claras adequadas para livros infantis
-        - Certifique-se de que os personagens principais tenham presença significativa em cada cena
-        - Adapte o nível de detalhe e complexidade para a faixa etária de ${bookData.ageRange} anos
-        - Crie cenas dinâmicas que complementem e enriqueçam a narrativa
-        - As expressões faciais e linguagem corporal devem refletir claramente as emoções dos personagens
-        
-        IMPORTANTE:
-        - A consistência visual dos personagens é CRUCIAL - use as descrições detalhadas como guia definitivo
-        - As ilustrações devem manter o mesmo nível de qualidade e detalhamento em todo o livro
-        - Cada cena deve ser memorável e cativante para o público infantil
-      `;
-
-      // Garantir que as descrições não estejam vazias
-      const characterDesc = bookData.characterDescription || 
-        `${bookData.mainCharacter} é um personagem de livro infantil com aparência amigável e expressiva`;
-      
-      const environmentDesc = bookData.environmentDescription || 
-        `${bookData.setting} é um ambiente colorido e acolhedor para crianças`;
+      // Criar o prompt final
+      const finalPrompt = `Create a ${bookData.tone} children's story about ${bookData.mainCharacter} who ${bookData.characterDescription || ''}. The story takes place in ${bookData.setting} where ${bookData.environmentDescription || ''}. ${bookData.secondaryCharacter ? `Another character in the story is ${bookData.secondaryCharacter} who ${bookData.secondaryCharacterDescription || ''}.` : ''} The story should teach about ${bookData.theme} and be appropriate for children aged ${bookData.ageRange} years.`;
 
       // Preparar os dados do livro para envio
-      const bookDataToSend = {
+      const bookDataToSend: CreateBookData = {
         title: bookData.title,
-        genre: bookData.genre,
-        theme: bookData.theme,
+        genre: bookData.genre as Genre,
+        theme: bookData.theme as Theme,
         mainCharacter: bookData.mainCharacter,
-        mainCharacterAvatar: bookData.mainCharacterAvatar,
+        mainCharacterAvatar: bookData.mainCharacterAvatar || '',
         secondaryCharacter: bookData.secondaryCharacter || '',
         secondaryCharacterAvatar: bookData.secondaryCharacterAvatar || '',
         setting: bookData.setting,
-        tone: bookData.tone,
-        ageRange: bookData.ageRange,
+        tone: bookData.tone as Tone,
+        ageRange: bookData.ageRange as AgeRange,
         prompt: finalPrompt.trim(),
-        authorName: bookData.authorName,
+        authorName: bookData.authorName || '',
         language: 'pt-BR',
         characterDescription: bookData.characterDescription || '',
         secondaryCharacterDescription: bookData.secondaryCharacterDescription || '',
         environmentDescription: bookData.environmentDescription || ''
       };
 
-      console.log('Criando livro com dados:', bookDataToSend);
+      console.log('Iniciando criação de livro com dados:', bookDataToSend);
 
-      const token = await AsyncStorage.getItem('token');
-      console.log('Token atual:', token);
+      // Atualizar mensagem para o usuário
+      setProgressMessage('Iniciando criação do livro... Por favor, aguarde. Isso pode levar alguns minutos.');
+      
+      try {
+        // Usar o serviço com abordagem assíncrona
+        const response = await bookService.createBook(bookDataToSend);
+        console.log('Resposta da inicialização de criação do livro:', response);
 
-      const response = await bookService.createBook(bookDataToSend);
-      console.log('Resposta da criação do livro:', response);
-
-      if (!response.bookId) {
-        throw new Error('ID do livro não retornado pelo servidor');
+        if (!response.bookId) {
+          throw new Error('ID do livro não retornado pelo servidor');
+        }
+        
+        // Atualizar mensagem para o usuário
+        setProgressMessage('Livro iniciado com sucesso! Acompanhando o progresso...');
+        
+        // Iniciar verificação periódica do status
+        let checkCount = 0;
+        let consecutiveErrorCount = 0;
+        const MAX_CONSECUTIVE_ERRORS = 5;
+        
+        const interval = setInterval(async () => {
+          try {
+            checkCount++;
+            
+            // Verificar o status atual do livro
+            const statusResponse = await bookService.checkBookStatus(response.bookId);
+            console.log(`Verificação de status #${checkCount}:`, statusResponse);
+            
+            // Resetar contador de erros consecutivos
+            consecutiveErrorCount = 0;
+            
+            // Atualizar a mensagem com base no status
+            if (statusResponse.status === 'completed') {
+              // Livro concluído
+              clearInterval(interval);
+              setProgressMessage('Livro criado com sucesso! Redirecionando...');
+              
+              // Pequeno delay para mostrar a mensagem de sucesso
+              setTimeout(() => {
+                setLoading(false);
+                navigation.navigate('ViewBook', { bookId: response.bookId });
+              }, 1500);
+            } else if (statusResponse.status === 'failed') {
+              // Livro falhou
+              clearInterval(interval);
+              setError('Houve um problema na criação do livro. Por favor, tente novamente.');
+              setLoading(false);
+            } else {
+              // Livro ainda em processamento
+              setProgressMessage(`${statusResponse.message} (${statusResponse.progress}% concluído) Tempo estimado restante: ${statusResponse.estimatedTimeRemaining}`);
+              
+              // Se já verificamos muitas vezes (mais de 30 = ~5 minutos), oferecemos opção de continuar em segundo plano
+              if (checkCount > 30) {
+                clearInterval(interval);
+                setProgressMessage('O livro está demorando mais do que o esperado. Você pode continuar aguardando ou verificar mais tarde na sua biblioteca.');
+                setLoading(false);
+              }
+            }
+          } catch (statusError) {
+            console.error('Erro ao verificar status:', statusError);
+            
+            // Incrementar contador de erros consecutivos
+            consecutiveErrorCount++;
+            
+            // Se tivermos muitos erros consecutivos, paramos de verificar
+            if (consecutiveErrorCount >= MAX_CONSECUTIVE_ERRORS) {
+              clearInterval(interval);
+              setProgressMessage('Não foi possível verificar o status do livro, mas ele continua sendo processado. Você pode verificar mais tarde na sua biblioteca.');
+              setLoading(false);
+            }
+          }
+        }, 10000); // Verifica a cada 10 segundos
+        
+        // Armazenar o intervalo no estado
+        setStatusCheckInterval(interval);
+        
+      } catch (requestError: any) {
+        console.error('Erro ao iniciar criação do livro:', requestError);
+        
+        // Mensagem de erro mais amigável baseada no tipo de erro
+        let errorMessage = 'Erro ao criar livro. Tente novamente.';
+        
+        if (requestError.message && requestError.message.includes('timeout')) {
+          errorMessage = 'O servidor demorou muito para responder. Isso pode acontecer devido à alta demanda. Por favor, tente novamente em alguns minutos.';
+        } else if (requestError.message && requestError.message.includes('Network Error')) {
+          errorMessage = 'Erro de conexão. Verifique sua internet e tente novamente.';
+        } else if (requestError.response?.data?.details) {
+          errorMessage = requestError.response.data.details;
+        } else if (requestError.message) {
+          errorMessage = requestError.message;
+        }
+        
+        setError(errorMessage);
+        setLoading(false);
+        throw requestError;
       }
-
-      navigation.navigate('ViewBook', { bookId: response.bookId });
+      
     } catch (err: any) {
       console.error('Erro ao criar livro:', err);
-      const errorMsg = err.response?.data?.details || err.message || 'Erro ao criar livro';
+      let errorMsg = 'Erro ao criar livro. Tente novamente.';
+      
+      if (err.message && err.message.includes('timeout')) {
+        errorMsg = 'O servidor demorou muito para responder. Isso pode acontecer devido à alta demanda. Por favor, tente novamente em alguns minutos.';
+      } else if (err.message && err.message.includes('Network Error')) {
+        errorMsg = 'Erro de conexão. Verifique sua internet e tente novamente.';
+      } else if (err.response?.data?.details) {
+        errorMsg = err.response.data.details;
+      } else if (err.message) {
+        errorMsg = err.message;
+      }
+      
       setError(errorMsg);
       setVisible(true);
-    } finally {
       setLoading(false);
     }
   };
@@ -705,6 +816,13 @@ function CreateBookScreen({ navigation }) {
           {step === 2 && renderStep2()}
           {step === 3 && renderStep3()}
 
+          {/* Adicionar mensagem de progresso */}
+          {progressMessage && (
+            <Text style={styles.progressMessage}>
+              {progressMessage}
+            </Text>
+          )}
+
           {/* Botões de Navegação */}
           <View style={styles.buttonContainer}>
             <Button
@@ -730,11 +848,26 @@ function CreateBookScreen({ navigation }) {
 
       <Snackbar
         visible={visible}
-        onDismiss={() => setVisible(false)}
-        duration={3000}
+        onDismiss={() => {
+          // Só permite fechar o Snackbar se não estiver carregando
+          if (!loading) {
+            setVisible(false);
+          }
+        }}
+        duration={loading ? 100000 : 3000} // Durante o carregamento, mantém visível por muito tempo
+        style={[
+          styles.snackbar,
+          loading && error.includes('sucesso') ? styles.successSnackbar : null,
+          loading && !error.includes('sucesso') ? styles.loadingSnackbar : null,
+          !loading && error.includes('Erro') ? styles.errorSnackbar : null
+        ]}
         action={{
-          label: 'OK',
-          onPress: () => setVisible(false),
+          label: loading ? 'Aguarde...' : 'OK',
+          onPress: () => {
+            if (!loading) {
+              setVisible(false);
+            }
+          },
         }}
       >
         {error}
@@ -847,6 +980,27 @@ const styles = StyleSheet.create({
     marginTop: 10,
     marginBottom: 15,
     backgroundColor: '#4caf50'
+  },
+  // Novos estilos para o Snackbar
+  snackbar: {
+    marginBottom: 20,
+  },
+  loadingSnackbar: {
+    backgroundColor: '#2196F3', // Azul para carregamento
+  },
+  successSnackbar: {
+    backgroundColor: '#4CAF50', // Verde para sucesso
+  },
+  errorSnackbar: {
+    backgroundColor: '#F44336', // Vermelho para erro
+  },
+  progressMessage: {
+    marginTop: 10,
+    padding: 10,
+    backgroundColor: '#e3f2fd',
+    borderRadius: 5,
+    color: '#1976d2',
+    textAlign: 'center'
   }
 });
 

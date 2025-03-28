@@ -1,105 +1,115 @@
-# Plano de Desenvolvimento - Kids Book Creator
+# Plano de Desenvolvimento - App de Livros Infantis Ilustrados por IA
 
-## Sprint 1: Geração de Conteúdo com IA
-### 1.1 Integração com ChatGPT
-- [ ] Implementar serviço de geração de história
-- [ ] Criar prompts otimizados para histórias infantis
-- [ ] Adicionar suporte a diferentes gêneros de histórias
-- [ ] Implementar sistema de revisão/edição da história
-- [ ] Adicionar logs detalhados do processo
+## Visão Geral
 
-### 1.2 Integração com DALL-E
-- [ ] Implementar serviço de geração de imagens
-- [ ] Criar sistema de prompts para manter consistência visual
-- [ ] Implementar cache de imagens geradas
-- [ ] Adicionar sistema de fallback para falhas
-- [ ] Implementar logs de geração de imagens
+Este documento descreve o plano de desenvolvimento para o aplicativo de criação de livros infantis ilustrados por IA. O objetivo é criar uma plataforma escalável, robusta e profissional que permita aos usuários criar livros infantis personalizados com ilustrações geradas por IA.
 
-## Sprint 2: Visualização e Geração de PDF
-### 2.1 Visualização do Livro
-- [ ] Criar componente de visualização de livro
-- [ ] Implementar navegação entre páginas
-- [ ] Adicionar animações de transição
-- [ ] Implementar zoom e gestos
-- [ ] Otimizar performance de renderização
+## Arquitetura
 
-### 2.2 Geração de PDF A3
-- [ ] Implementar geração de PDF em formato A3
-- [ ] Criar layouts otimizados para A3
-- [ ] Adicionar suporte a diferentes fontes
-- [ ] Implementar posicionamento automático de texto
-- [ ] Adicionar metadados ao PDF
+### Backend (Node.js + TypeScript + Express)
 
-### 2.3 Visualização Flip
-- [ ] Implementar modo flip para PDFs
-- [ ] Adicionar animações de página
-- [ ] Otimizar performance do flip
-- [ ] Implementar controles de navegação
-- [ ] Adicionar suporte a zoom no modo flip
+- **Estrutura MVC**: Separação clara entre modelos, controladores e serviços
+- **API RESTful**: Endpoints bem definidos para todas as operações
+- **Processamento Assíncrono**: Uso de filas para operações demoradas
+- **Tratamento de Erros**: Sistema robusto de tratamento de erros e fallbacks
 
-## Sprint 3: Personalização e Avatar
-### 3.1 Sistema de Avatar
-- [ ] Criar sistema de geração de avatar
-- [ ] Implementar personalização de características
-- [ ] Desenvolver sistema de persistência do avatar
-- [ ] Integrar avatar com geração de imagens DALL-E
-- [ ] Adicionar preview em tempo real
+### Frontend (React Native)
 
-### 3.2 Consistência Visual
-- [ ] Implementar sistema de prompts para manter avatar consistente
-- [ ] Criar pipeline de validação de imagens
-- [ ] Adicionar sistema de correção automática
-- [ ] Implementar cache de características do avatar
-- [ ] Desenvolver sistema de versionamento de avatar
+- **Arquitetura de Componentes**: Componentes reutilizáveis e bem estruturados
+- **Gerenciamento de Estado**: Uso de Context API ou Redux para gerenciamento de estado
+- **Navegação**: Sistema de navegação intuitivo e eficiente
+- **Responsividade**: Design responsivo para diferentes tamanhos de tela
 
-## Sprint 4: Temas e Internacionalização
-### 4.1 Temas Visuais
-- [ ] Expandir sistema atual de temas
-- [ ] Adicionar novos temas predefinidos
-- [ ] Implementar personalização de temas
-- [ ] Criar sistema de preview de temas
-- [ ] Adicionar persistência de preferências
+## Roadmap de Desenvolvimento
 
-### 4.2 Internacionalização
-- [ ] Implementar sistema i18n
-- [ ] Adicionar suporte inicial a PT-BR e EN
-- [ ] Criar sistema de detecção automática de idioma
-- [ ] Implementar tradução de histórias
-- [ ] Adicionar suporte a RTL para idiomas específicos
+### Fase 1: Estabilização (Atual)
 
-## Sprint 5: Compartilhamento e Social
-### 5.1 Sistema de Compartilhamento
-- [ ] Implementar compartilhamento de PDFs
-- [ ] Adicionar compartilhamento via link
-- [ ] Criar sistema de permissões
-- [ ] Implementar preview de compartilhamento
-- [ ] Adicionar analytics de compartilhamento
+- [x] Corrigir bugs críticos (como o erro de importação do serviço de avatar)
+- [x] Unificar serviços duplicados
+- [x] Melhorar tratamento de erros
+- [x] Implementar logging adequado
+- [ ] Adicionar testes unitários para componentes críticos
 
-### 5.2 Recursos Sociais
-- [ ] Criar sistema de likes/favoritos
-- [ ] Implementar comentários em livros
-- [ ] Adicionar feed de livros populares
-- [ ] Criar sistema de recomendações
-- [ ] Implementar notificações
+### Fase 2: Melhorias de Usabilidade
 
-## Requisitos Contínuos
+- [ ] Melhorar feedback visual durante geração de livros
+- [ ] Implementar sistema de preview em tempo real
+- [ ] Adicionar mais opções de personalização de personagens
+- [ ] Melhorar interface de edição de livros
+
+### Fase 3: Escalabilidade
+
+- [ ] Implementar sistema de cache distribuído
+- [ ] Otimizar processamento de imagens
+- [ ] Implementar CDN para entrega de conteúdo
+- [ ] Adicionar suporte a múltiplos provedores de IA
+
+### Fase 4: Monetização
+
+- [ ] Implementar sistema de assinaturas
+- [ ] Adicionar recursos premium
+- [ ] Implementar sistema de compartilhamento e impressão
+- [ ] Adicionar marketplace para elementos visuais personalizados
+
+## Padrões de Código
+
+### Importações
+
+Usar o padrão de importação centralizada:
+
+```typescript
+// Preferir isso:
+import { avatarService, bookService } from '../services';
+
+// Em vez disso:
+import { avatarService } from '../services/avatarService';
+import { bookService } from '../services/bookService';
+```
+
+### Tratamento de Erros
+
+Sempre implementar tratamento de erros robusto:
+
+```typescript
+try {
+  // Operação que pode falhar
+} catch (error) {
+  logger.error('Descrição clara do erro', {
+    error: error instanceof Error ? error.message : 'Erro desconhecido',
+    // Contexto adicional
+  });
+  
+  // Implementar fallback ou retornar erro apropriado
+}
+```
+
 ### Documentação
-- [ ] Manter README.md atualizado
-- [ ] Documentar novas APIs
-- [ ] Atualizar diagramas de arquitetura
-- [ ] Manter CHANGELOG.md atualizado
-- [ ] Documentar decisões de arquitetura
 
-### Qualidade
-- [ ] Implementar testes unitários
-- [ ] Adicionar testes de integração
-- [ ] Manter cobertura de testes > 80%
-- [ ] Realizar análise de performance
-- [ ] Implementar monitoramento de erros
+Documentar todas as funções e classes usando JSDoc:
 
-### DevOps
-- [ ] Configurar CI/CD
-- [ ] Implementar deploy automático
-- [ ] Configurar monitoramento
-- [ ] Implementar backup automático
-- [ ] Configurar ambientes de staging
+```typescript
+/**
+ * Processa um avatar de forma robusta
+ * @param avatarUrl URL ou caminho do avatar
+ * @param isMainCharacter Indica se é o personagem principal
+ * @returns URL normalizada para o avatar
+ */
+```
+
+## Tecnologias Principais
+
+- **Backend**: Node.js, TypeScript, Express, MongoDB, Bull (filas)
+- **Frontend**: React Native, Expo
+- **IA**: OpenAI API (GPT-4, DALL-E)
+- **Infraestrutura**: Docker, Redis, CDN
+
+## Monitoramento e Métricas
+
+- Implementar logging centralizado
+- Monitorar uso de API da OpenAI
+- Acompanhar métricas de desempenho
+- Monitorar satisfação do usuário
+
+## Conclusão
+
+Este plano de desenvolvimento fornece um roteiro claro para evoluir o aplicativo de criação de livros infantis ilustrados por IA. Seguindo estas diretrizes, o aplicativo se tornará mais robusto, escalável e profissional, oferecendo uma experiência excepcional aos usuários.

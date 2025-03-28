@@ -20,14 +20,19 @@ interface AuthRequest extends Request {
 class BookFixController {
   /**
    * POST /api/books
-   * Versão corrigida do método de criação de livros
+   * Versão corrigida do método de criação de livros com processamento assíncrono
    */
   public createBook = async (req: Request, res: Response) => {
+    // Aumenta o timeout da requisição para 20 minutos
+    req.setTimeout(1200000); // 20 minutos
+    
     try {
       const authReq = req as AuthRequest;
       if (!authReq.user) {
         return res.status(401).json({ error: 'Usuário não autenticado' });
       }
+
+      logger.info('Iniciando criação de novo livro com processamento assíncrono');
 
       // Extrai parâmetros obrigatórios
       const {
@@ -89,13 +94,7 @@ class BookFixController {
         }
       }
 
-      // Simulação de texto da história para o protótipo
-      // Em uma implementação real, isto viria do serviço OpenAI
-      const storyText = this.generateDemoStory(title, mainCharacter, secondaryCharacter, setting);
-      const wordCount = storyText.split(/\s+/).length;
-      const pages = this.splitStoryIntoPages(storyText);
-
-      // Salva o livro no banco de dados
+      // Cria um livro inicial com status "processing"
       const userId = new mongoose.Types.ObjectId(authReq.user.id);
       const newBook = new Book({
         title,
@@ -112,14 +111,10 @@ class BookFixController {
         language,
         userId,
         prompt: req.body.prompt,
-        pages: pages.map((text, index) => ({
-          pageNumber: index + 1,
-          text,
-          imageUrl: `/assets/images/placeholder${index + 1}.jpg` // Imagens temporárias
-        })),
+        pages: [], // Inicialmente sem páginas
         metadata: {
-          wordCount,
-          pageCount: pages.length,
+          wordCount: 0,
+          pageCount: 0,
         },
         status: 'processing',
         styleGuide: {
@@ -131,20 +126,99 @@ class BookFixController {
         environmentDescription: environmentDescription || `${setting} é um ambiente colorido e acolhedor para crianças`
       });
 
+      // Salva o livro inicial no banco de dados
       await newBook.save();
-      logger.info('Livro salvo no banco de dados', { bookId: newBook._id });
+      logger.info('Livro inicial salvo no banco de dados', { bookId: newBook._id });
 
-      return res.status(201).json({
-        message: 'Livro criado com sucesso, gerando imagens...',
+      // Responde imediatamente com o ID do livro
+      res.status(201).json({
+        message: 'Livro criado com sucesso, gerando conteúdo em segundo plano...',
         bookId: newBook._id,
-        pageCount: pages.length
+        status: 'processing'
       });
+
+      // Processa o conteúdo do livro em segundo plano
+      // Usamos setImmediate para garantir que a resposta seja enviada antes de iniciar o processamento
+      setImmediate(() => {
+        this.processBookContentAsync(newBook._id, req.body).catch(error => {
+          logger.error('Erro no processamento assíncrono do livro', { 
+            bookId: newBook._id, 
+            error: error.message 
+          });
+        });
+      });
+
     } catch (error: any) {
       logger.error('Erro ao criar livro', { error: error.message, stack: error.stack });
       return res.status(500).json({
         error: 'Erro no servidor ao criar o livro.',
         details: error.message
       });
+    }
+  };
+
+  /**
+   * Processa o conteúdo do livro de forma assíncrona
+   */
+  private processBookContentAsync = async (bookId: mongoose.Types.ObjectId, requestData: any) => {
+    try {
+      logger.info('Iniciando processamento assíncrono do livro', { bookId });
+
+      // Recupera o livro do banco de dados
+      const book = await Book.findById(bookId);
+      if (!book) {
+        throw new Error(`Livro não encontrado: ${bookId}`);
+      }
+
+      // Simulação de texto da história para o protótipo
+      // Em uma implementação real, isto viria do serviço OpenAI
+      const storyText = this.generateDemoStory(
+        book.title, 
+        book.mainCharacter, 
+        book.secondaryCharacter || '', 
+        book.setting
+      );
+      
+      const wordCount = storyText.split(/\\s+/).length;
+      const pages = this.splitStoryIntoPages(storyText);
+
+      // Atualiza o livro com o conteúdo gerado
+      book.pages = pages.map((text, index) => ({
+        pageNumber: index + 1,
+        text,
+        imageUrl: `/assets/images/placeholder${index + 1}.jpg` // Imagens temporárias
+      }));
+      
+      book.metadata = {
+        wordCount,
+        pageCount: pages.length,
+      };
+      
+      book.status = 'completed';
+
+      // Salva as atualizações
+      await book.save();
+      logger.info('Processamento assíncrono do livro concluído com sucesso', { bookId });
+
+    } catch (error: any) {
+      logger.error('Erro no processamento assíncrono do livro', { 
+        bookId, 
+        error: error.message,
+        stack: error.stack
+      });
+      
+      // Atualiza o status do livro para erro
+      try {
+        await Book.findByIdAndUpdate(bookId, { 
+          status: 'error',
+          errorMessage: error.message
+        });
+      } catch (updateError) {
+        logger.error('Erro ao atualizar status de erro do livro', { 
+          bookId, 
+          error: updateError instanceof Error ? updateError.message : 'Erro desconhecido'
+        });
+      }
     }
   };
 

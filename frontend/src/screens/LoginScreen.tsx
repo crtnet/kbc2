@@ -63,13 +63,40 @@ const LoginScreen = () => {
       // A navegação será controlada automaticamente pelo AppNavigator,
       // que redirecionará para a HomeScreen quando o estado de autenticação mudar.
     } catch (error) {
-      Alert.alert(
-        'Erro no login',
-        error instanceof Error ? error.message : 'Ocorreu um erro ao fazer login'
-      );
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : 'Ocorreu um erro ao fazer login. Tente novamente mais tarde.';
+      
+      // Verifica se a mensagem de erro indica que o usuário não existe
+      if (errorMessage.includes('não encontrado')) {
+        Alert.alert(
+          'Usuário não encontrado',
+          'Este email não está registrado. Deseja criar uma conta?',
+          [
+            {
+              text: 'Cancelar',
+              style: 'cancel'
+            },
+            {
+              text: 'Criar conta',
+              onPress: () => navigation.navigate('Register', { email })
+            }
+          ]
+        );
+      } else {
+        Alert.alert('Erro no login', errorMessage);
+      }
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Função para preencher os dados de teste
+  const fillTestCredentials = () => {
+    setEmail('crtnet@hotmail.com');
+    setPassword('senha123');
+    setEmailError('');
+    setPasswordError('');
   };
 
   return (
@@ -131,6 +158,21 @@ const LoginScreen = () => {
         >
           <Text style={styles.registerText}>Não tem uma conta? Cadastre-se</Text>
         </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={styles.testCredentialsButton}
+          onPress={fillTestCredentials}
+          disabled={isLoading}
+        >
+          <Text style={styles.testCredentialsText}>Usar credenciais de teste</Text>
+        </TouchableOpacity>
+
+        <View style={styles.testCredentialsInfo}>
+          <Text style={styles.testCredentialsInfoText}>
+            Email: crtnet@hotmail.com{'\n'}
+            Senha: senha123
+          </Text>
+        </View>
       </View>
     </KeyboardAvoidingView>
   );
@@ -203,6 +245,31 @@ const styles = StyleSheet.create({
     color: '#007bff',
     fontSize: 14,
     textAlign: 'center',
+  },
+  testCredentialsButton: {
+    marginTop: 16,
+    padding: 8,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 8,
+  },
+  testCredentialsText: {
+    color: '#666',
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  testCredentialsInfo: {
+    marginTop: 16,
+    padding: 12,
+    backgroundColor: '#e6f7ff',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#91d5ff',
+  },
+  testCredentialsInfoText: {
+    color: '#333',
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 22,
   },
 });
 

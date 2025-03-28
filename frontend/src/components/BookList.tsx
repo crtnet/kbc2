@@ -31,7 +31,7 @@ export const BookList: React.FC<BookListProps> = ({
       return;
     }
     logger.info('Opening book PDF', { bookId: book.id });
-    navigation.navigate('FlipBook', { bookId: book.id });
+    navigation.navigate('ViewBookPDF', { bookId: book.id });
   };
 
   const renderItem = ({ item: book }: { item: Book }) => (

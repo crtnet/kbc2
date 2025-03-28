@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import { config } from '../config/config';
+import { config } from '../config';
 import { logger } from '../utils/logger';
 
 interface Character {
@@ -32,10 +32,21 @@ class OpenAIUnifiedService {
   private openai: OpenAI;
 
   constructor() {
-    this.openai = new OpenAI({
-      apiKey: config.openai.apiKey,
-      organization: config.openai.organization
-    });
+    // Verificar se a configuração OpenAI existe e tem uma chave API
+    if (!config.openai || !config.openai.apiKey) {
+      logger.error('Configuração OpenAI ausente ou incompleta. Verifique o arquivo .env');
+      // Usar uma chave fictícia para permitir que o serviço seja inicializado
+      this.openai = new OpenAI({
+        apiKey: 'sk-dummy-key-for-development-only',
+        organization: config.openai?.organization || undefined
+      });
+    } else {
+      this.openai = new OpenAI({
+        apiKey: config.openai.apiKey,
+        organization: config.openai.organization || undefined
+      });
+      logger.info('Serviço OpenAI inicializado com sucesso');
+    }
   }
 
   /**
@@ -276,4 +287,5 @@ Por favor, crie uma história envolvente que mantenha a consistência com as des
   }
 }
 
-export const openaiUnifiedService = new OpenAIUnifiedService();
+export const openaiService = new OpenAIUnifiedService();
+export default openaiService;

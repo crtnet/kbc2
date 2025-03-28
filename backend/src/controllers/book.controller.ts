@@ -6,6 +6,8 @@ import { Book } from '../models/book.model';
 import { openaiUnifiedService } from '../services/openai.unified';
 import { logger } from '../utils/logger';
 import { storyFallbackService } from '../services/storyFallback.service';
+import { generateBookPDFWithFallback } from '../services/pdfGeneratorIntegration';
+import { AuthRequest } from '../middlewares/authMiddleware';
 
 /**
  * Gera conteúdo (história) para o livro em background.
@@ -96,31 +98,30 @@ async function generateBookContent(bookId: string, params: {
     // Divide a história em ~5 páginas
     const storyPages = story.split('\n\n').filter(page => page.trim().length > 0);
     const pages = [];
-    
-    // Se não houver quebras de parágrafo claras, divide por palavras
-    if (storyPages.length < 3) {
-      const words = story.split(/\s+/);
-      const totalWords = words.length;
-      const pagesCount = 5;
-      const wordsPerPage = Math.ceil(totalWords / pagesCount);
-      
-      for (let i = 0; i < totalWords; i += wordsPerPage) {
-        const pageText = words.slice(i, i + wordsPerPage).join(' ');
-        pages.push({
-          text: pageText,
-          pageNumber: pages.length + 1,
-          imageUrl: ''
-        });
-      }
-    } else {
-      // Usa as quebras de parágrafo naturais
-      for (let i = 0; i < storyPages.length; i++) {
-        pages.push({
-          text: storyPages[i],
-          pageNumber: i + 1,
-          imageUrl: ''
-        });
-      }
+
+    for (let i = 0; i < storyPages.length; i++) {
+      pages.push({
+        pageNumber: i,
+        text: storyPages[i].trim(),
+        imageUrl: '',
+        imageType: i === 0 ? 'cover' : 'fullPage'
+      });
+    }
+
+    // Atualiza os metadados do livro
+    const book = await Book.findById(bookId);
+    if (book) {
+      book.metadata = {
+        wordCount,
+        pageCount: pages.length,
+        progress: 0,
+        estimatedTimeRemaining: '10-15 minutos'
+      };
+
+      // Atualiza o livro com as páginas e metadados
+      book.pages = pages;
+      book.status = 'generating_images';
+      await book.save();
     }
 
     // Preparar informações dos personagens para geração de imagens
@@ -250,7 +251,7 @@ async function generateBookContent(bookId: string, params: {
         content: story,
         wordCount,
         pages: updatedPages,
-        status: 'completed',
+        status: 'generating_pdf',
         generationTime: Date.now() - startTime,
         'metadata.wordCount': wordCount,
         'metadata.pageCount': updatedPages.length,
@@ -261,6 +262,32 @@ async function generateBookContent(bookId: string, params: {
 
     if (!updatedBook) {
       throw new Error('Livro não encontrado após atualização');
+    }
+
+    // Gera o PDF após as imagens
+    try {
+      const pdfPath = await generateBookPDFWithFallback(updatedBook);
+      
+      // Atualiza o livro com a URL do PDF
+      await Book.findByIdAndUpdate(bookId, {
+        pdfUrl: pdfPath,
+        status: 'completed'
+      });
+      
+      logger.info(`PDF gerado com sucesso para o livro ${bookId}: ${pdfPath}`);
+    } catch (pdfError) {
+      logger.error(`Erro ao gerar PDF para o livro ${bookId}:`, {
+        error: pdfError instanceof Error ? pdfError.message : 'Erro desconhecido',
+        stack: pdfError instanceof Error ? pdfError.stack : undefined
+      });
+      
+      // Atualiza o status do livro para erro
+      await Book.findByIdAndUpdate(bookId, {
+        status: 'error',
+        'metadata.pdfError': pdfError instanceof Error ? pdfError.message : 'Erro ao gerar PDF'
+      });
+      
+      throw pdfError;
     }
 
     logger.info(`Conteúdo do livro ${bookId} gerado com sucesso em ${(Date.now() - startTime) / 1000}s`);
@@ -518,6 +545,51 @@ export const bookController = {
     } catch (error) {
       logger.error('Erro ao listar livros:', error);
       return res.status(500).json({ message: 'Erro ao listar livros' });
+    }
+  },
+
+  /**
+   * POST /books/:bookId/generate-pdf
+   * Gera o PDF do livro (se o usuário for dono)
+   */
+  generatePDF: async (req: Request, res: Response) => {
+    try {
+      const { bookId } = req.params;
+      logger.info(`Recebida requisição para gerar PDF do livro: ${bookId}`);
+
+      // Verifica se o usuário está autenticado
+      const authReq = req as AuthRequest;
+      if (!authReq.user) {
+        return res.status(401).json({ error: 'Usuário não autenticado' });
+      }
+
+      // Busca o livro no banco de dados
+      const book = await Book.findOne({ _id: bookId, userId: authReq.user.id });
+      if (!book) {
+        return res.status(404).json({ error: 'Livro não encontrado ou não pertence ao usuário' });
+      }
+
+      // Gera o PDF
+      const pdfPath = await generateBookPDFWithFallback(book);
+      
+      // Atualiza o livro com a URL do PDF
+      await Book.findByIdAndUpdate(bookId, {
+        pdfUrl: pdfPath,
+        status: 'completed'
+      });
+
+      logger.info(`PDF gerado com sucesso: ${pdfPath}`);
+
+      res.status(200).json({
+        message: 'PDF gerado com sucesso',
+        pdfUrl: pdfPath,
+      });
+    } catch (error: any) {
+      logger.error(`Erro ao gerar PDF: ${error.message}`);
+      res.status(500).json({
+        error: 'Erro ao gerar PDF',
+        details: error.message,
+      });
     }
   },
 };

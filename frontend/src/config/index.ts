@@ -1,19 +1,35 @@
 // src/config/index.ts
+import { env } from './env';
+import { API_URL_ALTERNATIVES } from './constants';
+
+// Lista de possíveis URLs da API para tentar em desenvolvimento
+const API_URLS = [
+  env.API_URL,
+  ...API_URL_ALTERNATIVES,
+  'http://localhost:3000/api',
+  'http://10.0.2.2:3000/api'  // Para emulador Android
+];
+
+// Filtra URLs vazias ou undefined
+const validApiUrls = API_URLS.filter(url => url);
 
 // Configurações do ambiente
 const ENV = {
   development: {
-    apiUrl: 'http://localhost:3000',
+    apiUrl: env.API_URL,
+    apiUrlAlternatives: validApiUrls,
     enableLogs: true,
     socketEnabled: true,
   },
   production: {
-    apiUrl: 'https://api.kidsbook.example.com', // Substitua pelo URL de produção real
+    apiUrl: env.API_URL,
+    apiUrlAlternatives: API_URL_ALTERNATIVES,
     enableLogs: false,
     socketEnabled: true,
   },
   test: {
-    apiUrl: 'http://localhost:3000',
+    apiUrl: 'http://localhost:3000/api',
+    apiUrlAlternatives: [],
     enableLogs: false,
     socketEnabled: false,
   },
@@ -59,6 +75,7 @@ const currentEnv = getEnvironment();
 export const config = {
   ...ENV[currentEnv as keyof typeof ENV],
   apiUrl: getApiUrl(),
+  apiUrlAlternatives: ENV[currentEnv as keyof typeof ENV].apiUrlAlternatives || [],
   env: currentEnv,
   appName: 'Kids Book Creator',
   appVersion: '1.0.0',

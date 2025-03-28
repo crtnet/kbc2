@@ -14,4 +14,10 @@ config.resolver.resolverMainFields = [
   'main'
 ];
 
+// Aumenta o timeout para 30 segundos
+config.server = {
+  ...config.server,
+  timeout: 30000
+};
+
 module.exports = config;

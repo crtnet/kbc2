@@ -8,6 +8,7 @@ import avatarRoutes from './routes/avatarRoutes';
 import { logger } from './utils/logger';
 import { databaseMiddleware } from './middleware/databaseMiddleware';
 import { connectDatabase } from './config/database';
+import { healthController } from './controllers/health.controller';
 
 class App {
   public express: express.Application;
@@ -22,7 +23,12 @@ class App {
 
   private middlewares(): void {
     this.express.use(express.json());
-    this.express.use(cors());
+    this.express.use(cors({
+      // Configuração CORS mais permissiva para desenvolvimento
+      origin: '*',
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Cache-Control', 'Pragma']
+    }));
     
     // Middleware para adicionar conexão do banco de dados ao request
     this.express.use(databaseMiddleware);
@@ -30,7 +36,7 @@ class App {
     // Servir arquivos estáticos da pasta public
     this.express.use('/public', express.static(path.join(__dirname, '../public')));
     
-    // Alias específico para PDFs para manter compatibilidade
+    // Servir PDFs com headers de segurança
     this.express.use('/pdfs', express.static(path.join(__dirname, '../public/pdfs'), {
       setHeaders: (res, filePath) => {
         // Adiciona headers de segurança para PDFs
@@ -55,6 +61,13 @@ class App {
   }
 
   private routes(): void {
+    // Rotas de health check para verificar se a API está funcionando
+    this.express.get('/api/health', healthController.checkHealth);
+    this.express.get('/health', healthController.checkHealth);
+    
+    // Rotas de ping simplificadas
+    this.express.get(['/api/ping', '/ping'], healthController.ping);
+    
     this.express.use('/api/books', bookRoutes);
     this.express.use('/api/auth', authRoutes);
     this.express.use('/api/avatars', avatarRoutes);

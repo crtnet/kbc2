@@ -8,11 +8,14 @@ import { useAuth } from '../contexts/AuthContext';
 import { API_URL } from '../config/api';
 import { socketService, BookProgressUpdate } from '../services/socketService';
 import { logger } from '../utils/logger';
+import { imageCacheService } from '../services/imageCacheService';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 interface BookPage {
   pageNumber: number;
   text: string;
   imageUrl: string;
+  _id: string;
 }
 
 interface Book {
@@ -41,11 +44,21 @@ interface Book {
     error?: string;
     pdfError?: string;
     lastUpdated?: string;
+    estimatedTimeRemaining?: string;
   };
 }
 
+type RootStackParamList = {
+  Home: undefined;
+  ViewBook: { bookId: string; title: string; pdfUrl: string };
+  FlipBook: { bookId: string; title: string; pages: BookPage[] };
+  ViewBookPDF: { bookId: string; title: string; pdfUrl: string };
+};
+
+type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+
 function ViewBookScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<NavigationProp>();
   const route = useRoute();
   const { user } = useAuth();
   const { bookId } = route.params as { bookId: string };
@@ -173,11 +186,26 @@ function ViewBookScreen() {
     fetchBook();
   }, [fetchBook]);
 
+  const handleBackPress = () => {
+    navigation.navigate('Home');
+  };
+
   const handleViewPDF = () => {
-    if (book && book.pdfUrl) {
-      navigation.navigate('ViewBookPDF', { 
+    if (book?.pdfUrl) {
+      navigation.navigate('ViewBookPDF', {
         bookId: book._id,
-        title: book.title
+        title: book.title,
+        pdfUrl: book.pdfUrl
+      });
+    }
+  };
+
+  const handleFlipBook = () => {
+    if (book?.pages) {
+      navigation.navigate('FlipBook', {
+        bookId: book._id,
+        title: book.title,
+        pages: book.pages
       });
     }
   };
@@ -214,16 +242,6 @@ function ViewBookScreen() {
       setShowDeleteDialog(false);
     } finally {
       setDeleting(false);
-    }
-  };
-
-  const handleFlipBook = () => {
-    if (book) {
-      navigation.navigate('FlipBook', { 
-        bookId: book._id,
-        title: book.title,
-        pages: book.pages
-      });
     }
   };
 
@@ -299,21 +317,20 @@ function ViewBookScreen() {
 
     switch (book.status) {
       case 'processing':
-        progress = 10; // Valor fixo para indicar que está processando
-        statusMessage = 'Gerando história e preparando personagens...';
+        progress = 10;
+        statusMessage = 'Iniciando a criação da sua história...';
         break;
       case 'generating_images':
-        // Calcula o progresso com base nas imagens geradas
         progress = totalPages > 0 ? Math.round((currentPage / totalPages) * 80) : 10;
-        statusMessage = `Gerando imagens (${currentPage}/${totalPages})...`;
+        statusMessage = `Criando ilustrações (${currentPage}/${totalPages} páginas)...`;
         break;
       case 'images_completed':
         progress = 80;
-        statusMessage = 'Imagens concluídas. Preparando para gerar PDF...';
+        statusMessage = 'Imagens concluídas! Preparando para gerar o PDF...';
         break;
       case 'generating_pdf':
         progress = 90;
-        statusMessage = 'Gerando PDF final...';
+        statusMessage = 'Gerando o PDF final do seu livro...';
         break;
       case 'error':
       case 'images_error':
@@ -337,11 +354,9 @@ function ViewBookScreen() {
             ]} />
           </View>
           
-          {book.status === 'generating_images' && (
-            <Text style={styles.progressText}>
-              {currentPage} de {totalPages} imagens geradas ({Math.round(progress)}%)
-            </Text>
-          )}
+          <Text style={styles.progressText}>
+            {Math.round(progress)}% concluído
+          </Text>
           
           <Text style={[
             styles.progressInfo,
@@ -359,6 +374,12 @@ function ViewBookScreen() {
           {(book.status === 'generating_images' || book.status === 'generating_pdf') && (
             <Text style={styles.infoText}>
               Este processo pode levar alguns minutos. As imagens estão sendo otimizadas para melhor desempenho.
+            </Text>
+          )}
+          
+          {book.metadata.estimatedTimeRemaining && (
+            <Text style={styles.estimatedTimeText}>
+              Tempo estimado restante: {book.metadata.estimatedTimeRemaining}
             </Text>
           )}
         </Card.Content>
@@ -391,6 +412,160 @@ function ViewBookScreen() {
         >
           Próxima
         </Button>
+      </View>
+    );
+  };
+
+  const renderBookInfo = () => {
+    if (!book) return null;
+
+    return (
+      <Card style={styles.infoCard}>
+        <Card.Content>
+          <Text style={styles.bookTitle}>{book.title}</Text>
+          <View style={styles.bookMetadata}>
+            <Text style={styles.metadataText}>
+              Páginas: {book.pages.length}
+            </Text>
+            <Text style={styles.metadataText}>
+              Palavras: {book.metadata.wordCount || 0}
+            </Text>
+            <Text style={styles.metadataText}>
+              Gênero: {translateGenre(book.genre)}
+            </Text>
+            <Text style={styles.metadataText}>
+              Tema: {translateTheme(book.theme)}
+            </Text>
+            <Text style={styles.metadataText}>
+              Tom: {translateTone(book.tone)}
+            </Text>
+            <Text style={styles.metadataText}>
+              Faixa etária: {book.ageRange} anos
+            </Text>
+          </View>
+        </Card.Content>
+      </Card>
+    );
+  };
+
+  const translateGenre = (genre: string): string => {
+    const translations: { [key: string]: string } = {
+      'adventure': 'Aventura',
+      'fantasy': 'Fantasia',
+      'mystery': 'Mistério',
+      'educational': 'Educativo',
+      'humor': 'Humor',
+      'other': 'Outro'
+    };
+    return translations[genre] || genre;
+  };
+
+  const translateTheme = (theme: string): string => {
+    const translations: { [key: string]: string } = {
+      'friendship': 'Amizade',
+      'courage': 'Coragem',
+      'kindness': 'Bondade',
+      'family': 'Família',
+      'learning': 'Aprendizado',
+      'other': 'Outro'
+    };
+    return translations[theme] || theme;
+  };
+
+  const translateTone = (tone: string): string => {
+    const translations: { [key: string]: string } = {
+      'fun': 'Divertido',
+      'adventurous': 'Aventureiro',
+      'calm': 'Calmo',
+      'educational': 'Educativo',
+      'emotional': 'Emocional',
+      'other': 'Outro'
+    };
+    return translations[tone] || tone;
+  };
+
+  const AsyncPageImage = ({ page }: { page: BookPage }) => {
+    const [imageUrl, setImageUrl] = useState<string | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
+    const [hasError, setHasError] = useState(false);
+
+    useEffect(() => {
+      let isMounted = true;
+
+      const loadImage = async () => {
+        try {
+          setIsLoading(true);
+          const cachedUrl = await imageCacheService.getImageUrl(page.imageUrl);
+          
+          if (isMounted) {
+            setImageUrl(cachedUrl);
+            setIsLoading(false);
+          }
+        } catch (error) {
+          logger.error('Erro ao obter URL da imagem do cache', {
+            error: error instanceof Error ? error.message : 'Erro desconhecido',
+            pageId: page._id
+          });
+          
+          if (isMounted) {
+            setImageUrl(page.imageUrl);
+            setIsLoading(false);
+          }
+        }
+      };
+
+      loadImage();
+
+      return () => {
+        isMounted = false;
+      };
+    }, [page.imageUrl]);
+
+    if (isLoading) {
+      return (
+        <View style={styles.imageLoadingContainer}>
+          <ActivityIndicator size="large" color="#1976d2" />
+        </View>
+      );
+    }
+
+    if (hasError) {
+      return (
+        <View style={styles.imageErrorContainer}>
+          <Text style={styles.imageErrorText}>Erro ao carregar imagem</Text>
+        </View>
+      );
+    }
+
+    if (!imageUrl) {
+      return null;
+    }
+
+    return (
+      <Image
+        source={{ uri: imageUrl }}
+        style={styles.pageImage}
+        resizeMode="contain"
+        onError={(error) => {
+          logger.error('Erro ao carregar imagem da página', {
+            error: error.nativeEvent.error,
+            pageId: page._id
+          });
+          setHasError(true);
+        }}
+      />
+    );
+  };
+
+  const renderPage = (page: BookPage) => {
+    return (
+      <View key={page._id} style={styles.pageContainer}>
+        {page.imageUrl && <AsyncPageImage page={page} />}
+        
+        <View style={styles.pageContent}>
+          <Text style={styles.pageText}>{page.text}</Text>
+          <Text style={styles.pageNumber}>Página {page.pageNumber}</Text>
+        </View>
       </View>
     );
   };
@@ -566,46 +741,13 @@ function ViewBookScreen() {
             <View style={[styles.pageContainer, isTablet && styles.tabletPageContainer]}>
               {currentPageData?.imageUrl ? (
                 <React.Fragment>
-                  {/* Componente de carregamento de imagem com tratamento de erro */}
-                  <View style={styles.imageContainer}>
-                    <Image
-                      source={{ 
-                        uri: currentPageData.imageUrl.startsWith('http') 
-                          ? (currentPageData.imageUrl.includes('oaidalleapiprodscus.blob.core.windows.net') 
-                             ? `/assets/images/fallback-page.jpg?t=${Date.now()}` // Use fallback for DALL-E URLs
-                             : currentPageData.imageUrl)
-                          : `${API_URL}${currentPageData.imageUrl}?t=${Date.now()}` // Add timestamp to prevent caching
-                      }}
-                      style={styles.pageImage}
-                      resizeMode="contain"
-                      onError={(e) => {
-                        console.error('Erro ao carregar imagem:', e.nativeEvent.error);
-                        // Log detailed error for debugging
-                        console.log('Image URL that failed:', currentPageData.imageUrl);
-                      }}
-                    />
-                    {/* Overlay de carregamento */}
-                    <ActivityIndicator 
-                      size="large" 
-                      color="#2196F3" 
-                      style={styles.imageLoadingIndicator} 
-                    />
-                  </View>
+                  {renderPage(currentPageData)}
                 </React.Fragment>
               ) : (
                 <View style={styles.noImageContainer}>
                   <Text style={styles.noImageText}>Imagem não disponível</Text>
                 </View>
               )}
-              
-              <View style={styles.pageTextContainer}>
-                <Text style={styles.pageNumber}>Página {currentPageData?.pageNumber || currentPage + 1}</Text>
-                {currentPageData?.text ? (
-                  <Text style={styles.pageText}>{currentPageData.text}</Text>
-                ) : (
-                  <Text style={styles.noContentText}>Texto não disponível para esta página</Text>
-                )}
-              </View>
             </View>
             
             {renderPageNavigation()}
@@ -802,42 +944,63 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginVertical: 10
+    marginVertical: 10,
+    paddingHorizontal: 10
   },
   pageIndicator: {
     fontSize: 14,
     color: '#666'
   },
   pageContainer: {
-    marginVertical: 15
+    flex: 1,
+    marginVertical: 10
+  },
+  pageContent: {
+    padding: 10,
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    marginTop: 10
+  },
+  pageImage: {
+    width: '100%',
+    height: 300,
+    borderRadius: 8
+  },
+  pageText: {
+    fontSize: 16,
+    lineHeight: 24,
+    marginBottom: 15
+  },
+  pageNumber: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center'
   },
   tabletPageContainer: {
     flexDirection: 'row',
     alignItems: 'flex-start'
   },
-  pageImage: {
+  imageLoadingContainer: {
     width: '100%',
     height: 300,
-    marginBottom: 15,
-    borderRadius: 8
-  },
-  imageContainer: {
-    position: 'relative',
-    width: '100%',
-    height: 300,
-    marginBottom: 15,
-    borderRadius: 8,
-    backgroundColor: '#f0f0f0',
+    backgroundColor: '#f5f5f5',
     justifyContent: 'center',
     alignItems: 'center',
-    overflow: 'hidden'
+    borderRadius: 8,
+    marginBottom: 15
   },
-  imageLoadingIndicator: {
-    position: 'absolute',
-    top: '50%',
-    left: '50%',
-    marginLeft: -20,
-    marginTop: -20
+  imageErrorContainer: {
+    width: '100%',
+    height: 300,
+    backgroundColor: '#ffebee',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 8,
+    marginBottom: 15
+  },
+  imageErrorText: {
+    color: '#d32f2f',
+    fontSize: 16
   },
   noImageContainer: {
     width: '100%',
@@ -852,24 +1015,36 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666'
   },
-  pageTextContainer: {
-    flex: 1,
-    padding: 10
-  },
-  pageNumber: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#666',
-    marginBottom: 5
-  },
-  pageText: {
-    fontSize: 16,
-    lineHeight: 24
-  },
   noContentText: {
     fontSize: 16,
     fontStyle: 'italic',
     color: '#999'
+  },
+  estimatedTimeText: {
+    fontSize: 12,
+    color: '#999',
+    marginTop: 5
+  },
+  infoCard: {
+    margin: 10,
+    elevation: 2
+  },
+  bookTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 10
+  },
+  bookMetadata: {
+    flexDirection: 'row',
+    flexWrap: 'wrap'
+  },
+  metadataText: {
+    margin: 4
+  },
+  page: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10
   }
 });
 

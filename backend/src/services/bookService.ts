@@ -1,7 +1,10 @@
 // src/services/bookService.ts
 import axios from 'axios';
-import { API_URL } from '../config/api';
+import { config } from '../config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// Usar a URL da API do objeto de configuração
+const API_URL = config.apiUrl;
 
 /**
  * Interface para os dados de criação de um livro

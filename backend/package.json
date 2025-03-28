@@ -7,7 +7,8 @@
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc",
     "test:mongo": "ts-node src/utils/mongoTest.ts",
-    "test:image": "ts-node src/scripts/test-image-generation.ts"
+    "test:image": "ts-node src/scripts/test-image-generation.ts",
+    "create:testuser": "ts-node src/scripts/create-test-user.ts"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^2.1.1",
@@ -15,6 +16,7 @@
     "@types/mongoose": "^5.11.97",
     "axios": "^1.7.9",
     "bcryptjs": "^2.4.3",
+    "bull": "^4.16.5",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.17.1",

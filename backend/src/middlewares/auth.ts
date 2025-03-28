@@ -18,7 +18,7 @@ export const authMiddleware = async (
 ): Promise<Response | void> => {
   try {
     // Verifica se o JWT_SECRET está configurado
-    if (!config.jwtSecret) {
+    if (!config.jwt.secret) {
       logger.error('JWT_SECRET não configurado no ambiente');
       return res.status(500).json({ 
         error: 'Erro de configuração do servidor',
@@ -67,7 +67,7 @@ export const authMiddleware = async (
     }
 
     try {
-      const decoded = jwt.verify(token, config.jwtSecret) as {
+      const decoded = jwt.verify(token, config.jwt.secret) as {
         id: string;
         email: string;
         type: string;

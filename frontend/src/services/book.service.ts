@@ -1,5 +1,6 @@
 import { api } from './api';
 import { logger } from '../utils/logger';
+import axios from 'axios';
 
 export interface Book {
   _id: string;
@@ -52,7 +53,35 @@ class BookService {
     try {
       logger.info('Iniciando criação do livro:', bookData);
       
-      const response = await api.post('/books', bookData);
+      // Criar uma instância específica do axios com timeout maior para criação de livros
+      const bookCreationApi = axios.create({
+        baseURL: api.defaults.baseURL,
+        timeout: 300000, // 5 minutos para criação de livros
+        headers: {
+          ...api.defaults.headers,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': api.defaults.headers.common['Authorization']
+        }
+      });
+      
+      // Adicionar interceptor para log
+      bookCreationApi.interceptors.request.use(
+        (config) => {
+          logger.info('Enviando requisição de criação de livro com timeout estendido', {
+            url: config.url,
+            timeout: config.timeout
+          });
+          return config;
+        },
+        (error) => {
+          logger.error('Erro na requisição de criação de livro', error);
+          return Promise.reject(error);
+        }
+      );
+      
+      // Fazer a requisição com a instância específica
+      const response = await bookCreationApi.post('/books', bookData);
       
       logger.info('Livro criado com sucesso:', response.data);
       

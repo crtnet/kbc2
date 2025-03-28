@@ -1,16 +1,17 @@
 import { Router } from 'express';
 import AuthController from '../controllers/AuthController';
-import { auth } from './bookRoutes'; // Verifique se o middleware de autenticação está definido corretamente
+import { authMiddleware } from '../middlewares/authMiddleware';
 
 const router = Router();
+const authController = new AuthController();
 
-// Rota para registro de usuário
-router.post('/register', AuthController.register);
+// Rotas públicas
+router.post('/register', authController.register);
+router.post('/login', authController.login);
 
-// Rota para login de usuário
-router.post('/login', AuthController.login);
-
-// Rota para verificação do token (proteção com middleware de autenticação)
-router.get('/verify', auth, AuthController.verifyToken);
+// Rotas protegidas
+router.get('/me', authMiddleware, authController.getCurrentUser);
+router.put('/me', authMiddleware, authController.updateUser);
+router.delete('/me', authMiddleware, authController.deleteUser);
 
 export default router;

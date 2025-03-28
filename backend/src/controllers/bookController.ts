@@ -5,13 +5,14 @@ import path from 'path';
 import { logger } from '../utils/logger';
 import { Book } from '../models/Book';
 import { generateBookPDFWithFallback } from '../services/pdfGeneratorIntegration';
-import { openaiUnifiedFixService } from '../services/openai.unified.fix'; // <--- Usando a versão corrigida
+import { OpenAIUnifiedFixService } from '../services/openai.unified.fix';
 import { avatarService } from '../services/avatarService';
 import { avatarFixService } from '../services/avatarFixService';
 import { imageProcessor } from '../services/imageProcessor';
 import { imageAnalysisService } from '../services/imageAnalysisService';
 import { Character, GenerateStoryParams, StyleGuide } from '../types/book.types';
 import { io } from '../server'; // Importando o socket.io do servidor
+import { ageRangeConfigs } from '../config/ageRangeConfig';
 
 interface AuthRequest extends Request {
   user?: {
@@ -21,6 +22,8 @@ interface AuthRequest extends Request {
     name?: string;
   };
 }
+
+const openaiUnifiedFixService = new OpenAIUnifiedFixService();
 
 class BookController {
   /**
@@ -221,7 +224,7 @@ class BookController {
       // Gera a história usando o serviço revisado
       const story = await openaiUnifiedFixService.generateStory(storyParams);
       const wordCount = story.split(/\s+/).length;
-      const pages = this.splitStoryIntoPages(story);
+      const pages = this.splitStoryIntoPages(story, ageRange);
 
       // Salva o livro no banco de dados
       const userId = new mongoose.Types.ObjectId(authReq.user.id);
@@ -243,11 +246,15 @@ class BookController {
         pages: pages.map((text, index) => ({
           pageNumber: index + 1,
           text,
-          imageUrl: ''
+          imageUrl: '',
+          imageType: 'inlineImage',
+          imagePosition: { x: 10, y: 10, width: 80, height: 60 }
         })),
         metadata: {
           wordCount,
           pageCount: pages.length,
+          ageRange,
+          complexity: ageRangeConfigs[ageRange].complexity
         },
         status: 'processing',
         // **NOVO**: Armazena o estilo no modelo
@@ -259,10 +266,8 @@ class BookController {
       await newBook.save();
       logger.info('Livro salvo no banco de dados', { bookId: newBook._id });
 
-      // Inicia geração de imagens e PDF em background
-      this.generateImagesForBook(newBook._id.toString(), pages).catch(err => {
-        logger.error('Erro ao gerar imagens para o livro', { bookId: newBook._id, error: err.message });
-      });
+      // Gera as imagens para o livro
+      await this.generateImagesForBook(newBook._id, pages, ageRange);
 
       return res.status(201).json({
         message: 'Livro criado com sucesso, gerando imagens...',
@@ -313,446 +318,257 @@ class BookController {
   };
 
   /**
+   * POST /books/:bookId/generate-pdf
+   * Gera o PDF do livro (se o usuário for dono)
+   */
+  public generatePDF = async (req: Request, res: Response) => {
+    try {
+      const { bookId } = req.params;
+      logger.info(`Recebida requisição para gerar PDF do livro: ${bookId}`);
+
+      // Verifica se o usuário está autenticado
+      const authReq = req as AuthRequest;
+      if (!authReq.user) {
+        return res.status(401).json({ error: 'Usuário não autenticado' });
+      }
+
+      // Busca o livro no banco de dados
+      const book = await Book.findOne({ _id: bookId, userId: authReq.user.id });
+      if (!book) {
+        return res.status(404).json({ error: 'Livro não encontrado ou não pertence ao usuário' });
+      }
+
+      // Gera o PDF
+      const pdfPath = await generateBookPDFWithFallback(book);
+      
+      // Atualiza o livro com a URL do PDF
+      await Book.findByIdAndUpdate(bookId, {
+        pdfUrl: pdfPath,
+        status: 'completed'
+      });
+
+      logger.info(`PDF gerado com sucesso: ${pdfPath}`);
+
+      res.status(200).json({
+        message: 'PDF gerado com sucesso',
+        pdfUrl: pdfPath,
+      });
+    } catch (error: any) {
+      logger.error(`Erro ao gerar PDF: ${error.message}`);
+      res.status(500).json({
+        error: 'Erro ao gerar PDF',
+        details: error.message,
+      });
+    }
+  };
+
+  /**
    * Divide a história em páginas. Exemplo simples: ~100 palavras por página
    */
-  private splitStoryIntoPages(story: string): string[] {
-    // Remove espaços extras e normaliza quebras de linha
-    const normalizedStory = story
-      .replace(/\r\n/g, '\n')
-      .replace(/\n{3,}/g, '\n\n')
-      .trim();
+  private splitStoryIntoPages(story: string, ageRange: string): string[] {
+    const config = ageRangeConfigs[ageRange];
+    if (!config) {
+      throw new Error('Faixa etária inválida');
+    }
 
-    // Divide em parágrafos, removendo linhas vazias
-    const paragraphs = normalizedStory
-      .split('\n\n')
-      .map(p => p.trim())
-      .filter(p => p.length > 0);
-
+    const words = story.split(/\s+/);
     const pages: string[] = [];
-    let currentPage = '';
+    let currentPage: string[] = [];
     let currentWordCount = 0;
-    const TARGET_WORDS_PER_PAGE = 100;
+    let totalWordCount = 0;
 
-    for (const paragraph of paragraphs) {
-      const paragraphWordCount = paragraph.split(/\s+/).length;
-
-      // Se é uma página numerada explicitamente (ex: "Página 1:" ou "1.")
-      if (paragraph.match(/^(página|page|\d+)[.:]/i)) {
-        if (currentPage) {
-          pages.push(currentPage.trim());
-        }
-        currentPage = paragraph;
-        currentWordCount = paragraphWordCount;
-        continue;
+    for (const word of words) {
+      if (currentWordCount >= config.maxWordsPerPage) {
+        pages.push(currentPage.join(' '));
+        currentPage = [];
+        currentWordCount = 0;
       }
-
-      // Se adicionar este parágrafo excederia o limite de palavras
-      if (currentWordCount + paragraphWordCount > TARGET_WORDS_PER_PAGE && currentPage) {
-        pages.push(currentPage.trim());
-        currentPage = paragraph;
-        currentWordCount = paragraphWordCount;
-      } else {
-        currentPage = currentPage 
-          ? currentPage + '\n\n' + paragraph 
-          : paragraph;
-        currentWordCount += paragraphWordCount;
-      }
+      currentPage.push(word);
+      currentWordCount++;
+      totalWordCount++;
     }
 
-    // Adiciona a última página se houver conteúdo
-    if (currentPage) {
-      pages.push(currentPage.trim());
+    if (currentPage.length > 0) {
+      pages.push(currentPage.join(' '));
     }
 
-    // Garante que temos exatamente 5 páginas
-    while (pages.length < 5) {
-      // Divide a página mais longa
-      const longestPageIndex = pages
-        .map((page, index) => ({ index, length: page.split(/\s+/).length }))
-        .reduce((max, curr) => curr.length > max.length ? curr : max)
-        .index;
+    // Verifica se o total de palavras está dentro dos limites
+    if (totalWordCount < config.minWordsPerBook) {
+      // Adiciona mais conteúdo para atingir o mínimo
+      while (totalWordCount < config.minWordsPerBook) {
+        const additionalContent = this.generateAdditionalContent(config.complexity);
+        const additionalWords = additionalContent.split(/\s+/);
+        currentPage = [];
+        currentWordCount = 0;
 
-      const pageToSplit = pages[longestPageIndex];
-      const paragraphsToSplit = pageToSplit.split('\n\n');
-      
-      if (paragraphsToSplit.length < 2) continue;
-
-      const midPoint = Math.ceil(paragraphsToSplit.length / 2);
-      const firstHalf = paragraphsToSplit.slice(0, midPoint).join('\n\n');
-      const secondHalf = paragraphsToSplit.slice(midPoint).join('\n\n');
-
-      pages.splice(longestPageIndex, 1, firstHalf, secondHalf);
-    }
-
-    // Se temos mais de 5 páginas, combina as menores
-    while (pages.length > 5) {
-      let shortestCombinedLength = Infinity;
-      let shortestPair = [0, 1];
-
-      // Encontra as duas páginas consecutivas que, juntas, têm o menor número de palavras
-      for (let i = 0; i < pages.length - 1; i++) {
-        const combinedLength = pages[i].split(/\s+/).length + pages[i + 1].split(/\s+/).length;
-        if (combinedLength < shortestCombinedLength) {
-          shortestCombinedLength = combinedLength;
-          shortestPair = [i, i + 1];
+        for (const word of additionalWords) {
+          if (currentWordCount >= config.maxWordsPerPage) {
+            pages.push(currentPage.join(' '));
+            currentPage = [];
+            currentWordCount = 0;
+          }
+          currentPage.push(word);
+          currentWordCount++;
+          totalWordCount++;
         }
       }
 
-      // Combina as duas páginas mais curtas
-      const combinedPage = pages[shortestPair[0]] + '\n\n' + pages[shortestPair[1]];
-      pages.splice(shortestPair[0], 2, combinedPage);
+      if (currentPage.length > 0) {
+        pages.push(currentPage.join(' '));
+      }
+    } else if (totalWordCount > config.maxWordsPerBook) {
+      // Remove conteúdo para atingir o máximo
+      while (totalWordCount > config.maxWordsPerBook && pages.length > 0) {
+        const removedPage = pages.pop();
+        if (removedPage) {
+          totalWordCount -= removedPage.split(/\s+/).length;
+        }
+      }
     }
 
-    // Formata cada página para garantir consistência
-    return pages.map((page, index) => {
-      const pageNumber = index + 1;
-      const formattedPage = page
-        .split('\n\n')
-        .map(p => p.trim())
-        .filter(p => p.length > 0)
-        .join('\n\n');
+    // Garante que o número de páginas está dentro dos limites
+    if (pages.length < config.minPages) {
+      while (pages.length < config.minPages) {
+        pages.push(this.generateAdditionalContent(config.complexity));
+      }
+    } else if (pages.length > config.maxPages) {
+      pages.splice(config.maxPages);
+    }
 
-      // Remove qualquer numeração existente no início
-      const cleanPage = formattedPage.replace(/^(página|page|\d+)[.:]\s*/i, '');
+    return pages;
+  }
 
-      return cleanPage;
-    });
+  private generateAdditionalContent(complexity: string): string {
+    const simpleContent = "O personagem continuou sua aventura.";
+    const moderateContent = "O personagem encontrou novos amigos e juntos continuaram sua jornada.";
+    const complexContent = "O personagem descobriu um novo mistério e precisou usar sua inteligência para resolvê-lo.";
+
+    switch (complexity) {
+      case 'very_simple':
+      case 'simple':
+        return simpleContent;
+      case 'moderate':
+        return moderateContent;
+      case 'complex':
+        return complexContent;
+      default:
+        return moderateContent;
+    }
   }
 
   /**
    * Gera imagens para cada página e, em seguida, gera o PDF
    */
-  private async generateImagesForBook(bookId: string, pages: string[]) {
+  private async generateImagesForBook(bookId: string, pages: string[], ageRange: string) {
+    const config = ageRangeConfigs[ageRange];
+    if (!config) {
+      throw new Error('Faixa etária inválida');
+    }
+
     const book = await Book.findById(bookId);
-    if (!book) throw new Error('Livro não encontrado');
+    if (!book) {
+      throw new Error('Livro não encontrado');
+    }
 
-    try {
-      // Prepara personagens usando as descrições fornecidas pelo usuário
-      logger.info(`Iniciando processamento das descrições dos personagens para geração de imagens do livro "${book.title}"`, { 
-        bookId,
-        title: book.title
-      });
+    // Gera a capa primeiro
+    const coverPrompt = await openaiUnifiedFixService.generateImagePrompt({
+      pageText: `Capa do livro "${book.title}" com ${book.mainCharacter} como personagem principal`,
+      styleGuide: {
+        character: book.mainCharacterDescription,
+        environment: book.environmentDescription,
+        artisticStyle: config.illustrationStyle
+      },
+      complexity: config.complexity,
+      imageType: 'cover'
+    });
+
+    const coverImage = await openaiUnifiedFixService.generateImage(coverPrompt, 'cover');
+    book.pages[0].imageUrl = coverImage;
+    book.pages[0].imageType = 'cover';
+    book.pages[0].imagePosition = { x: 0, y: 0, width: 100, height: 100 };
+
+    // Distribui os tipos de imagem de acordo com a configuração
+    const imageDistribution = [...Array(pages.length)].map((_, index) => {
+      if (index === 0) return 'cover'; // Primeira página é sempre a capa
       
-      let characters = {
-        main: {
-          name: book.mainCharacter,
-          description: book.mainCharacterDescription,
-          type: 'main' as 'main' | 'secondary'
-        }
+      // Calcula a distribuição de imagens
+      const remainingImages = {
+        fullPage: config.imageDistribution.fullPage,
+        spreadPage: config.imageDistribution.spreadPage,
+        inlineImage: config.imageDistribution.inlineImage
       };
 
-      if (book.secondaryCharacter && book.secondaryCharacterDescription) {
-        characters.secondary = {
-          name: book.secondaryCharacter,
-          description: book.secondaryCharacterDescription,
-          type: 'secondary' as 'main' | 'secondary'
-        };
+      // Distribui as imagens de página inteira
+      if (remainingImages.fullPage > 0 && index % 3 === 0) {
+        remainingImages.fullPage--;
+        return 'fullPage';
       }
 
-      // Prepara o guia de estilo para a geração de imagens
-      if (!book.styleGuide) {
-        book.styleGuide = {
-          character: `${book.mainCharacter}: ${characters.main.description}` + 
-            (characters.secondary ? `\n\n${book.secondaryCharacter}: ${characters.secondary.description}` : ''),
-          environment: book.environmentDescription || `cenário de ${book.setting}`,
-          artisticStyle: "ilustração digital simples com traços suaves, cores vibrantes e contornos limpos, inspirados em livros infantis"
-        };
+      // Distribui as imagens de duas páginas
+      if (remainingImages.spreadPage > 0 && index % 4 === 0 && index + 1 < pages.length) {
+        remainingImages.spreadPage--;
+        return 'spreadPage';
       }
 
-      logger.info(`Iniciando geração de imagens para o livro "${book.title}" (${pages.length} páginas)`, { 
-        bookId,
-        title: book.title,
-        hasSecondaryCharacter: !!characters.secondary,
-        hasStyleGuide: !!book.styleGuide,
-        characterDescriptionLength: book.styleGuide?.character?.length || 0,
-        environmentDescriptionLength: book.styleGuide?.environment?.length || 0,
-        totalPages: pages.length
-      });
-      
-      // Atualiza o status do livro para indicar que está gerando imagens
-      book.status = 'generating_images';
-      book.metadata = {
-        ...book.metadata,
-        currentPage: 0,
-        totalPages: pages.length,
-        lastUpdated: new Date()
-      };
-      await book.save();
-      
-      // Notifica o cliente via WebSocket
-      io.to(book.userId.toString()).emit('book_progress_update', {
-        bookId: book._id.toString(),
-        status: 'generating_images',
-        progress: 0,
-        totalPages: pages.length,
-        message: 'Iniciando geração de imagens...'
-      });
-      
-      // Passa o styleGuide do livro para o serviço de geração de imagens
-      const imageUrls = await openaiUnifiedFixService.generateImagesForStory(pages, characters, book.styleGuide);
-      
-      // Atualiza as URLs das imagens no modelo
-      for (let i = 0; i < imageUrls.length && i < book.pages.length; i++) {
-        // Check if the URL is from DALL-E and use a fallback if it is
-        const imageUrl = imageUrls[i];
-        if (imageUrl.includes('oaidalleapiprodscus.blob.core.windows.net')) {
-          logger.warn(`DALL-E URL detected for image ${i + 1}, using fallback`, {
-            bookId,
-            pageNumber: i + 1
-          });
-          book.pages[i].imageUrl = '/assets/images/fallback-page.jpg';
-        } else {
-          book.pages[i].imageUrl = imageUrl;
-        }
-        
-        // Atualiza o progresso após cada imagem
-        book.metadata = {
-          ...book.metadata,
-          currentPage: i + 1,
-          lastUpdated: new Date()
-        };
-        await book.save();
-        
-        // Notifica o cliente via WebSocket sobre o progresso
-        const progressPercentage = Math.round(((i + 1) / pages.length) * 100);
-        io.to(book.userId.toString()).emit('book_progress_update', {
-          bookId: book._id.toString(),
-          status: 'generating_images',
-          progress: progressPercentage,
-          currentPage: i + 1,
-          totalPages: pages.length,
-          message: `Imagem ${i + 1} de ${pages.length} gerada com sucesso`
-        });
-        
-        // Adiciona um pequeno atraso para garantir que o frontend possa receber as atualizações
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        
-        logger.info(`Imagem ${i + 1}/${pages.length} salva para o livro "${book.title}"`, {
-          bookId,
-          pageNumber: i + 1,
-          totalPages: pages.length,
-          imageUrl: imageUrls[i].substring(0, 50) + '...'
-        });
+      // Distribui as imagens inline
+      if (remainingImages.inlineImage > 0) {
+        remainingImages.inlineImage--;
+        return 'inlineImage';
       }
-      
-      // Atualiza o status para indicar que todas as imagens foram geradas
-      book.status = 'images_completed';
-      book.metadata = {
-        ...book.metadata,
-        imagesCompleted: true,
-        lastUpdated: new Date()
-      };
-      await book.save();
-      
-      // Notifica o cliente via WebSocket
-      io.to(book.userId.toString()).emit('book_progress_update', {
-        bookId: book._id.toString(),
-        status: 'images_completed',
-        progress: 80,
-        message: 'Todas as imagens foram geradas. Iniciando geração do PDF...'
-      });
-      
-      // Adiciona um atraso antes de iniciar a geração do PDF para garantir que o frontend atualize o status
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      logger.info(`Todas as ${imageUrls.length} imagens do livro "${book.title}" foram geradas com sucesso`, {
-        bookId,
-        title: book.title,
-        totalImages: imageUrls.length
-      });
-    } catch (error) {
-      logger.error(`Erro ao gerar imagens para o livro "${book.title}"`, {
-        error: error instanceof Error ? error.message : 'Erro desconhecido',
-        bookId,
-        title: book.title,
-        stack: error instanceof Error ? error.stack : undefined
-      });
-      
-      // Marca as páginas sem imagens
-      for (let i = 0; i < book.pages.length; i++) {
-        if (!book.pages[i].imageUrl) {
-          book.pages[i].imageUrl = '/assets/images/fallback-page.jpg';
-        }
-      }
-      
-      // Atualiza o status para indicar erro na geração de imagens
-      book.status = 'images_error';
-      book.metadata = {
-        ...book.metadata,
-        error: error instanceof Error ? error.message : 'Erro desconhecido',
-        lastUpdated: new Date()
-      };
-      await book.save();
-    } finally {
-      // Gera PDF independentemente de erro nas imagens
-      try {
-        logger.info(`Iniciando geração do PDF para o livro "${book.title}"`, { 
-          bookId,
-          title: book.title
+
+      return 'inlineImage'; // Padrão para páginas restantes
+    });
+
+    // Gera prompts para cada página
+    const imagePrompts = await Promise.all(
+      pages.map(async (pageText, index) => {
+        const imageType = imageDistribution[index];
+        const prompt = await openaiUnifiedFixService.generateImagePrompt({
+          pageText,
+          styleGuide: {
+            character: book.mainCharacterDescription,
+            environment: book.environmentDescription,
+            artisticStyle: config.illustrationStyle
+          },
+          complexity: config.complexity,
+          imageType
         });
-        
-        // Atualiza o status para indicar que está gerando o PDF
-        book.status = 'generating_pdf';
-        book.metadata = {
-          ...book.metadata,
-          pdfGenerationStarted: true,
-          lastUpdated: new Date()
-        };
-        await book.save();
-        
-        // Notifica o cliente via WebSocket
-        io.to(book.userId.toString()).emit('book_progress_update', {
-          bookId: book._id.toString(),
-          status: 'generating_pdf',
-          progress: 85,
-          message: 'Gerando PDF do livro...'
-        });
-        
-        // Verifica se todas as páginas têm imagens antes de gerar o PDF
-        let allPagesHaveImages = true;
-        for (const page of book.pages) {
-          if (!page.imageUrl || page.imageUrl === '') {
-            allPagesHaveImages = false;
-            logger.warn(`Página ${page.pageNumber} do livro "${book.title}" não tem imagem`, {
-              bookId,
-              pageNumber: page.pageNumber
-            });
-          }
-        }
-        
-        if (!allPagesHaveImages) {
-          logger.warn(`Algumas páginas do livro "${book.title}" não têm imagens, usando fallback`, {
-            bookId,
-            title: book.title
-          });
-          
-          // Adiciona imagens de fallback para páginas sem imagens
-          for (let i = 0; i < book.pages.length; i++) {
-            if (!book.pages[i].imageUrl || book.pages[i].imageUrl === '') {
-              book.pages[i].imageUrl = '/assets/images/fallback-page.jpg';
-              logger.info(`Imagem de fallback adicionada para página ${i + 1}`, {
-                bookId,
-                pageNumber: i + 1
-              });
-            }
-          }
-          await book.save();
-        }
-        
-        // Implementa retry para geração do PDF
-        let pdfPath = null;
-        let pdfAttempts = 0;
-        const MAX_PDF_ATTEMPTS = 3;
-        
-        // Importa a função de geração de PDF com fallback
-        while (pdfAttempts < MAX_PDF_ATTEMPTS && !pdfPath) {
-          try {
-            logger.info(`Tentativa ${pdfAttempts + 1} de geração do PDF para o livro "${book.title}"`, {
-              bookId,
-              title: book.title,
-              attempt: pdfAttempts + 1
-            });
-            
-            // Usa a nova função de geração de PDF com fallback
-            pdfPath = await generateBookPDFWithFallback(book);
-            
-            if (!pdfPath) {
-              throw new Error('Caminho do PDF não retornado pelo gerador');
-            }
-            
-            logger.info(`PDF gerado com sucesso na tentativa ${pdfAttempts + 1}`, {
-              bookId,
-              title: book.title,
-              pdfPath
-            });
-          } catch (pdfGenError) {
-            pdfAttempts++;
-            logger.error(`Erro na tentativa ${pdfAttempts} de gerar PDF para o livro "${book.title}"`, {
-              error: pdfGenError instanceof Error ? pdfGenError.message : 'Erro desconhecido',
-              bookId,
-              title: book.title,
-              attempt: pdfAttempts,
-              stack: pdfGenError instanceof Error ? pdfGenError.stack : undefined
-            });
-            
-            if (pdfAttempts >= MAX_PDF_ATTEMPTS) {
-              throw pdfGenError;
-            }
-            
-            // Aguarda antes de tentar novamente
-            await new Promise(resolve => setTimeout(resolve, 3000));
-          }
-        }
-        
-        // Verifica se o PDF foi gerado corretamente
-        if (!pdfPath) {
-          throw new Error('Falha em todas as tentativas de geração do PDF');
-        }
-        
-        book.pdfUrl = pdfPath;
-        book.status = 'completed';
-        book.metadata = {
-          ...book.metadata,
-          pdfCompleted: true,
-          lastUpdated: new Date()
-        };
-        await book.save();
-        
-        // Notifica o cliente via WebSocket
-        io.to(book.userId.toString()).emit('book_progress_update', {
-          bookId: book._id.toString(),
-          status: 'completed',
-          progress: 100,
-          message: 'Livro concluído com sucesso!',
-          pdfUrl: pdfPath
-        });
-        
-        logger.info(`PDF gerado com sucesso para o livro "${book.title}"`, {
-          bookId,
-          title: book.title,
-          pdfPath
-        });
-      } catch (pdfError) {
-        logger.error(`Erro ao gerar PDF para o livro "${book.title}"`, {
-          error: pdfError instanceof Error ? pdfError.message : 'Erro desconhecido',
-          bookId,
-          title: book.title,
-          stack: pdfError instanceof Error ? pdfError.stack : undefined
-        });
-        
-        // Log detalhado do erro
-        logger.error('Erro completo ao gerar PDF', {
-          error: pdfError,
-          bookId,
-          title: book.title,
-          bookData: {
-            pages: book.pages.map(p => ({
-              pageNumber: p.pageNumber,
-              hasText: !!p.text,
-              textLength: p.text?.length || 0,
-              hasImage: !!p.imageUrl,
-              imageUrl: p.imageUrl
-            }))
-          }
-        });
-        
-        book.status = 'error';
-        book.metadata = {
-          ...book.metadata,
-          pdfError: pdfError instanceof Error ? pdfError.message : 'Erro desconhecido',
-          lastUpdated: new Date()
-        };
-        await book.save();
-        
-        // Notifica o cliente via WebSocket sobre o erro
-        io.to(book.userId.toString()).emit('book_progress_update', {
-          bookId: book._id.toString(),
-          status: 'error',
-          progress: 0,
-          message: 'Erro ao gerar o PDF do livro',
-          error: pdfError instanceof Error ? pdfError.message : 'Erro desconhecido'
-        });
-      }
+
+        return { prompt, imageType };
+      })
+    );
+
+    // Gera imagens para cada página
+    const images = await Promise.all(
+      imagePrompts.map(async ({ prompt, imageType }) => {
+        const imageUrl = await openaiUnifiedFixService.generateImage(prompt, imageType);
+        return { imageUrl, imageType };
+      })
+    );
+
+    // Atualiza o livro com as imagens
+    book.pages = book.pages.map((page, index) => ({
+      ...page,
+      imageUrl: images[index].imageUrl,
+      imageType: images[index].imageType,
+      imagePosition: this.calculateImagePosition(images[index].imageType)
+    }));
+
+    await book.save();
+  }
+
+  private calculateImagePosition(imageType: string) {
+    switch (imageType) {
+      case 'cover':
+        return { x: 0, y: 0, width: 100, height: 100 };
+      case 'fullPage':
+        return { x: 0, y: 0, width: 100, height: 100 };
+      case 'spreadPage':
+        return { x: 0, y: 0, width: 200, height: 100 };
+      case 'inlineImage':
+        return { x: 10, y: 10, width: 80, height: 60 };
+      default:
+        return { x: 10, y: 10, width: 80, height: 60 };
     }
   }
 
