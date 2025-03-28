@@ -23,6 +23,7 @@ interface BookPage {
   pageNumber: number;
   imageUrl: string;
   text: string;
+  authorName?: string;
 }
 
 interface RouteParams {
@@ -121,7 +122,7 @@ function FlipBookScreen() {
 
   // Navega para a próxima página com animação
   const goToNextPage = () => {
-    if (currentIndex < pages.length - 1) {
+    if (currentIndex < pages.length) {
       Animated.timing(position, {
         toValue: -width,
         duration: 250,
@@ -153,16 +154,22 @@ function FlipBookScreen() {
       <View style={styles.coverContainer}>
         <Text style={styles.coverTitle}>{title}</Text>
         {pages[0]?.imageUrl && (
-          <Image
-            source={{ 
-              uri: pages[0].imageUrl.startsWith('http')
-                ? pages[0].imageUrl
-                : `${API_URL}${pages[0].imageUrl}`
-            }}
-            style={styles.coverImage}
-            resizeMode="contain"
-          />
+          <View style={styles.coverImageContainer}>
+            <Image
+              source={{ uri: pages[0].imageUrl }}
+              style={styles.coverImage}
+              resizeMode="contain"
+              onError={(error) => {
+                logger.error('Erro ao carregar imagem da capa', {
+                  error: error.nativeEvent.error,
+                  pageId: pages[0]._id,
+                  imageUrl: pages[0].imageUrl
+                });
+              }}
+            />
+          </View>
         )}
+        <Text style={styles.coverAuthor}>por {pages[0]?.authorName || 'Anônimo'}</Text>
         <Text style={styles.coverInstructions}>
           Deslize para começar a leitura
         </Text>
@@ -172,23 +179,47 @@ function FlipBookScreen() {
 
   const AsyncPageImage = ({ page }: { page: BookPage }) => {
     const [imageUrl, setImageUrl] = useState<string | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
+    const [hasError, setHasError] = useState(false);
 
     useEffect(() => {
       const loadImage = async () => {
         try {
+          setIsLoading(true);
+          setHasError(false);
           const cachedUrl = await imageCacheService.getImageUrl(page.imageUrl);
           setImageUrl(cachedUrl);
         } catch (error) {
           logger.error('Erro ao obter URL da imagem do cache', {
             error: error instanceof Error ? error.message : 'Erro desconhecido',
-            pageId: page._id
+            pageId: page._id,
+            imageUrl: page.imageUrl
           });
+          setHasError(true);
           setImageUrl(page.imageUrl);
+        } finally {
+          setIsLoading(false);
         }
       };
 
       loadImage();
     }, [page.imageUrl]);
+
+    if (isLoading) {
+      return (
+        <View style={styles.imageLoadingContainer}>
+          <Text>Carregando imagem...</Text>
+        </View>
+      );
+    }
+
+    if (hasError) {
+      return (
+        <View style={styles.imageErrorContainer}>
+          <Text style={styles.imageErrorText}>Erro ao carregar imagem</Text>
+        </View>
+      );
+    }
 
     if (!imageUrl) {
       return null;
@@ -202,8 +233,10 @@ function FlipBookScreen() {
         onError={(error) => {
           logger.error('Erro ao carregar imagem da página', {
             error: error.nativeEvent.error,
-            pageId: page._id
+            pageId: page._id,
+            imageUrl: page.imageUrl
           });
+          setHasError(true);
         }}
       />
     );
@@ -247,7 +280,7 @@ function FlipBookScreen() {
     } else if (currentIndex === pages.length) {
       return renderBackCover();
     } else {
-      return renderPage(pages[currentIndex - 1]);
+      return renderPage(pages[currentIndex]);
     }
   };
 
@@ -297,61 +330,48 @@ function FlipBookScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar hidden />
+      <StatusBar barStyle="dark-content" />
       
-      <TouchableOpacity
-        activeOpacity={1}
-        style={styles.contentContainer}
-        onPress={showControlsTemporarily}
-        {...panResponder.panHandlers}
-      >
+      <View style={styles.contentContainer} {...panResponder.panHandlers}>
         <Animated.View
           style={[
             styles.animatedContainer,
-            { transform: [{ translateX: position }] }
+            {
+              transform: [{ translateX: position }],
+            },
           ]}
         >
           {renderContent()}
         </Animated.View>
-      </TouchableOpacity>
-      
+      </View>
+
       {showControls && (
         <View style={styles.controlsContainer}>
           <View style={styles.topControls}>
             <IconButton
               icon="arrow-left"
               size={24}
-              onPress={() => navigation.goBack()}
+              onPress={goToPrevPage}
+              disabled={currentIndex === 0}
             />
-            <Text style={styles.pageIndicator}>
-              {currentIndex === 0 
-                ? 'Capa' 
-                : currentIndex === pages.length 
-                  ? 'Fim' 
-                  : `${currentIndex}/${pages.length - 1}`}
-            </Text>
             <IconButton
               icon="help-circle-outline"
               size={24}
               onPress={() => setShowHelpModal(true)}
             />
-          </View>
-          
-          <View style={styles.bottomControls}>
             <IconButton
-              icon="chevron-left"
-              size={36}
-              onPress={goToPrevPage}
-              disabled={currentIndex === 0}
-              style={[styles.navButton, currentIndex === 0 && styles.disabledButton]}
-            />
-            <IconButton
-              icon="chevron-right"
-              size={36}
+              icon="arrow-right"
+              size={24}
               onPress={goToNextPage}
               disabled={currentIndex === pages.length}
-              style={[styles.navButton, currentIndex === pages.length && styles.disabledButton]}
             />
+          </View>
+          <View style={styles.bottomControls}>
+            <Text style={styles.pageIndicator}>
+              {currentIndex === 0 ? 'Capa' : 
+               currentIndex === pages.length ? 'Contracapa' : 
+               `Página ${currentIndex} de ${pages.length - 1}`}
+            </Text>
           </View>
         </View>
       )}
@@ -387,16 +407,30 @@ const styles = StyleSheet.create({
     margin: 20,
     elevation: 5
   },
+  coverImageContainer: {
+    width: '100%',
+    height: 300,
+    marginVertical: 20,
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: '#f5f5f5'
+  },
   coverTitle: {
     fontSize: 28,
     fontWeight: 'bold',
     textAlign: 'center',
     marginBottom: 20
   },
+  coverAuthor: {
+    fontSize: 18,
+    color: '#666',
+    textAlign: 'center',
+    marginTop: 10
+  },
   coverImage: {
-    width: width * 0.8,
-    height: height * 0.5,
-    marginVertical: 20
+    width: '100%',
+    height: '100%',
+    borderRadius: 8
   },
   coverInstructions: {
     fontSize: 16,
@@ -429,6 +463,7 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 300,
     marginBottom: 10,
+    borderRadius: 8
   },
   pageText: {
     fontSize: 16,
@@ -487,13 +522,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 10
   },
-  navButton: {
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    margin: 10
-  },
-  disabledButton: {
-    opacity: 0.5
-  },
   modalContainer: {
     backgroundColor: 'white',
     padding: 20,
@@ -517,6 +545,28 @@ const styles = StyleSheet.create({
   },
   closeButton: {
     marginTop: 20
+  },
+  imageLoadingContainer: {
+    width: '100%',
+    height: 300,
+    backgroundColor: '#f5f5f5',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 8,
+    marginBottom: 15
+  },
+  imageErrorContainer: {
+    width: '100%',
+    height: 300,
+    backgroundColor: '#ffebee',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 8,
+    marginBottom: 15
+  },
+  imageErrorText: {
+    color: '#d32f2f',
+    fontSize: 16
   }
 });
 

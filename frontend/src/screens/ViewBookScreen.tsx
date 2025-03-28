@@ -202,10 +202,27 @@ function ViewBookScreen() {
 
   const handleFlipBook = () => {
     if (book?.pages) {
+      // Cria um array com a capa e as páginas do conteúdo
+      const pagesWithAuthor = [
+        // Adiciona a capa com a imagem da primeira página
+        {
+          _id: 'cover',
+          pageNumber: 0,
+          imageUrl: book.pages[0].imageUrl,
+          text: '',
+          authorName: book.authorName
+        },
+        // Adiciona as páginas do conteúdo
+        ...book.pages.map(page => ({
+          ...page,
+          authorName: book.authorName
+        }))
+      ];
+
       navigation.navigate('FlipBook', {
         bookId: book._id,
         title: book.title,
-        pages: book.pages
+        pages: pagesWithAuthor
       });
     }
   };
@@ -390,6 +407,8 @@ function ViewBookScreen() {
   const renderPageNavigation = () => {
     if (!book || !book.pages || book.pages.length === 0) return null;
 
+    const totalPages = book.pages.length; // Total de páginas de conteúdo
+
     return (
       <View style={styles.pageNavigation}>
         <Button
@@ -401,12 +420,12 @@ function ViewBookScreen() {
           Anterior
         </Button>
         <Text style={styles.pageIndicator}>
-          Página {currentPage + 1} de {book.pages.length}
+          {currentPage === 0 ? 'Capa' : `Página ${currentPage} de ${totalPages}`}
         </Text>
         <Button
           mode="outlined"
-          onPress={() => setCurrentPage(prev => Math.min(book.pages.length - 1, prev + 1))}
-          disabled={currentPage === book.pages.length - 1}
+          onPress={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+          disabled={currentPage === totalPages}
           icon="chevron-right"
           contentStyle={{ flexDirection: 'row-reverse' }}
         >
@@ -495,7 +514,19 @@ function ViewBookScreen() {
       const loadImage = async () => {
         try {
           setIsLoading(true);
-          const cachedUrl = await imageCacheService.getImageUrl(page.imageUrl);
+          setHasError(false);
+
+          // Verifica se a URL é absoluta ou relativa
+          const fullUrl = page.imageUrl.startsWith('http') 
+            ? page.imageUrl 
+            : `${API_URL}${page.imageUrl}`;
+
+          logger.info('Carregando imagem', {
+            pageId: page._id,
+            imageUrl: fullUrl
+          });
+
+          const cachedUrl = await imageCacheService.getImageUrl(fullUrl);
           
           if (isMounted) {
             setImageUrl(cachedUrl);
@@ -504,7 +535,8 @@ function ViewBookScreen() {
         } catch (error) {
           logger.error('Erro ao obter URL da imagem do cache', {
             error: error instanceof Error ? error.message : 'Erro desconhecido',
-            pageId: page._id
+            pageId: page._id,
+            imageUrl: page.imageUrl
           });
           
           if (isMounted) {
@@ -514,7 +546,11 @@ function ViewBookScreen() {
         }
       };
 
-      loadImage();
+      if (page.imageUrl) {
+        loadImage();
+      } else {
+        setIsLoading(false);
+      }
 
       return () => {
         isMounted = false;
@@ -549,7 +585,8 @@ function ViewBookScreen() {
         onError={(error) => {
           logger.error('Erro ao carregar imagem da página', {
             error: error.nativeEvent.error,
-            pageId: page._id
+            pageId: page._id,
+            imageUrl: page.imageUrl
           });
           setHasError(true);
         }}
@@ -560,11 +597,32 @@ function ViewBookScreen() {
   const renderPage = (page: BookPage) => {
     return (
       <View key={page._id} style={styles.pageContainer}>
-        {page.imageUrl && <AsyncPageImage page={page} />}
-        
         <View style={styles.pageContent}>
+          {page.imageUrl && (
+            <View style={styles.pageImageContainer}>
+              <AsyncPageImage page={page} />
+            </View>
+          )}
           <Text style={styles.pageText}>{page.text}</Text>
           <Text style={styles.pageNumber}>Página {page.pageNumber}</Text>
+        </View>
+      </View>
+    );
+  };
+
+  const renderCover = () => {
+    if (!book) return null;
+
+    return (
+      <View style={styles.pageContainer}>
+        <View style={styles.coverContainer}>
+          <Text style={styles.coverTitle}>{book.title}</Text>
+          {book.pages[0]?.imageUrl && (
+            <View style={styles.coverImageContainer}>
+              <AsyncPageImage page={book.pages[0]} />
+            </View>
+          )}
+          <Text style={styles.coverAuthor}>por {book.authorName}</Text>
         </View>
       </View>
     );
@@ -739,10 +797,10 @@ function ViewBookScreen() {
             {renderPageNavigation()}
             
             <View style={[styles.pageContainer, isTablet && styles.tabletPageContainer]}>
-              {currentPageData?.imageUrl ? (
-                <React.Fragment>
-                  {renderPage(currentPageData)}
-                </React.Fragment>
+              {currentPage === 0 ? (
+                renderCover()
+              ) : currentPage <= book.pages.length ? (
+                renderPage(book.pages[currentPage - 1])
               ) : (
                 <View style={styles.noImageContainer}>
                   <Text style={styles.noImageText}>Imagem não disponível</Text>
@@ -956,14 +1014,21 @@ const styles = StyleSheet.create({
     marginVertical: 10
   },
   pageContent: {
-    padding: 10,
+    padding: 15,
     backgroundColor: '#fff',
     borderRadius: 8,
-    marginTop: 10
+    width: '100%'
+  },
+  pageImageContainer: {
+    width: '100%',
+    height: 300,
+    marginBottom: 15,
+    borderRadius: 8,
+    overflow: 'hidden'
   },
   pageImage: {
     width: '100%',
-    height: 300,
+    height: '100%',
     borderRadius: 8
   },
   pageText: {
@@ -1045,6 +1110,33 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 10
+  },
+  coverContainer: {
+    alignItems: 'center',
+    padding: 20,
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    marginVertical: 10,
+    width: '100%'
+  },
+  coverImageContainer: {
+    width: '100%',
+    height: 300,
+    marginVertical: 20,
+    borderRadius: 8,
+    overflow: 'hidden'
+  },
+  coverTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 20
+  },
+  coverAuthor: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    marginTop: 10
   }
 });
 
